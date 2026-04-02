@@ -1,16 +1,44 @@
-# React + Vite
+# Teliman Tracking Fleeti
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+V3 introduces a safer architecture:
 
-Currently, two official plugins are available:
+- **Frontend**: React + Vite dashboard
+- **Backend**: Express proxy to Fleeti API
+- **Map**: Leaflet live tracker view
+- **Features**: search, filters, alerts, risk ranking, events, tracker detail cards
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Setup
 
-## React Compiler
+```bash
+cp .env.example .env
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Fill the Fleeti credentials in `.env`.
 
-## Expanding the ESLint configuration
+## Run backend
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm run dev:server
+```
+
+## Run frontend
+
+```bash
+npm run dev
+```
+
+## Build frontend
+
+```bash
+npm run build
+```
+
+## Environment
+
+- `FLEETI_API_BASE`
+- `FLEETI_LOGIN`
+- `FLEETI_PASSWORD`
+- `FLEETI_DEALER_ID`
+- `FLEETI_LOCALE`
+- `PORT`
+- `VITE_BACKEND_URL`
