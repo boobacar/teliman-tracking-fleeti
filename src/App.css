@@ -14,6 +14,7 @@ body {
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 24%),
     radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 22%),
     #020617;
+  overflow-x: hidden;
 }
 
 button,
@@ -26,6 +27,11 @@ input {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px 1fr;
+}
+
+.mobile-nav-toggle,
+.mobile-close-btn {
+  display: none;
 }
 
 .sidebar {
@@ -827,20 +833,99 @@ input {
     grid-template-columns: 1fr;
   }
 
+  .mobile-nav-toggle {
+    display: inline-flex;
+    position: sticky;
+    top: 12px;
+    left: 12px;
+    z-index: 30;
+    margin: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(15, 23, 42, 0.92);
+    color: #e2e8f0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    align-items: center;
+    gap: 8px;
+  }
+
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(86vw, 320px);
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    z-index: 40;
+    border-right: 1px solid rgba(148, 163, 184, 0.12);
+    border-bottom: none;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .mobile-close-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(15, 23, 42, 0.9);
+    color: #e2e8f0;
+  }
+
+  .main-content {
+    padding: 14px;
   }
 
   .hero-panel {
     flex-direction: column;
     align-items: flex-start;
+    padding: 16px;
+  }
+
+  .panel,
+  .stat-card,
+  .executive-card,
+  .overview-card,
+  .tracker-card,
+  .alert-row,
+  .signal-card,
+  .driver-rank-row,
+  .tracker-table-row,
+  .event-row {
+    border-radius: 16px;
   }
 
   .tracker-table-row,
   .driver-rank-row,
   .tracker-detail-grid,
-  .tracker-overview-grid {
+  .tracker-overview-grid,
+  .command-center-grid {
     grid-template-columns: 1fr;
+  }
+
+  .command-center-actions {
+    flex-direction: column;
+  }
+
+  .leaflet-wrap,
+  .large-map {
+    height: 340px;
+  }
+
+  .event-row {
+    gap: 8px;
+    padding: 12px;
   }
 }

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { AlertTriangle, BarChart3, ChevronRight, LayoutDashboard, Map, RefreshCw, Search, ShieldAlert, Siren, Users, Car } from 'lucide-react'
+import { AlertTriangle, BarChart3, ChevronRight, LayoutDashboard, Map, Menu, RefreshCw, Search, ShieldAlert, Siren, Users, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,17 +12,18 @@ const views = [
 ]
 
 export function Layout({ children, loading, refreshData, search, setSearch, filter, setFilter, dataset }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
   return (
     <div className="app-shell premium-shell phase2-shell">
-      <aside className="sidebar premium-sidebar">
+      <button className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)}><Menu size={20} /> Menu</button>
+      <aside className={`sidebar premium-sidebar ${mobileNavOpen ? 'mobile-open' : ''}`}>
         <div>
-          <div className="brand-badge">TELIMAN</div>
-          <h1>Operations</h1>
-          <p>Flotte, alertes et pilotage.</p>
+          <div className="mobile-sidebar-header"><div><div className="brand-badge">TELIMAN</div><h1>Operations</h1><p>Flotte, alertes et pilotage.</p></div><button className="mobile-close-btn" onClick={() => setMobileNavOpen(false)}><X size={18} /></button></div>
         </div>
         <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
         <div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Chercher tracker ou chauffeur" /></div>
-        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
+        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
         <div className="filters">{['all', 'active', 'idle', 'offline'].map((value) => <button key={value} className={`chip ${filter === value ? 'selected' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div>
       </aside>
 
