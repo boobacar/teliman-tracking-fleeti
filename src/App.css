@@ -398,7 +398,8 @@ input {
 @media (max-width: 1200px) {
   .stats-grid,
   .dashboard-grid,
-  .event-row {
+  .event-row,
+  .executive-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -481,6 +482,56 @@ input {
 
 .bottom-grid {
   margin-bottom: 8px;
+}
+
+.executive-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.executive-card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(15, 23, 42, 0.76);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.22);
+}
+
+.executive-card span {
+  color: #94a3b8;
+  display: block;
+  font-size: 13px;
+}
+
+.executive-card strong {
+  display: block;
+  font-size: 28px;
+  margin-top: 8px;
+}
+
+.executive-card small {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.phase2-shell .panel,
+.phase2-shell .hero-panel,
+.phase2-shell .stat-card {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.premium-hero-phase2 {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.88));
+}
+
+.phase2-grid {
+  align-items: stretch;
+}
+
+.tracker-table-phase2 .tracker-table-row {
+  grid-template-columns: 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr;
 }
 
 @media (max-width: 900px) {
