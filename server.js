@@ -167,7 +167,7 @@ app.get('/api/reports', async (_req, res) => {
       const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, 1)
       const fuelSensors = await getFuelSensorInfo(hash, tracker.id)
       const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
-      const fuelValue = preferredFuelSensor ? `Capteur: ${preferredFuelSensor.name}` : 'N/A'
+      const fuelValue = preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A'
 
       return {
         immatriculation: tracker.label,
@@ -190,7 +190,7 @@ app.get('/api/reports', async (_req, res) => {
       tempsInactiviteTotalH: Number(rows.reduce((sum, row) => sum + row.inactiviteH, 0).toFixed(2)),
       vitesseMoyenneFlotte: rows.length ? Math.round(rows.reduce((sum, row) => sum + row.vitesseMoy, 0) / rows.length) : 0,
       vitesseMaxFlotte: rows.length ? Math.max(...rows.map((row) => row.vitesseMax)) : 0,
-      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Capteurs CAN détectés' : 'N/A',
+      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Mesure numérique indisponible via API actuelle' : 'N/A',
     }
 
     res.json({ summary, rows })
