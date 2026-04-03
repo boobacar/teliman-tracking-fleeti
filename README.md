@@ -21,6 +21,14 @@ Fill the Fleeti credentials in `.env`.
 npm run dev:server
 ```
 
+Available backend endpoints:
+
+- `/api/health`
+- `/api/dashboard`
+- `/api/trackers`
+- `/api/drivers`
+- `/api/alerts`
+
 ## Run frontend
 
 ```bash

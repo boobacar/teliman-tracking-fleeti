@@ -39,34 +39,65 @@ async function authenticate() {
   return auth.hash
 }
 
+async function getDashboardData() {
+  const hash = await authenticate()
+  const [trackers, states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
+    apiCall('tracker/list', { hash }),
+    apiCall('tracker/get_states', { hash, trackers: TRACKER_IDS }),
+    apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+    apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
+    apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
+    apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
+    apiCall('history/tracker/list', { hash, trackers: TRACKER_IDS, from: '2026-04-01 00:00:00', to: '2026-04-02 23:59:59', limit: 200 }).catch(() => ({ list: [] })),
+    apiCall('tracker/stats/mileage/read', { hash, trackers: TRACKER_IDS, from: '2026-04-01 00:00:00', to: '2026-04-02 23:59:59' }).catch(() => ({ result: {} })),
+  ])
+
+  return {
+    trackers: trackers.list ?? [],
+    states: states.states ?? {},
+    employees: employees.list ?? [],
+    unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
+    rules: rules.list ?? [],
+    tariffs: tariffs.list ?? [],
+    history: history.list ?? [],
+    mileage: mileage.result ?? {},
+  }
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'teliman-tracking-fleeti-v3' })
 })
 
 app.get('/api/dashboard', async (_req, res) => {
   try {
-    const hash = await authenticate()
-    const [trackers, states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
-      apiCall('tracker/list', { hash }),
-      apiCall('tracker/get_states', { hash, trackers: TRACKER_IDS }),
-      apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
-      apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
-      apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
-      apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
-      apiCall('history/tracker/list', { hash, trackers: TRACKER_IDS, from: '2026-04-01 00:00:00', to: '2026-04-02 23:59:59', limit: 200 }).catch(() => ({ list: [] })),
-      apiCall('tracker/stats/mileage/read', { hash, trackers: TRACKER_IDS, from: '2026-04-01 00:00:00', to: '2026-04-02 23:59:59' }).catch(() => ({ result: {} })),
-    ])
+    res.json(await getDashboardData())
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
 
-    res.json({
-      trackers: trackers.list ?? [],
-      states: states.states ?? {},
-      employees: employees.list ?? [],
-      unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
-      rules: rules.list ?? [],
-      tariffs: tariffs.list ?? [],
-      history: history.list ?? [],
-      mileage: mileage.result ?? {},
-    })
+app.get('/api/trackers', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    res.json({ trackers: data.trackers, states: data.states, mileage: data.mileage })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/drivers', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    res.json({ drivers: data.employees, history: data.history })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/alerts', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    res.json({ alerts: data.history, unreadCount: data.unreadCount, rules: data.rules })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
