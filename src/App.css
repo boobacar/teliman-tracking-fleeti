@@ -29,6 +29,10 @@ input {
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
   border-right: 1px solid rgba(148, 163, 184, 0.12);
   padding: 28px 22px;
   display: flex;
@@ -116,6 +120,7 @@ input {
   padding: 28px;
   display: grid;
   gap: 24px;
+  min-width: 0;
 }
 
 .hero-panel,
