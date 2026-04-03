@@ -459,7 +459,8 @@ input {
   .event-row,
   .executive-grid,
   .command-center-grid,
-  .command-center-metrics {
+  .command-center-metrics,
+  .analytics-summary-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -654,6 +655,34 @@ input {
   display: block;
   margin-top: 6px;
   color: #94a3b8;
+}
+
+.analytics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.analytics-summary-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(15, 23, 42, 0.76);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.analytics-summary-card span {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.analytics-summary-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
 }
 
 .action-row {

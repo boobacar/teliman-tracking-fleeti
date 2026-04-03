@@ -14,6 +14,7 @@ import { MapPage } from './pages/MapPage'
 import { TrackersPage } from './pages/TrackersPage'
 import { DriversPage } from './pages/DriversPage'
 import { AlertsPage } from './pages/AlertsPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { TrackerDetailPage } from './pages/TrackerDetailPage'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -114,6 +115,7 @@ function App() {
         <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
         <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
         <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
+        <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
         <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
       </Routes>
 

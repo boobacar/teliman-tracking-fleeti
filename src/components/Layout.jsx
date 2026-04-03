@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { AlertTriangle, ChevronRight, LayoutDashboard, Map, RefreshCw, Search, ShieldAlert, Siren, Users, Car } from 'lucide-react'
+import { AlertTriangle, BarChart3, ChevronRight, LayoutDashboard, Map, RefreshCw, Search, ShieldAlert, Siren, Users, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -7,6 +7,7 @@ const views = [
   { id: '/trackers', label: 'Trackers', icon: Car },
   { id: '/drivers', label: 'Chauffeurs', icon: Users },
   { id: '/alerts', label: 'Alertes', icon: Siren },
+  { id: '/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
 export function Layout({ children, loading, refreshData, search, setSearch, filter, setFilter, dataset }) {
