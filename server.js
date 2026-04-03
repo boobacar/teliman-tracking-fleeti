@@ -101,7 +101,7 @@ async function getDashboardData(forceRefresh = false) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'teliman-tracking-fleeti-v3' })
+  res.json({ ok: true, service: 'teliman-tracking-fleeti-v3', cacheTtlMs: CACHE_TTL_MS, timestamp: new Date().toISOString() })
 })
 
 app.get('/api/dashboard', async (req, res) => {
