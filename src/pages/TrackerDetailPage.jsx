@@ -40,6 +40,26 @@ export function TrackerDetailPage({ enrichedTrackers }) {
           <div className="overview-card"><div className="stat-icon"><Route size={16} /></div><span>Kilométrage</span><strong>{tracker.latestDayMileage} km</strong></div>
           <div className="overview-card"><div className="stat-icon"><Wifi size={16} /></div><span>Mouvement</span><strong>{tracker.state?.movement_status ?? '-'}</strong></div>
           <div className="overview-card"><div className="stat-icon"><MapPin size={16} /></div><span>Dernière MàJ</span><strong>{tracker.state?.last_update ? new Date(tracker.state.last_update).toLocaleString() : '-'}</strong></div>
+          <div className="overview-card"><span>Connexion</span><strong>{tracker.state?.connection_status ?? '-'}</strong></div>
+          <div className="overview-card"><span>Événements</span><strong>{tracker.events.length}</strong></div>
+        </div>
+      </section>
+
+      <section className="dashboard-grid premium-grid phase2-grid">
+        <div className="panel">
+          <div className="panel-header"><div><h3>Alertes dominantes</h3><p>Lecture rapide des signaux</p></div></div>
+          <div className="driver-ranking">
+            {Object.entries(tracker.eventCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([label, value]) => <div key={label} className="driver-rank-row static-row"><strong>{value}</strong><div><span>{label}</span><small>type d'événement</small></div></div>)}
+            {Object.keys(tracker.eventCounts).length === 0 && <p style={{ color: '#94a3b8' }}>Aucune alerte dominante.</p>}
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-header"><div><h3>Coordonnées live</h3><p>Position et adresse actuelle</p></div></div>
+          <div className="driver-ranking">
+            <div className="driver-rank-row static-row"><strong>Lat</strong><div><span>{tracker.state?.gps?.location?.lat ?? '-'}</span><small>latitude</small></div></div>
+            <div className="driver-rank-row static-row"><strong>Lng</strong><div><span>{tracker.state?.gps?.location?.lng ?? '-'}</span><small>longitude</small></div></div>
+            <div className="driver-rank-row static-row"><strong>Adr</strong><div><span>{tracker.state?.gps?.address || 'Adresse indisponible'}</span><small>dernier point connu</small></div></div>
+          </div>
         </div>
       </section>
 
