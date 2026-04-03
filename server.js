@@ -183,6 +183,11 @@ app.get('/api/reports', async (_req, res) => {
   }
 })
 
+app.use((req, res, next) => {
+  console.log(`[route] ${req.method} ${req.url}`)
+  next()
+})
+
 app.listen(PORT, () => {
   console.log(`Teliman Tracking Fleeti API running on http://localhost:${PORT}`)
 })
