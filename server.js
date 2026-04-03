@@ -71,13 +71,13 @@ function sanitizeHistory(history = []) {
 async function getFuelSensorInfo(hash, trackerId) {
   try {
     const sensors = await apiCall('tracker/sensor/list', { hash, tracker_id: trackerId })
-    const fuelSensor = (sensors.list ?? []).find((sensor) => {
+    const fuelSensors = (sensors.list ?? []).filter((sensor) => {
       const text = JSON.stringify(sensor).toLowerCase()
       return text.includes('fuel') || text.includes('consum') || text.includes('carb')
     })
-    return fuelSensor ?? null
+    return fuelSensors
   } catch {
-    return null
+    return []
   }
 }
 
@@ -165,8 +165,9 @@ app.get('/api/reports', async (_req, res) => {
       const speed = state?.gps?.speed ?? 0
       const inactivityHours = history.filter((event) => event.event === 'excessive_parking').length * 1.5
       const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, 1)
-      const fuelSensor = await getFuelSensorInfo(hash, tracker.id)
-      const fuelValue = fuelSensor ? 'Disponible capteur' : 'N/A'
+      const fuelSensors = await getFuelSensorInfo(hash, tracker.id)
+      const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
+      const fuelValue = preferredFuelSensor ? `Capteur: ${preferredFuelSensor.name}` : 'N/A'
 
       return {
         immatriculation: tracker.label,
@@ -189,7 +190,7 @@ app.get('/api/reports', async (_req, res) => {
       tempsInactiviteTotalH: Number(rows.reduce((sum, row) => sum + row.inactiviteH, 0).toFixed(2)),
       vitesseMoyenneFlotte: rows.length ? Math.round(rows.reduce((sum, row) => sum + row.vitesseMoy, 0) / rows.length) : 0,
       vitesseMaxFlotte: rows.length ? Math.max(...rows.map((row) => row.vitesseMax)) : 0,
-      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Capteur détecté' : 'N/A',
+      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Capteurs CAN détectés' : 'N/A',
     }
 
     res.json({ summary, rows })
