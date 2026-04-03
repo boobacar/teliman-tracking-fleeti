@@ -114,11 +114,11 @@ function App() {
         <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
         <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
         <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
-        <Route path="/tracker/:id" element={<TrackerDetailPage selectedTracker={selectedTracker} />} />
+        <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
       </Routes>
 
       <section className="dashboard-grid premium-grid bottom-grid">
-        <div className="panel"><div className="panel-header"><div><h3>Accès rapide unité</h3><p>Basculer vers la fiche avancée</p></div></div>{selectedTracker ? <button className="tracker-card" onClick={() => window.location.assign(`/tracker/${selectedTracker.id}`)}><div className="tracker-topline"><strong>{selectedTracker.label}</strong><span className="status-pill" style={{ background: `${selectedTracker.statusColor}22`, color: selectedTracker.statusColor }}>{selectedTracker.state?.connection_status || 'unknown'}</span></div><p>{selectedTracker.employeeName}</p><div className="tracker-meta"><span>{selectedTracker.latestDayMileage} km</span><span>Risque {selectedTracker.riskScore}</span></div></button> : <p>Aucune unité sélectionnée.</p>}</div>
+        <div className="panel"><div className="panel-header"><div><h3>Accès rapide unité</h3><p>Cliquer pour la fiche avancée</p></div></div>{selectedTracker ? <button className="tracker-card" onClick={() => { const nav = document.querySelector('[data-nav-hook]'); window.location.assign(`/tracker/${selectedTracker.id}`) }}><div className="tracker-topline"><strong>{selectedTracker.label}</strong><span className="status-pill" style={{ background: `${selectedTracker.statusColor}22`, color: selectedTracker.statusColor }}>{selectedTracker.state?.connection_status || 'unknown'}</span></div><p>{selectedTracker.employeeName}</p><div className="tracker-meta"><span>{selectedTracker.latestDayMileage} km</span><span>Risque {selectedTracker.riskScore}</span></div></button> : <p>Aucune unité sélectionnée.</p>}</div>
         <div className="panel"><div className="panel-header"><div><h3>Feed prioritaire</h3><p>Derniers signaux à surveiller</p></div></div><div className="alerts-list">{importantEvents.slice(0, 6).map((event) => <div key={`${event.tracker_id}-${event.time}`} className="alert-row"><div className="alert-icon"><AlertTriangle size={16} /></div><div><strong>{event.label || event.extra?.tracker_label}</strong><p>{event.message}</p><span>{new Date(event.time).toLocaleString()}</span></div></div>)}</div></div>
       </section>
     </Layout>
