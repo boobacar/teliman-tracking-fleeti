@@ -513,6 +513,18 @@ input {
   background: rgba(30, 41, 59, 0.82);
 }
 
+.priority-high {
+  border-left: 3px solid #ef4444;
+}
+
+.priority-medium {
+  border-left: 3px solid #f59e0b;
+}
+
+.priority-normal {
+  border-left: 3px solid #3b82f6;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
