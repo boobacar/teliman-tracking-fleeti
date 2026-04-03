@@ -257,6 +257,56 @@ app.get('/api/fleeti/questions/today', async (_req, res) => {
   }
 })
 
+app.get('/api/fleeti/ask', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').toLowerCase().trim()
+    const data = await getDashboardData()
+    const states = data.states ?? {}
+    const trackers = data.trackers ?? []
+    const alerts = data.history ?? []
+
+    if (q.includes('offline')) {
+      return res.json({ question: q, answer: trackers.filter((tracker) => states?.[tracker.id]?.connection_status === 'offline').map((tracker) => tracker.label) })
+    }
+
+    if (q.includes('bouge') || q.includes('moving')) {
+      return res.json({ question: q, answer: trackers.filter((tracker) => states?.[tracker.id]?.movement_status === 'moving').map((tracker) => ({ label: tracker.label, speed: states?.[tracker.id]?.gps?.speed ?? 0 })) })
+    }
+
+    if (q.includes('alerte')) {
+      return res.json({ question: q, answer: alerts.filter((event) => ['speedup', 'fuel_level_leap', 'excessive_parking'].includes(event.event)).slice(0, 10) })
+    }
+
+    if (q.includes('plus roul')) {
+      const ranked = trackers.map((tracker) => ({ label: tracker.label, mileage: data.mileage?.[tracker.id]?.['2026-04-02']?.mileage ?? data.mileage?.[tracker.id]?.['2026-04-01']?.mileage ?? 0 })).sort((a, b) => b.mileage - a.mileage)
+      return res.json({ question: q, answer: ranked.slice(0, 5) })
+    }
+
+    return res.json({ question: q, answer: 'Question non encore modélisée dans C3' })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/fleeti/live', async (_req, res) => {
+  try {
+    const data = await getDashboardData(true)
+    res.json({
+      timestamp: new Date().toISOString(),
+      trackers: (data.trackers ?? []).map((tracker) => ({
+        id: tracker.id,
+        label: tracker.label,
+        status: data.states?.[tracker.id]?.connection_status ?? 'unknown',
+        movement: data.states?.[tracker.id]?.movement_status ?? 'unknown',
+        speed: data.states?.[tracker.id]?.gps?.speed ?? 0,
+        location: data.states?.[tracker.id]?.gps?.location ?? null,
+      })),
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.get('/api/reports', async (_req, res) => {
   try {
     const data = await getDashboardData()

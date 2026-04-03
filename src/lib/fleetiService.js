@@ -18,4 +18,6 @@ export const fleetiService = {
   tracker: (id) => request(`/api/fleeti/tracker/${id}`),
   analytics: () => request('/api/fleeti/analytics'),
   todayQuestions: () => request('/api/fleeti/questions/today'),
+  ask: (query) => request(`/api/fleeti/ask?q=${encodeURIComponent(query)}`),
+  live: () => request('/api/fleeti/live'),
 }
