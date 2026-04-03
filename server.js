@@ -15,6 +15,8 @@ const PASSWORD = process.env.FLEETI_PASSWORD || 'Azerty123456#'
 const DEALER_ID = Number(process.env.FLEETI_DEALER_ID || 23241)
 const LOCALE = process.env.FLEETI_LOCALE || 'fr'
 const TRACKER_IDS = [3487533, 3487539, 3488325, 3488326, 3511635, 3537761, 3537762, 3537766]
+const CACHE_TTL_MS = 60 * 1000
+let dashboardCache = { data: null, ts: 0 }
 
 async function apiCall(endpoint, payload = {}) {
   const response = await fetch(`${API_BASE}/${endpoint}`, {
@@ -39,7 +41,38 @@ async function authenticate() {
   return auth.hash
 }
 
-async function getDashboardData() {
+function sanitizeTrackers(trackers = []) {
+  return trackers.filter(Boolean).map((tracker) => ({
+    ...tracker,
+    label: tracker.label || tracker.name || `Tracker ${tracker.id}`,
+    model: tracker.model || 'Modèle inconnu',
+  }))
+}
+
+function sanitizeEmployees(employees = []) {
+  return employees.filter(Boolean).map((employee) => ({
+    ...employee,
+    first_name: employee.first_name || '',
+    last_name: employee.last_name || '',
+    phone: employee.phone || 'N/A',
+  }))
+}
+
+function sanitizeHistory(history = []) {
+  return history.filter(Boolean).map((event) => ({
+    ...event,
+    event: event.event || 'unknown',
+    time: event.time || new Date().toISOString(),
+    message: event.message || 'Événement sans description',
+    address: event.address || 'Adresse indisponible',
+  }))
+}
+
+async function getDashboardData(forceRefresh = false) {
+  if (!forceRefresh && dashboardCache.data && Date.now() - dashboardCache.ts < CACHE_TTL_MS) {
+    return dashboardCache.data
+  }
+
   const hash = await authenticate()
   const [trackers, states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
     apiCall('tracker/list', { hash }),
@@ -52,25 +85,29 @@ async function getDashboardData() {
     apiCall('tracker/stats/mileage/read', { hash, trackers: TRACKER_IDS, from: '2026-04-01 00:00:00', to: '2026-04-02 23:59:59' }).catch(() => ({ result: {} })),
   ])
 
-  return {
-    trackers: trackers.list ?? [],
+  const payload = {
+    trackers: sanitizeTrackers(trackers.list ?? []),
     states: states.states ?? {},
-    employees: employees.list ?? [],
+    employees: sanitizeEmployees(employees.list ?? []),
     unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
     rules: rules.list ?? [],
     tariffs: tariffs.list ?? [],
-    history: history.list ?? [],
+    history: sanitizeHistory(history.list ?? []),
     mileage: mileage.result ?? {},
   }
+
+  dashboardCache = { data: payload, ts: Date.now() }
+  return payload
 }
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'teliman-tracking-fleeti-v3' })
 })
 
-app.get('/api/dashboard', async (_req, res) => {
+app.get('/api/dashboard', async (req, res) => {
   try {
-    res.json(await getDashboardData())
+    const forceRefresh = req.query.refresh === '1'
+    res.json(await getDashboardData(forceRefresh))
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
