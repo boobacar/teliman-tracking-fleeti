@@ -50,14 +50,15 @@ input {
 }
 
 .sidebar h1 {
-  margin: 14px 0 8px;
-  font-size: 28px;
+  margin: 10px 0 6px;
+  font-size: 24px;
 }
 
 .sidebar p {
   margin: 0;
   color: #94a3b8;
-  line-height: 1.6;
+  line-height: 1.5;
+  font-size: 14px;
 }
 
 .primary-btn {
@@ -133,6 +134,16 @@ input {
   justify-content: space-between;
   gap: 24px;
   align-items: center;
+}
+
+.compact-hero {
+  padding: 16px 18px;
+}
+
+.hero-quickstats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .eyebrow {

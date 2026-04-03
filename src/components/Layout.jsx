@@ -15,9 +15,9 @@ export function Layout({ children, loading, refreshData, search, setSearch, filt
     <div className="app-shell premium-shell phase2-shell">
       <aside className="sidebar premium-sidebar">
         <div>
-          <div className="brand-badge">TELIMAN PREMIUM</div>
-          <h1>Operations Center</h1>
-          <p>Interface premium de suivi, alertes, risques et prise de décision terrain.</p>
+          <div className="brand-badge">TELIMAN</div>
+          <h1>Operations</h1>
+          <p>Flotte, alertes et pilotage.</p>
         </div>
         <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
         <div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Chercher tracker ou chauffeur" /></div>
@@ -26,9 +26,11 @@ export function Layout({ children, loading, refreshData, search, setSearch, filt
       </aside>
 
       <main className="main-content premium-main">
-        <section className="hero-panel premium-hero premium-hero-phase2">
-          <div><p className="eyebrow">Fleet intelligence platform</p><h2>Phase 4 : architecture plus propre, base plus scalable</h2><p>On sépare maintenant l’application en layout + pages, pour une vraie base de produit propre et maintenable.</p></div>
-          <div className="hero-meta"><div className="meta-box"><ShieldAlert size={18} /><span>{dataset?.rules?.length ?? 0} règles</span></div><div className="meta-box"><AlertTriangle size={18} /><span>{dataset?.unreadCount ?? 0} alertes</span></div></div>
+        <section className="hero-panel premium-hero premium-hero-phase2 compact-hero">
+          <div className="hero-quickstats">
+            <div className="meta-box"><ShieldAlert size={18} /><span>{dataset?.rules?.length ?? 0} règles actives</span></div>
+            <div className="meta-box"><AlertTriangle size={18} /><span>{dataset?.unreadCount ?? 0} alertes non lues</span></div>
+          </div>
         </section>
         {children}
       </main>
