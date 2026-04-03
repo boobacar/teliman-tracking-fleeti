@@ -33,13 +33,13 @@ export function TrackerDetailPage({ enrichedTrackers }) {
           <div><h3>{tracker.label}</h3><p>Vue complète de l'unité</p></div>
           <span className="status-pill" style={{ background: `${statusClr}22`, color: statusClr, alignSelf: 'flex-start' }}>{statusLbl}</span>
         </div>
-        <div className="tracker-detail-kpis">
-          <div className="tracker-kpi"><div className="stat-icon"><Users size={16} /></div><div><span>Chauffeur</span><strong>{tracker.employeeName}</strong></div></div>
-          <div className="tracker-kpi"><div className="stat-icon"><Gauge size={16} /></div><div><span>Vitesse</span><strong>{tracker.state?.gps?.speed ?? 0} km/h</strong></div></div>
-          <div className="tracker-kpi"><div className="stat-icon"><Battery size={16} /></div><div><span>Batterie</span><strong>{tracker.state?.battery_level ?? '-'}%</strong></div></div>
-          <div className="tracker-kpi"><div className="stat-icon"><Route size={16} /></div><div><span>Odomètre</span><strong>{tracker.latestDayMileage} km</strong></div></div>
-          <div className="tracker-kpi"><div className="stat-icon"><Wifi size={16} /></div><div><span>Mouvement</span><strong>{tracker.state?.movement_status ?? '-'}</strong></div></div>
-          <div className="tracker-kpi"><div className="stat-icon"><MapPin size={16} /></div><div><span>Dernière MàJ</span><strong>{tracker.state?.last_update ? new Date(tracker.state.last_update).toLocaleString() : '-'}</strong></div></div>
+        <div className="tracker-overview-grid">
+          <div className="overview-card"><div className="stat-icon"><Users size={16} /></div><span>Chauffeur</span><strong>{tracker.employeeName}</strong></div>
+          <div className="overview-card"><div className="stat-icon"><Gauge size={16} /></div><span>Vitesse</span><strong>{tracker.state?.gps?.speed ?? 0} km/h</strong></div>
+          <div className="overview-card"><div className="stat-icon"><Battery size={16} /></div><span>Batterie</span><strong>{tracker.state?.battery_level ?? '-'}%</strong></div>
+          <div className="overview-card"><div className="stat-icon"><Route size={16} /></div><span>Kilométrage</span><strong>{tracker.latestDayMileage} km</strong></div>
+          <div className="overview-card"><div className="stat-icon"><Wifi size={16} /></div><span>Mouvement</span><strong>{tracker.state?.movement_status ?? '-'}</strong></div>
+          <div className="overview-card"><div className="stat-icon"><MapPin size={16} /></div><span>Dernière MàJ</span><strong>{tracker.state?.last_update ? new Date(tracker.state.last_update).toLocaleString() : '-'}</strong></div>
         </div>
       </section>
 
