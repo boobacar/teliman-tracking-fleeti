@@ -153,6 +153,65 @@ app.get('/api/alerts', async (_req, res) => {
   }
 })
 
+app.get('/api/fleeti/summary', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    const trackers = data.trackers ?? []
+    const states = data.states ?? {}
+    const history = data.history ?? []
+    res.json({
+      totalTrackers: trackers.length,
+      active: trackers.filter((tracker) => states?.[tracker.id]?.connection_status === 'active').length,
+      offline: trackers.filter((tracker) => states?.[tracker.id]?.connection_status === 'offline').length,
+      moving: trackers.filter((tracker) => states?.[tracker.id]?.movement_status === 'moving').length,
+      alerts: history.length,
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/fleeti/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').toLowerCase().trim()
+    const data = await getDashboardData()
+    const employeesByTracker = Object.fromEntries((data.employees ?? []).map((employee) => [employee.tracker_id, employee]))
+    const results = (data.trackers ?? []).filter((tracker) => {
+      const employee = employeesByTracker[tracker.id]
+      const text = `${tracker.label} ${employee?.first_name || ''} ${employee?.last_name || ''}`.toLowerCase()
+      return q ? text.includes(q) : true
+    }).map((tracker) => ({
+      id: tracker.id,
+      label: tracker.label,
+      employee: employeesByTracker[tracker.id] ? `${employeesByTracker[tracker.id].first_name} ${employeesByTracker[tracker.id].last_name}`.trim() : 'Non assigné',
+      state: data.states?.[tracker.id] ?? {},
+    }))
+    res.json({ query: q, results })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/fleeti/tracker/:id', async (req, res) => {
+  try {
+    const trackerId = Number(req.params.id)
+    const data = await getDashboardData()
+    const tracker = (data.trackers ?? []).find((item) => item.id === trackerId)
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker not found' })
+    const employee = (data.employees ?? []).find((item) => item.tracker_id === trackerId)
+    const history = (data.history ?? []).filter((event) => event.tracker_id === trackerId)
+    res.json({
+      tracker,
+      state: data.states?.[trackerId] ?? {},
+      employee: employee ?? null,
+      mileage: data.mileage?.[trackerId] ?? {},
+      history,
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.get('/api/reports', async (_req, res) => {
   try {
     const data = await getDashboardData()
