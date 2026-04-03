@@ -1,3 +1,8 @@
+import { useMemo, useState } from 'react'
+
 export function DriversPage({ filteredTrackers }) {
-  return <section className="panel panel-large"><div className="panel-header"><div><h3>Chauffeurs</h3><p>Vue people + unité + activité</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <div key={tracker.id} className="tracker-table-row static-row tracker-table-row-rich"><div><strong>{tracker.employeeName}</strong><small>{tracker.employeePhone}</small></div><div>{tracker.label}</div><div>{tracker.latestDayMileage} km</div><div>{tracker.eventCounts.speedup || 0} speedups</div><div>{tracker.eventCounts.excessive_parking || 0} parking alerts</div><div>{tracker.riskScore}</div><div>{tracker.state.connection_status}</div></div>)}</div></section>
+  const [riskOnly, setRiskOnly] = useState(false)
+  const rows = useMemo(() => riskOnly ? filteredTrackers.filter((tracker) => tracker.riskScore > 10) : filteredTrackers, [filteredTrackers, riskOnly])
+
+  return <section className="panel panel-large"><div className="panel-header"><div><h3>Chauffeurs</h3><p>Vue people + unité + activité</p></div></div><div className="filters filter-row"><button className={`chip ${!riskOnly ? 'selected' : ''}`} onClick={() => setRiskOnly(false)}>Tous</button><button className={`chip ${riskOnly ? 'selected' : ''}`} onClick={() => setRiskOnly(true)}>À risque</button></div><div className="tracker-table tracker-table-phase2">{rows.map((tracker) => <div key={tracker.id} className="tracker-table-row static-row tracker-table-row-rich"><div><strong>{tracker.employeeName}</strong><small>{tracker.employeePhone}</small></div><div>{tracker.label}</div><div>{tracker.latestDayMileage} km</div><div>{tracker.eventCounts.speedup || 0} speedups</div><div>{tracker.eventCounts.excessive_parking || 0} parking alerts</div><div>{tracker.riskScore}</div><div>{tracker.state.connection_status}</div></div>)}</div></section>
 }
