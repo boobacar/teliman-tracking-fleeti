@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, Battery, Car, ChevronRight, Gauge, LayoutDashboard, Map, MapPin, RefreshCw, Search, ShieldAlert, Siren, Users, Wifi } from 'lucide-react'
+import { NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { Activity, AlertTriangle, Battery, Car, Gauge, LayoutDashboard, Map, MapPin, RefreshCw, Search, ShieldAlert, Siren, Users, Wifi } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import L from 'leaflet'
@@ -16,23 +17,23 @@ L.Icon.Default.mergeOptions({
 })
 
 const views = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'map', label: 'Live Map', icon: Map },
-  { id: 'trackers', label: 'Trackers', icon: Car },
-  { id: 'drivers', label: 'Chauffeurs', icon: Users },
-  { id: 'alerts', label: 'Alertes', icon: Siren },
+  { id: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { id: '/map', label: 'Live Map', icon: Map },
+  { id: '/trackers', label: 'Trackers', icon: Car },
+  { id: '/drivers', label: 'Chauffeurs', icon: Users },
+  { id: '/alerts', label: 'Alertes', icon: Siren },
 ]
 
 const scoreRisk = (tracker) => (tracker.eventCounts.speedup || 0) * 4 + (tracker.eventCounts.excessive_parking || 0) * 2 + ((tracker.state.battery_level || 100) < 20 ? 5 : 0)
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
 
 function App() {
+  const navigate = useNavigate()
   const [dataset, setDataset] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const [activeView, setActiveView] = useState('dashboard')
   const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
 
   const refreshData = async () => {
@@ -57,7 +58,7 @@ function App() {
       const employee = employees[tracker.id]
       const events = (dataset?.history ?? []).filter((event) => event.tracker_id === tracker.id)
       const eventCounts = events.reduce((acc, event) => ({ ...acc, [event.event]: (acc[event.event] || 0) + 1 }), {})
-      return {
+      const base = {
         ...tracker,
         state,
         mileage,
@@ -67,9 +68,9 @@ function App() {
         events,
         eventCounts,
         statusColor: statusColor(state.connection_status),
-        riskScore: 0,
       }
-    }).map((tracker) => ({ ...tracker, riskScore: scoreRisk(tracker) }))
+      return { ...base, riskScore: scoreRisk(base) }
+    })
   }, [dataset])
 
   const filteredTrackers = useMemo(() => enrichedTrackers.filter((tracker) => {
@@ -105,6 +106,17 @@ function App() {
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
 
+  const dashboardView = <>
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <div className="panel panel-large"><div className="panel-header"><div><h3>Kilométrage du jour</h3><p>Classement des unités les plus actives</p></div></div><ResponsiveContainer width="100%" height={280}><BarChart data={filteredTrackers.map((t) => ({ name: t.label, mileage: t.latestDayMileage }))}><CartesianGrid strokeDasharray="3 3" stroke="#243042" /><XAxis dataKey="name" stroke="#8da2c0" /><YAxis stroke="#8da2c0" /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /><Bar dataKey="mileage" fill="#3b82f6" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
+      <div className="panel"><div className="panel-header"><div><h3>Répartition flotte</h3><p>Connectivité</p></div></div><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={connectionChart} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={4}>{connectionChart.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /></PieChart></ResponsiveContainer></div>
+    </section>
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <div className="panel panel-large"><div className="panel-header"><div><h3>Top risques</h3><p>Trackers à surveiller en priorité</p></div></div><div className="alerts-list">{riskRanking.slice(0, 5).map((tracker) => <div key={tracker.id} className="alert-row clickable" onClick={() => { setSelectedTrackerId(tracker.id); navigate('/trackers') }}><div className="alert-icon"><ShieldAlert size={16} /></div><div><strong>{tracker.label}</strong><p>{tracker.employeeName}</p><span>Risque {tracker.riskScore} · Speedups {tracker.eventCounts.speedup || 0}</span></div></div>)}</div></div>
+      <div className="panel"><div className="panel-header"><div><h3>Top chauffeurs</h3><p>Lecture exploitant</p></div></div><div className="driver-ranking">{topDrivers.map((driver, index) => <div key={`${driver.name}-${index}`} className="driver-rank-row"><strong>#{index + 1}</strong><div><span>{driver.name}</span><small>{driver.tracker}</small></div><div><span>{driver.mileage} km</span><small>Risque {driver.risk}</small></div></div>)}</div></div>
+    </section>
+  </>
+
   return (
     <div className="app-shell premium-shell phase2-shell">
       <aside className="sidebar premium-sidebar">
@@ -115,47 +127,31 @@ function App() {
         </div>
         <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
         <div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Chercher tracker ou chauffeur" /></div>
-        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <button key={view.id} className={`view-link ${activeView === view.id ? 'active' : ''}`} onClick={() => setActiveView(view.id)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></button> })}</nav>
+        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`}><Icon size={18} /><span>{view.label}</span></NavLink> })}</nav>
         <div className="filters">{['all', 'active', 'idle', 'offline'].map((value) => <button key={value} className={`chip ${filter === value ? 'selected' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div>
       </aside>
 
       <main className="main-content premium-main">
         <section className="hero-panel premium-hero premium-hero-phase2">
-          <div><p className="eyebrow">Fleet intelligence platform</p><h2>Une expérience executive plus premium, plus claire, plus exploitable</h2><p>Phase 2 ajoute une vraie lecture dirigeant : résumés exécutifs, meilleures priorités, tables métier et structure plus enterprise.</p></div>
+          <div><p className="eyebrow">Fleet intelligence platform</p><h2>Phase 3 : vraie structure produit, vraie navigation, vraie lecture métier</h2><p>Cette phase transforme l’interface en produit plus structuré avec routing, pages distinctes, interactions plus propres et une base plus sérieuse pour la suite.</p></div>
           <div className="hero-meta"><div className="meta-box"><ShieldAlert size={18} /><span>{dataset?.rules?.length ?? 0} règles</span></div><div className="meta-box"><AlertTriangle size={18} /><span>{dataset?.unreadCount ?? 0} alertes</span></div></div>
         </section>
         {error && <div className="error-banner">{error}</div>}
-
         <section className="stats-grid premium-stats phase2-stats">
           <StatCard icon={<Car size={18} />} label="Trackers" value={stats.total} helper="base flotte" />
           <StatCard icon={<Wifi size={18} />} label="Actifs" value={stats.active} helper="connectés live" />
           <StatCard icon={<Activity size={18} />} label="En mouvement" value={stats.moving} helper="terrain roulant" />
           <StatCard icon={<Gauge size={18} />} label="Vitesse moyenne" value={`${stats.avgSpeed} km/h`} helper="instantané" />
         </section>
+        <section className="executive-grid">{executiveCards.map((card) => <div key={card.title} className="executive-card"><span>{card.title}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}</section>
 
-        <section className="executive-grid">
-          {executiveCards.map((card) => <div key={card.title} className="executive-card"><span>{card.title}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
-        </section>
-
-        {activeView === 'dashboard' && <>
-          <section className="dashboard-grid premium-grid phase2-grid">
-            <div className="panel panel-large"><div className="panel-header"><div><h3>Kilométrage du jour</h3><p>Classement des unités les plus actives</p></div></div><ResponsiveContainer width="100%" height={280}><BarChart data={filteredTrackers.map((t) => ({ name: t.label, mileage: t.latestDayMileage }))}><CartesianGrid strokeDasharray="3 3" stroke="#243042" /><XAxis dataKey="name" stroke="#8da2c0" /><YAxis stroke="#8da2c0" /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /><Bar dataKey="mileage" fill="#3b82f6" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
-            <div className="panel"><div className="panel-header"><div><h3>Répartition flotte</h3><p>Connectivité</p></div></div><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={connectionChart} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={4}>{connectionChart.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /></PieChart></ResponsiveContainer></div>
-          </section>
-
-          <section className="dashboard-grid premium-grid phase2-grid">
-            <div className="panel panel-large"><div className="panel-header"><div><h3>Top risques</h3><p>Trackers à surveiller en priorité</p></div></div><div className="alerts-list">{riskRanking.slice(0, 5).map((tracker) => <div key={tracker.id} className="alert-row"><div className="alert-icon"><ShieldAlert size={16} /></div><div><strong>{tracker.label}</strong><p>{tracker.employeeName}</p><span>Risque {tracker.riskScore} · Speedups {tracker.eventCounts.speedup || 0}</span></div></div>)}</div></div>
-            <div className="panel"><div className="panel-header"><div><h3>Top chauffeurs</h3><p>Lecture exploitant</p></div></div><div className="driver-ranking">{topDrivers.map((driver, index) => <div key={`${driver.name}-${index}`} className="driver-rank-row"><strong>#{index + 1}</strong><div><span>{driver.name}</span><small>{driver.tracker}</small></div><div><span>{driver.mileage} km</span><small>Risque {driver.risk}</small></div></div>)}</div></div>
-          </section>
-        </>}
-
-        {activeView === 'map' && <section className="panel panel-large map-panel"><div className="panel-header"><div><h3>Live Map</h3><p>Suivi temps réel des unités</p></div></div><div className="leaflet-wrap large-map"><MapContainer center={[7.54, -5.55]} zoom={7} scrollWheelZoom className="leaflet-map"><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{filteredTrackers.filter((t) => t.state?.gps?.location).map((tracker) => <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} eventHandlers={{ click: () => setSelectedTrackerId(tracker.id) }}><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />{tracker.state.connection_status} / {tracker.state.movement_status}<br />{tracker.state.gps.speed ?? 0} km/h</Popup></Marker>)}</MapContainer></div></section>}
-
-        {activeView === 'trackers' && <section className="panel panel-large"><div className="panel-header"><div><h3>Trackers</h3><p>Inventaire exploitable</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <button key={tracker.id} className="tracker-table-row" onClick={() => setSelectedTrackerId(tracker.id)}><div><strong>{tracker.label}</strong><small>{tracker.model}</small></div><div>{tracker.employeeName}</div><div>{tracker.state.connection_status}</div><div>{tracker.state.gps?.speed ?? 0} km/h</div><div>{tracker.latestDayMileage} km</div><div>{tracker.riskScore}</div></button>)}</div></section>}
-
-        {activeView === 'drivers' && <section className="panel panel-large"><div className="panel-header"><div><h3>Chauffeurs</h3><p>Vue people + unité</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <div key={tracker.id} className="tracker-table-row static-row"><div><strong>{tracker.employeeName}</strong><small>{tracker.employeePhone}</small></div><div>{tracker.label}</div><div>{tracker.latestDayMileage} km</div><div>{tracker.eventCounts.speedup || 0} speedups</div><div>{tracker.eventCounts.excessive_parking || 0} parking alerts</div><div>{tracker.riskScore}</div></div>)}</div></section>}
-
-        {activeView === 'alerts' && <section className="panel panel-large"><div className="panel-header"><div><h3>Centre d’alertes</h3><p>Événements critiques et lecture rapide</p></div></div><div className="events-table">{importantEvents.slice(0, 30).map((event) => <div key={`${event.tracker_id}-${event.time}-${event.event}`} className="event-row"><div><strong>{event.label || event.extra?.tracker_label}</strong></div><div>{event.event}</div><div>{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div><div>{event.message}</div><div>{event.address}</div><div>{new Date(event.time).toLocaleString()}</div></div>)}</div></section>}
+        <Routes>
+          <Route path="/" element={dashboardView} />
+          <Route path="/map" element={<section className="panel panel-large map-panel"><div className="panel-header"><div><h3>Live Map</h3><p>Suivi temps réel des unités</p></div></div><div className="leaflet-wrap large-map"><MapContainer center={[7.54, -5.55]} zoom={7} scrollWheelZoom className="leaflet-map"><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{filteredTrackers.filter((t) => t.state?.gps?.location).map((tracker) => <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} eventHandlers={{ click: () => setSelectedTrackerId(tracker.id) }}><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />{tracker.state.connection_status} / {tracker.state.movement_status}<br />{tracker.state.gps.speed ?? 0} km/h</Popup></Marker>)}</MapContainer></div></section>} />
+          <Route path="/trackers" element={<section className="panel panel-large"><div className="panel-header"><div><h3>Trackers</h3><p>Inventaire exploitable</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <button key={tracker.id} className="tracker-table-row" onClick={() => setSelectedTrackerId(tracker.id)}><div><strong>{tracker.label}</strong><small>{tracker.model}</small></div><div>{tracker.employeeName}</div><div>{tracker.state.connection_status}</div><div>{tracker.state.gps?.speed ?? 0} km/h</div><div>{tracker.latestDayMileage} km</div><div>{tracker.riskScore}</div></button>)}</div></section>} />
+          <Route path="/drivers" element={<section className="panel panel-large"><div className="panel-header"><div><h3>Chauffeurs</h3><p>Vue people + unité</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <div key={tracker.id} className="tracker-table-row static-row"><div><strong>{tracker.employeeName}</strong><small>{tracker.employeePhone}</small></div><div>{tracker.label}</div><div>{tracker.latestDayMileage} km</div><div>{tracker.eventCounts.speedup || 0} speedups</div><div>{tracker.eventCounts.excessive_parking || 0} parking alerts</div><div>{tracker.riskScore}</div></div>)}</div></section>} />
+          <Route path="/alerts" element={<section className="panel panel-large"><div className="panel-header"><div><h3>Centre d’alertes</h3><p>Événements critiques et lecture rapide</p></div></div><div className="events-table">{importantEvents.slice(0, 30).map((event) => <div key={`${event.tracker_id}-${event.time}-${event.event}`} className="event-row"><div><strong>{event.label || event.extra?.tracker_label}</strong></div><div>{event.event}</div><div>{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div><div>{event.message}</div><div>{event.address}</div><div>{new Date(event.time).toLocaleString()}</div></div>)}</div></section>} />
+        </Routes>
 
         <section className="dashboard-grid premium-grid bottom-grid">
           <div className="panel detail-panel"><div className="panel-header"><div><h3>Fiche unité</h3><p>Lecture rapide</p></div></div>{selectedTracker ? <><div className="detail-grid"><DetailItem icon={<Users size={16} />} label="Chauffeur" value={selectedTracker.employeeName} /><DetailItem icon={<MapPin size={16} />} label="Position" value={`${selectedTracker.state?.gps?.location?.lat ?? '-'}, ${selectedTracker.state?.gps?.location?.lng ?? '-'}`} /><DetailItem icon={<Battery size={16} />} label="Batterie" value={`${selectedTracker.state?.battery_level ?? '-'}%`} /><DetailItem icon={<Gauge size={16} />} label="Vitesse" value={`${selectedTracker.state?.gps?.speed ?? 0} km/h`} /></div><div className="mini-chart-wrap"><ResponsiveContainer width="100%" height={180}><AreaChart data={Object.entries(selectedTracker.mileage).map(([day, value]) => ({ day, mileage: value?.mileage ?? 0 }))}><defs><linearGradient id="mileageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.8} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0.05} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="#243042" /><XAxis dataKey="day" stroke="#8da2c0" /><YAxis stroke="#8da2c0" /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /><Area type="monotone" dataKey="mileage" stroke="#60a5fa" fill="url(#mileageFill)" /></AreaChart></ResponsiveContainer></div></> : <p>Aucune unité sélectionnée.</p>}</div>

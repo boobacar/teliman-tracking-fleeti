@@ -354,6 +354,10 @@ input {
   gap: 12px;
 }
 
+.clickable {
+  cursor: pointer;
+}
+
 .alert-icon {
   width: 36px;
   height: 36px;
@@ -428,6 +432,7 @@ input {
   padding: 14px 16px;
   border-radius: 18px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .view-link span {
