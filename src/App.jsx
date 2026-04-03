@@ -77,6 +77,7 @@ function App() {
     const text = `${tracker.label} ${tracker.employeeName}`.toLowerCase()
     return text.includes(search.toLowerCase()) && (filter === 'all' || tracker.state.connection_status === filter)
   }), [enrichedTrackers, search, filter])
+  const isEmptySearch = !loading && !error && filteredTrackers.length === 0
 
   const selectedTracker = filteredTrackers.find((t) => t.id === selectedTrackerId) || enrichedTrackers.find((t) => t.id === selectedTrackerId) || filteredTrackers[0] || enrichedTrackers[0]
   const importantEvents = useMemo(() => ((dataset?.history?.length ? dataset.history : fallbackEvents)
@@ -111,6 +112,8 @@ function App() {
   return (
     <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} dataset={dataset}>
       {error && <div className="error-banner">{error}</div>}
+      {loading && <div className="info-banner">Actualisation des données flotte en cours...</div>}
+      {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
       <Routes>
         <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} />} />
         <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
