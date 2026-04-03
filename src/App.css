@@ -312,7 +312,7 @@ input {
 .tracker-list,
 .alerts-list {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .tracker-card,
@@ -321,8 +321,8 @@ input {
   text-align: left;
   border: 1px solid rgba(148, 163, 184, 0.1);
   background: rgba(30, 41, 59, 0.62);
-  border-radius: 18px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 12px;
   color: #e2e8f0;
 }
 
@@ -338,8 +338,9 @@ input {
 }
 
 .tracker-card p {
-  margin: 10px 0;
+  margin: 6px 0;
   color: #94a3b8;
+  font-size: 13px;
 }
 
 .status-pill {
@@ -370,8 +371,9 @@ input {
 
 .alert-row p,
 .alert-row span {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: #94a3b8;
+  font-size: 12px;
 }
 
 .events-table {
@@ -499,6 +501,7 @@ input {
 
 .bottom-grid {
   margin-bottom: 8px;
+  gap: 14px;
 }
 
 .executive-grid {
