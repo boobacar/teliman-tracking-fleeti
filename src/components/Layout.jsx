@@ -1,0 +1,36 @@
+import { NavLink } from 'react-router-dom'
+import { AlertTriangle, ChevronRight, LayoutDashboard, Map, RefreshCw, Search, ShieldAlert, Siren, Users, Car } from 'lucide-react'
+
+const views = [
+  { id: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { id: '/map', label: 'Live Map', icon: Map },
+  { id: '/trackers', label: 'Trackers', icon: Car },
+  { id: '/drivers', label: 'Chauffeurs', icon: Users },
+  { id: '/alerts', label: 'Alertes', icon: Siren },
+]
+
+export function Layout({ children, loading, refreshData, search, setSearch, filter, setFilter, dataset }) {
+  return (
+    <div className="app-shell premium-shell phase2-shell">
+      <aside className="sidebar premium-sidebar">
+        <div>
+          <div className="brand-badge">TELIMAN PREMIUM</div>
+          <h1>Operations Center</h1>
+          <p>Interface premium de suivi, alertes, risques et prise de décision terrain.</p>
+        </div>
+        <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
+        <div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Chercher tracker ou chauffeur" /></div>
+        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
+        <div className="filters">{['all', 'active', 'idle', 'offline'].map((value) => <button key={value} className={`chip ${filter === value ? 'selected' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div>
+      </aside>
+
+      <main className="main-content premium-main">
+        <section className="hero-panel premium-hero premium-hero-phase2">
+          <div><p className="eyebrow">Fleet intelligence platform</p><h2>Phase 4 : architecture plus propre, base plus scalable</h2><p>On sépare maintenant l’application en layout + pages, pour une vraie base de produit propre et maintenable.</p></div>
+          <div className="hero-meta"><div className="meta-box"><ShieldAlert size={18} /><span>{dataset?.rules?.length ?? 0} règles</span></div><div className="meta-box"><AlertTriangle size={18} /><span>{dataset?.unreadCount ?? 0} alertes</span></div></div>
+        </section>
+        {children}
+      </main>
+    </div>
+  )
+}

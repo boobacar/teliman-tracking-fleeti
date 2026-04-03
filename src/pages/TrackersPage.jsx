@@ -1,0 +1,3 @@
+export function TrackersPage({ filteredTrackers, setSelectedTrackerId }) {
+  return <section className="panel panel-large"><div className="panel-header"><div><h3>Trackers</h3><p>Inventaire exploitable</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <button key={tracker.id} className="tracker-table-row" onClick={() => setSelectedTrackerId(tracker.id)}><div><strong>{tracker.label}</strong><small>{tracker.model}</small></div><div>{tracker.employeeName}</div><div>{tracker.state.connection_status}</div><div>{tracker.state.gps?.speed ?? 0} km/h</div><div>{tracker.latestDayMileage} km</div><div>{tracker.riskScore}</div></button>)}</div></section>
+}

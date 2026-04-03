@@ -1,0 +1,5 @@
+import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+
+export function MapPage({ filteredTrackers, setSelectedTrackerId }) {
+  return <section className="panel panel-large map-panel"><div className="panel-header"><div><h3>Live Map</h3><p>Suivi temps réel des unités</p></div></div><div className="leaflet-wrap large-map"><MapContainer center={[7.54, -5.55]} zoom={7} scrollWheelZoom className="leaflet-map"><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />{filteredTrackers.filter((t) => t.state?.gps?.location).map((tracker) => <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} eventHandlers={{ click: () => setSelectedTrackerId(tracker.id) }}><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />{tracker.state.connection_status} / {tracker.state.movement_status}<br />{tracker.state.gps.speed ?? 0} km/h</Popup></Marker>)}</MapContainer></div></section>
+}

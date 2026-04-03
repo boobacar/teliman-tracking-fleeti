@@ -1,0 +1,3 @@
+export function DriversPage({ filteredTrackers }) {
+  return <section className="panel panel-large"><div className="panel-header"><div><h3>Chauffeurs</h3><p>Vue people + unité</p></div></div><div className="tracker-table tracker-table-phase2">{filteredTrackers.map((tracker) => <div key={tracker.id} className="tracker-table-row static-row"><div><strong>{tracker.employeeName}</strong><small>{tracker.employeePhone}</small></div><div>{tracker.label}</div><div>{tracker.latestDayMileage} km</div><div>{tracker.eventCounts.speedup || 0} speedups</div><div>{tracker.eventCounts.excessive_parking || 0} parking alerts</div><div>{tracker.riskScore}</div></div>)}</div></section>
+}
