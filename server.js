@@ -1,8 +1,15 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 dotenv.config()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
 
 const app = express()
 app.use(cors())
@@ -17,6 +24,18 @@ const LOCALE = process.env.FLEETI_LOCALE || 'fr'
 const TRACKER_IDS = [3487533, 3487539, 3488325, 3488326, 3511635, 3537761, 3537762, 3537766]
 const CACHE_TTL_MS = 60 * 1000
 let dashboardCache = { data: null, ts: 0 }
+
+function readDeliveryOrders() {
+  try {
+    return JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
+  } catch {
+    return []
+  }
+}
+
+function writeDeliveryOrders(rows) {
+  fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(rows, null, 2))
+}
 
 async function apiCall(endpoint, payload = {}) {
   const response = await fetch(`${API_BASE}/${endpoint}`, {
@@ -305,6 +324,38 @@ app.get('/api/fleeti/live', async (_req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
+})
+
+app.get('/api/delivery-orders', (_req, res) => {
+  res.json({ items: readDeliveryOrders() })
+})
+
+app.get('/api/delivery-orders/:trackerId', (req, res) => {
+  const trackerId = Number(req.params.trackerId)
+  const items = readDeliveryOrders().filter((item) => Number(item.trackerId) === trackerId)
+  res.json({ items })
+})
+
+app.post('/api/delivery-orders', (req, res) => {
+  const items = readDeliveryOrders()
+  const payload = {
+    id: Date.now(),
+    trackerId: Number(req.body.trackerId),
+    truckLabel: req.body.truckLabel || '',
+    driver: req.body.driver || '',
+    reference: req.body.reference || '',
+    client: req.body.client || '',
+    loadingPoint: req.body.loadingPoint || '',
+    destination: req.body.destination || '',
+    goods: req.body.goods || '',
+    quantity: req.body.quantity || '',
+    status: req.body.status || 'Prévu',
+    date: req.body.date || new Date().toISOString(),
+    notes: req.body.notes || '',
+  }
+  items.unshift(payload)
+  writeDeliveryOrders(items)
+  res.status(201).json({ ok: true, item: payload })
 })
 
 app.get('/api/reports', async (_req, res) => {

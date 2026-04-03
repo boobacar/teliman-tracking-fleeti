@@ -16,6 +16,7 @@ const DriversPage = lazy(() => import('./pages/DriversPage').then((module) => ({
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
+const DeliveryOrdersPage = lazy(() => import('./pages/DeliveryOrdersPage').then((module) => ({ default: module.DeliveryOrdersPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -36,6 +37,7 @@ function App() {
   const [filter, setFilter] = useState('all')
   const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
   const [reports, setReports] = useState({ summary: {}, rows: [] })
+  const [deliveryOrders, setDeliveryOrders] = useState([])
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -44,10 +46,16 @@ function App() {
       const fleet = await loadFleetData()
       setDataset(fleet)
       try {
-        const reportsPayload = await import('./lib/fleeti').then((m) => m.loadReports())
+        const module = await import('./lib/fleeti')
+        const [reportsPayload, ordersPayload] = await Promise.all([
+          module.loadReports(),
+          module.loadDeliveryOrders(),
+        ])
         setReports(reportsPayload)
+        setDeliveryOrders(ordersPayload.items ?? [])
       } catch {
         setReports({ summary: {}, rows: [] })
+        setDeliveryOrders([])
       }
     } catch (err) {
       setError(err.message)
@@ -131,12 +139,13 @@ function App() {
       <Suspense fallback={<div className="info-banner">Chargement de la vue…</div>}>
         <Routes>
           <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} />} />
-          <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+          <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
           <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
+          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} enrichedTrackers={enrichedTrackers} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
         </Routes>
       </Suspense>

@@ -783,6 +783,22 @@ input {
   overflow-x: auto;
 }
 
+.delivery-form {
+  display: grid;
+  gap: 12px;
+}
+
+.delivery-form input,
+.delivery-form select,
+.delivery-form textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
 .reports-table {
   width: 100%;
   border-collapse: collapse;
