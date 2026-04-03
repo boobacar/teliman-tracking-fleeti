@@ -390,6 +390,18 @@ input {
   align-items: start;
 }
 
+.event-button {
+  width: 100%;
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-button:hover {
+  border-color: rgba(96, 165, 250, 0.24);
+  background: rgba(30, 41, 59, 0.82);
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -595,7 +607,8 @@ input {
   }
 
   .tracker-table-row,
-  .driver-rank-row {
+  .driver-rank-row,
+  .tracker-detail-grid {
     grid-template-columns: 1fr;
   }
 }

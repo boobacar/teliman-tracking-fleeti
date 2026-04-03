@@ -1,3 +1,7 @@
+import { useNavigate } from 'react-router-dom'
+
 export function AlertsPage({ importantEvents }) {
-  return <section className="panel panel-large"><div className="panel-header"><div><h3>Centre d’alertes</h3><p>Événements critiques et lecture rapide</p></div></div><div className="events-table">{importantEvents.slice(0, 30).map((event) => <div key={`${event.tracker_id}-${event.time}-${event.event}`} className="event-row"><div><strong>{event.label || event.extra?.tracker_label}</strong></div><div>{event.event}</div><div>{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div><div>{event.message}</div><div>{event.address}</div><div>{new Date(event.time).toLocaleString()}</div></div>)}</div></section>
+  const navigate = useNavigate()
+
+  return <section className="panel panel-large"><div className="panel-header"><div><h3>Centre d’alertes</h3><p>Événements critiques et lecture rapide</p></div></div><div className="events-table">{importantEvents.slice(0, 30).map((event) => <button key={`${event.tracker_id}-${event.time}-${event.event}`} className="event-row event-button" onClick={() => navigate(`/tracker/${event.tracker_id}`)}><div><strong>{event.label || event.extra?.tracker_label}</strong></div><div>{event.event}</div><div>{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div><div>{event.message}</div><div>{event.address}</div><div>{new Date(event.time).toLocaleString()}</div></button>)}</div></section>
 }
