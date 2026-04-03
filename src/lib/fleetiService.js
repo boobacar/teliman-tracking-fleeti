@@ -16,4 +16,6 @@ export const fleetiService = {
   search: (query) => request(`/api/fleeti/search?q=${encodeURIComponent(query)}`),
   summary: () => request('/api/fleeti/summary'),
   tracker: (id) => request(`/api/fleeti/tracker/${id}`),
+  analytics: () => request('/api/fleeti/analytics'),
+  todayQuestions: () => request('/api/fleeti/questions/today'),
 }

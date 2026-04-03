@@ -212,6 +212,51 @@ app.get('/api/fleeti/tracker/:id', async (req, res) => {
   }
 })
 
+app.get('/api/fleeti/analytics', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    const trackers = data.trackers ?? []
+    const history = data.history ?? []
+    const states = data.states ?? {}
+    const enriched = trackers.map((tracker) => {
+      const trackerHistory = history.filter((event) => event.tracker_id === tracker.id)
+      const mileage = data.mileage?.[tracker.id]?.['2026-04-02']?.mileage ?? data.mileage?.[tracker.id]?.['2026-04-01']?.mileage ?? 0
+      return {
+        id: tracker.id,
+        label: tracker.label,
+        mileage,
+        alerts: trackerHistory.length,
+        speed: states?.[tracker.id]?.gps?.speed ?? 0,
+        status: states?.[tracker.id]?.connection_status ?? 'unknown',
+      }
+    })
+    res.json({
+      topMileage: [...enriched].sort((a, b) => b.mileage - a.mileage).slice(0, 5),
+      topAlerts: [...enriched].sort((a, b) => b.alerts - a.alerts).slice(0, 5),
+      offline: enriched.filter((item) => item.status === 'offline'),
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/fleeti/questions/today', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    const states = data.states ?? {}
+    const alerts = data.history ?? []
+    const trackers = data.trackers ?? []
+    const answerPack = {
+      offlineUnits: trackers.filter((tracker) => states?.[tracker.id]?.connection_status === 'offline').map((tracker) => tracker.label),
+      movingUnits: trackers.filter((tracker) => states?.[tracker.id]?.movement_status === 'moving').map((tracker) => tracker.label),
+      criticalAlerts: alerts.filter((event) => ['speedup', 'fuel_level_leap', 'excessive_parking'].includes(event.event)).slice(0, 10),
+    }
+    res.json(answerPack)
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.get('/api/reports', async (_req, res) => {
   try {
     const data = await getDashboardData()
