@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, Battery, Gauge, MapPin, Users, Wifi, Route } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
@@ -85,7 +85,7 @@ export function TrackerDetailPage({ enrichedTrackers }) {
       )}
 
       <section className="panel">
-        <div className="panel-header"><div><h3>Timeline d'événements</h3><p>Historique récent de l'unité</p></div></div>
+        <div className="panel-header"><div><h3>Timeline d'événements</h3><p>Historique récent de l'unité</p></div><Link className="ghost-btn" to="/alerts">Voir toutes les alertes</Link></div>
         <div className="timeline-list">
           {tracker.events.slice(0, 20).map((event) => (
             <div key={`${event.time}-${event.event}`} className="timeline-row">

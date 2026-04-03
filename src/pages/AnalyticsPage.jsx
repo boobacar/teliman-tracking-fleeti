@@ -1,4 +1,5 @@
 import { Activity, AlertTriangle, Gauge, Route } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, LineChart, Line } from 'recharts'
 
 export function AnalyticsPage({ filteredTrackers, importantEvents }) {
@@ -61,8 +62,8 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
       </section>
 
       <section className="dashboard-grid premium-grid phase2-grid">
-        <div className="panel"><div className="panel-header"><div><h3>Top trackers</h3><p>Les plus actifs aujourd’hui</p></div></div><div className="driver-ranking">{mileageData.sort((a,b) => b.mileage - a.mileage).slice(0,5).map((item, index) => <div key={item.name} className="driver-rank-row"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Kilométrage</small></div><div><span>{item.mileage} km</span><small>activité</small></div></div>)}</div></div>
-        <div className="panel"><div className="panel-header"><div><h3>Top risque</h3><p>Les plus sensibles</p></div></div><div className="driver-ranking">{riskData.sort((a,b) => b.risk - a.risk).slice(0,5).map((item, index) => <div key={item.name} className="driver-rank-row"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Score de risque</small></div><div><span>{item.risk}</span><small>priorité</small></div></div>)}</div></div>
+        <div className="panel"><div className="panel-header"><div><h3>Top trackers</h3><p>Les plus actifs aujourd’hui</p></div></div><div className="driver-ranking">{mileageData.sort((a,b) => b.mileage - a.mileage).slice(0,5).map((item, index) => <Link key={item.name} className="driver-rank-row link-row" to="/trackers"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Kilométrage</small></div><div><span>{item.mileage} km</span><small>activité</small></div></Link>)}</div></div>
+        <div className="panel"><div className="panel-header"><div><h3>Top risque</h3><p>Les plus sensibles</p></div></div><div className="driver-ranking">{riskData.sort((a,b) => b.risk - a.risk).slice(0,5).map((item, index) => <Link key={item.name} className="driver-rank-row link-row" to="/trackers"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Score de risque</small></div><div><span>{item.risk}</span><small>priorité</small></div></Link>)}</div></div>
       </section>
     </div>
   )

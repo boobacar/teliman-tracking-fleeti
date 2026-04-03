@@ -425,6 +425,11 @@ input {
   cursor: pointer;
 }
 
+.link-row {
+  text-decoration: none;
+  color: inherit;
+}
+
 .alert-icon {
   width: 36px;
   height: 36px;
