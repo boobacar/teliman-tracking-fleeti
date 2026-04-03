@@ -93,6 +93,8 @@ function App() {
   }
 
   const riskRanking = [...enrichedTrackers].sort((a, b) => b.riskScore - a.riskScore)
+  const offlineTrackers = enrichedTrackers.filter((tracker) => tracker.state.connection_status === 'offline')
+  const anomalyTrackers = [...enrichedTrackers].filter((tracker) => tracker.events.length > 3 || tracker.riskScore > 10).sort((a, b) => b.riskScore - a.riskScore)
   const topDrivers = riskRanking.slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, risk: tracker.riskScore }))
   const connectionChart = [
     { name: 'Active', value: stats.active, color: '#22c55e' },
@@ -110,7 +112,7 @@ function App() {
     <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} dataset={dataset}>
       {error && <div className="error-banner">{error}</div>}
       <Routes>
-        <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} />} />
+        <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} />} />
         <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
         <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
         <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />

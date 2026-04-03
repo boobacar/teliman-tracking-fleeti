@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 
 function StatCard({ icon, label, value, helper }) { return <div className="stat-card"><div className="stat-icon">{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{helper}</small></div></div> }
 
-export function DashboardPage({ filteredTrackers, stats, connectionChart, riskRanking, topDrivers, executiveCards }) {
+export function DashboardPage({ filteredTrackers, stats, connectionChart, riskRanking, topDrivers, executiveCards, offlineTrackers, anomalyTrackers }) {
   return <>
     <section className="stats-grid premium-stats phase2-stats">
       <StatCard icon={<Car size={18} />} label="Trackers" value={stats.total} helper="base flotte" />
@@ -19,6 +19,10 @@ export function DashboardPage({ filteredTrackers, stats, connectionChart, riskRa
     <section className="dashboard-grid premium-grid phase2-grid">
       <div className="panel panel-large"><div className="panel-header"><div><h3>Top risques</h3><p>Trackers à surveiller en priorité</p></div></div><div className="alerts-list">{riskRanking.slice(0, 5).map((tracker) => <div key={tracker.id} className="alert-row"><div className="alert-icon"><ShieldAlert size={16} /></div><div><strong>{tracker.label}</strong><p>{tracker.employeeName}</p><span>Risque {tracker.riskScore} · Speedups {tracker.eventCounts.speedup || 0}</span></div></div>)}</div></div>
       <div className="panel"><div className="panel-header"><div><h3>Top chauffeurs</h3><p>Lecture exploitant</p></div></div><div className="driver-ranking">{topDrivers.map((driver, index) => <div key={`${driver.name}-${index}`} className="driver-rank-row"><strong>#{index + 1}</strong><div><span>{driver.name}</span><small>{driver.tracker}</small></div><div><span>{driver.mileage} km</span><small>Risque {driver.risk}</small></div></div>)}</div></div>
+    </section>
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <div className="panel"><div className="panel-header"><div><h3>Unités offline</h3><p>À vérifier rapidement</p></div></div><div className="alerts-list">{offlineTrackers.slice(0,5).map((tracker) => <div key={tracker.id} className="alert-row"><div className="alert-icon"><AlertTriangle size={16} /></div><div><strong>{tracker.label}</strong><p>{tracker.employeeName}</p><span>Batterie {tracker.state?.battery_level ?? '-'}% · Dernière MàJ {tracker.state?.last_update ? new Date(tracker.state.last_update).toLocaleString() : '-'}</span></div></div>)}</div></div>
+      <div className="panel"><div className="panel-header"><div><h3>Anomalies terrain</h3><p>Unités avec signaux à surveiller</p></div></div><div className="alerts-list">{anomalyTrackers.slice(0,5).map((tracker) => <div key={tracker.id} className="alert-row"><div className="alert-icon"><Activity size={16} /></div><div><strong>{tracker.label}</strong><p>{tracker.employeeName}</p><span>{tracker.events.length} événements · risque {tracker.riskScore}</span></div></div>)}</div></div>
     </section>
   </>
 }
