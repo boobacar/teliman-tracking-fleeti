@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { AlertTriangle, BarChart3, ChevronRight, LayoutDashboard, Map, Menu, RefreshCw, Search, ShieldAlert, Siren, Users, X, Car } from 'lucide-react'
+import { AlertTriangle, BarChart3, ChevronRight, FileSpreadsheet, LayoutDashboard, Map, Menu, RefreshCw, Search, ShieldAlert, Siren, Users, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const views = [
   { id: '/drivers', label: 'Chauffeurs', icon: Users },
   { id: '/alerts', label: 'Alertes', icon: Siren },
   { id: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { id: '/reports', label: 'Rapports', icon: FileSpreadsheet },
 ]
 
 export function Layout({ children, loading, refreshData, search, setSearch, filter, setFilter, dataset }) {

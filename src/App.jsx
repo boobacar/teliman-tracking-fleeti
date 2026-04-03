@@ -15,6 +15,7 @@ const TrackersPage = lazy(() => import('./pages/TrackersPage').then((module) => 
 const DriversPage = lazy(() => import('./pages/DriversPage').then((module) => ({ default: module.DriversPage })))
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -34,12 +35,15 @@ function App() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
+  const [reports, setReports] = useState({ summary: {}, rows: [] })
 
   const refreshData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      setDataset(await loadFleetData())
+      const [fleet, reportsPayload] = await Promise.all([loadFleetData(), import('./lib/fleeti').then((m) => m.loadReports())])
+      setDataset(fleet)
+      setReports(reportsPayload)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -127,6 +131,7 @@ function App() {
           <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
+          <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
         </Routes>
       </Suspense>

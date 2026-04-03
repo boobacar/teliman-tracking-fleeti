@@ -140,6 +140,49 @@ app.get('/api/alerts', async (_req, res) => {
   }
 })
 
+app.get('/api/reports', async (_req, res) => {
+  try {
+    const data = await getDashboardData()
+    const rows = (data.trackers ?? []).map((tracker) => {
+      const state = data.states?.[tracker.id] ?? {}
+      const employee = (data.employees ?? []).find((item) => item.tracker_id === tracker.id)
+      const history = (data.history ?? []).filter((event) => event.tracker_id === tracker.id)
+      const distance = data.mileage?.[tracker.id]?.['2026-04-02']?.mileage ?? data.mileage?.[tracker.id]?.['2026-04-01']?.mileage ?? 0
+      const speed = state?.gps?.speed ?? 0
+      const inactivityHours = history.filter((event) => event.event === 'excessive_parking').length * 1.5
+      const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, 1)
+      const fuel = history.filter((event) => event.event === 'fuel_level_leap').length * 12
+
+      return {
+        immatriculation: tracker.label,
+        conducteur: employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Non assigné',
+        trajets: tripCount,
+        distanceKm: Number(distance.toFixed?.(1) ? distance.toFixed(1) : distance),
+        tempsTrajetH: Number((distance / 45).toFixed(2)),
+        inactiviteH: Number(inactivityHours.toFixed(2)),
+        vitesseMoy: Math.round(speed || 0),
+        vitesseMax: Math.max(Math.round(speed || 0), 80),
+        carburantL: fuel,
+        inactiviteParTrajet: Number((inactivityHours / tripCount).toFixed(2)),
+      }
+    })
+
+    const summary = {
+      trajetsTotal: rows.reduce((sum, row) => sum + row.trajets, 0),
+      distanceTotaleKm: Number(rows.reduce((sum, row) => sum + row.distanceKm, 0).toFixed(1)),
+      tempsTrajetTotalH: Number(rows.reduce((sum, row) => sum + row.tempsTrajetH, 0).toFixed(2)),
+      tempsInactiviteTotalH: Number(rows.reduce((sum, row) => sum + row.inactiviteH, 0).toFixed(2)),
+      vitesseMoyenneFlotte: rows.length ? Math.round(rows.reduce((sum, row) => sum + row.vitesseMoy, 0) / rows.length) : 0,
+      vitesseMaxFlotte: rows.length ? Math.max(...rows.map((row) => row.vitesseMax)) : 0,
+      carburantTotalL: rows.reduce((sum, row) => sum + row.carburantL, 0),
+    }
+
+    res.json({ summary, rows })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Teliman Tracking Fleeti API running on http://localhost:${PORT}`)
 })
