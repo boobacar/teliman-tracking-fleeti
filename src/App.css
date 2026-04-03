@@ -535,6 +535,42 @@ input {
   align-items: stretch;
 }
 
+.tracker-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-row {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(30, 41, 59, 0.56);
+}
+
+.timeline-row p,
+.timeline-row span {
+  margin: 4px 0 0;
+  color: #94a3b8;
+}
+
+.timeline-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+}
+
 .tracker-table-phase2 .tracker-table-row {
   grid-template-columns: 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr;
 }

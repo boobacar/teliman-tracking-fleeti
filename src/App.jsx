@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
-import { AlertTriangle, Battery, Gauge, MapPin, Users } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -14,6 +14,7 @@ import { MapPage } from './pages/MapPage'
 import { TrackersPage } from './pages/TrackersPage'
 import { DriversPage } from './pages/DriversPage'
 import { AlertsPage } from './pages/AlertsPage'
+import { TrackerDetailPage } from './pages/TrackerDetailPage'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -113,16 +114,15 @@ function App() {
         <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
         <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
         <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
+        <Route path="/tracker/:id" element={<TrackerDetailPage selectedTracker={selectedTracker} />} />
       </Routes>
 
       <section className="dashboard-grid premium-grid bottom-grid">
-        <div className="panel detail-panel"><div className="panel-header"><div><h3>Fiche unité</h3><p>Lecture rapide</p></div></div>{selectedTracker ? <><div className="detail-grid"><DetailItem icon={<Users size={16} />} label="Chauffeur" value={selectedTracker.employeeName} /><DetailItem icon={<MapPin size={16} />} label="Position" value={`${selectedTracker.state?.gps?.location?.lat ?? '-'}, ${selectedTracker.state?.gps?.location?.lng ?? '-'}`} /><DetailItem icon={<Battery size={16} />} label="Batterie" value={`${selectedTracker.state?.battery_level ?? '-'}%`} /><DetailItem icon={<Gauge size={16} />} label="Vitesse" value={`${selectedTracker.state?.gps?.speed ?? 0} km/h`} /></div><div className="mini-chart-wrap"><ResponsiveContainer width="100%" height={180}><AreaChart data={Object.entries(selectedTracker.mileage).map(([day, value]) => ({ day, mileage: value?.mileage ?? 0 }))}><defs><linearGradient id="mileageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.8} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0.05} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="#243042" /><XAxis dataKey="day" stroke="#8da2c0" /><YAxis stroke="#8da2c0" /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /><Area type="monotone" dataKey="mileage" stroke="#60a5fa" fill="url(#mileageFill)" /></AreaChart></ResponsiveContainer></div></> : <p>Aucune unité sélectionnée.</p>}</div>
+        <div className="panel"><div className="panel-header"><div><h3>Accès rapide unité</h3><p>Basculer vers la fiche avancée</p></div></div>{selectedTracker ? <button className="tracker-card" onClick={() => window.location.assign(`/tracker/${selectedTracker.id}`)}><div className="tracker-topline"><strong>{selectedTracker.label}</strong><span className="status-pill" style={{ background: `${selectedTracker.statusColor}22`, color: selectedTracker.statusColor }}>{selectedTracker.state?.connection_status || 'unknown'}</span></div><p>{selectedTracker.employeeName}</p><div className="tracker-meta"><span>{selectedTracker.latestDayMileage} km</span><span>Risque {selectedTracker.riskScore}</span></div></button> : <p>Aucune unité sélectionnée.</p>}</div>
         <div className="panel"><div className="panel-header"><div><h3>Feed prioritaire</h3><p>Derniers signaux à surveiller</p></div></div><div className="alerts-list">{importantEvents.slice(0, 6).map((event) => <div key={`${event.tracker_id}-${event.time}`} className="alert-row"><div className="alert-icon"><AlertTriangle size={16} /></div><div><strong>{event.label || event.extra?.tracker_label}</strong><p>{event.message}</p><span>{new Date(event.time).toLocaleString()}</span></div></div>)}</div></div>
       </section>
     </Layout>
   )
 }
-
-function DetailItem({ icon, label, value }) { return <div className="detail-item"><div className="detail-icon">{icon}</div><div><span>{label}</span><strong>{value}</strong></div></div> }
 
 export default App
