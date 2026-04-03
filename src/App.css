@@ -903,16 +903,23 @@ input {
   .signal-card,
   .driver-rank-row,
   .tracker-table-row,
-  .event-row {
+  .event-row,
+  .timeline-row,
+  .analytics-summary-card {
     border-radius: 16px;
   }
 
-  .tracker-table-row,
-  .driver-rank-row,
+  .stats-grid,
+  .executive-grid,
+  .dashboard-grid,
+  .premium-grid,
+  .phase2-grid,
   .tracker-detail-grid,
   .tracker-overview-grid,
-  .command-center-grid {
-    grid-template-columns: 1fr;
+  .command-center-grid,
+  .command-center-metrics,
+  .analytics-summary-grid {
+    grid-template-columns: 1fr !important;
   }
 
   .command-center-actions {
@@ -921,11 +928,41 @@ input {
 
   .leaflet-wrap,
   .large-map {
-    height: 340px;
+    height: 300px;
   }
 
-  .event-row {
+  .event-row,
+  .tracker-table-row,
+  .driver-rank-row {
     gap: 8px;
     padding: 12px;
+  }
+
+  .event-row > div,
+  .tracker-table-row > div,
+  .driver-rank-row > div {
+    min-width: 0;
+  }
+
+  .event-row strong,
+  .tracker-table-row strong,
+  .driver-rank-row strong {
+    word-break: break-word;
+  }
+
+  .signal-card,
+  .tracker-card,
+  .overview-card,
+  .executive-card,
+  .analytics-summary-card {
+    padding: 12px;
+  }
+
+  .panel-header h3 {
+    font-size: 18px;
+  }
+
+  .hero-panel h2 {
+    font-size: 28px;
   }
 }
