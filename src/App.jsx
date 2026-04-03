@@ -41,9 +41,14 @@ function App() {
     setLoading(true)
     setError('')
     try {
-      const [fleet, reportsPayload] = await Promise.all([loadFleetData(), import('./lib/fleeti').then((m) => m.loadReports())])
+      const fleet = await loadFleetData()
       setDataset(fleet)
-      setReports(reportsPayload)
+      try {
+        const reportsPayload = await import('./lib/fleeti').then((m) => m.loadReports())
+        setReports(reportsPayload)
+      } catch {
+        setReports({ summary: {}, rows: [] })
+      }
     } catch (err) {
       setError(err.message)
     } finally {
