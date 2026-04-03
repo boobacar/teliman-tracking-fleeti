@@ -417,7 +417,9 @@ input {
   .stats-grid,
   .dashboard-grid,
   .event-row,
-  .executive-grid {
+  .executive-grid,
+  .command-center-grid,
+  .command-center-metrics {
     grid-template-columns: 1fr;
   }
 }
@@ -502,6 +504,122 @@ input {
 .bottom-grid {
   margin-bottom: 8px;
   gap: 14px;
+}
+
+.command-center-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.9fr;
+  gap: 16px;
+}
+
+.command-center-panel,
+.signal-panel,
+.action-panel {
+  min-height: 100%;
+}
+
+.command-center-card {
+  display: grid;
+  gap: 16px;
+}
+
+.command-center-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.command-center-top p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+}
+
+.command-center-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.command-center-metrics div,
+.action-row {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.command-center-metrics span,
+.action-row span {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.command-center-metrics strong,
+.action-row strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+}
+
+.command-center-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.small-btn {
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+
+.ghost-btn {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.7);
+  color: #e2e8f0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.signal-stack,
+.action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.signal-card {
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(30, 41, 59, 0.62);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.signal-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signal-card p {
+  margin: 8px 0 0;
+  color: #cbd5e1;
+}
+
+.signal-card small {
+  display: block;
+  margin-top: 6px;
+  color: #94a3b8;
+}
+
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .executive-grid {
