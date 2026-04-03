@@ -6,13 +6,13 @@ function StatCard({ icon, label, value, helper }) { return <div className="stat-
 
 export function DashboardPage({ filteredTrackers, stats, connectionChart, riskRanking, topDrivers, executiveCards, offlineTrackers, anomalyTrackers }) {
   return <>
-    <section className="stats-grid premium-stats phase2-stats">
+    <section className="stats-grid premium-stats phase2-stats mobile-cards-grid">
       <StatCard icon={<Car size={18} />} label="Trackers" value={stats.total} helper="base flotte" />
       <StatCard icon={<Wifi size={18} />} label="Actifs" value={stats.active} helper="connectés live" />
       <StatCard icon={<Activity size={18} />} label="En mouvement" value={stats.moving} helper="terrain roulant" />
       <StatCard icon={<Gauge size={18} />} label="Vitesse moyenne" value={`${stats.avgSpeed} km/h`} helper="instantané" />
     </section>
-    <section className="executive-grid">{executiveCards.map((card) => <div key={card.title} className="executive-card"><span>{card.title}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}</section>
+    <section className="executive-grid mobile-cards-grid">{executiveCards.map((card) => <div key={card.title} className="executive-card"><span>{card.title}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}</section>
     <section className="dashboard-grid premium-grid phase2-grid">
       <div className="panel panel-large"><div className="panel-header"><div><h3>Kilométrage du jour</h3><p>Classement des unités les plus actives</p></div></div><ResponsiveContainer width="100%" height={280}><BarChart data={filteredTrackers.map((t) => ({ name: t.label, mileage: t.latestDayMileage }))}><CartesianGrid strokeDasharray="3 3" stroke="#243042" /><XAxis dataKey="name" stroke="#8da2c0" /><YAxis stroke="#8da2c0" /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /><Bar dataKey="mileage" fill="#3b82f6" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div>
       <div className="panel"><div className="panel-header"><div><h3>Répartition flotte</h3><p>Connectivité</p></div></div><ResponsiveContainer width="100%" height={280}><PieChart><Pie data={connectionChart} dataKey="value" innerRadius={70} outerRadius={100} paddingAngle={4}>{connectionChart.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} /></PieChart></ResponsiveContainer></div>

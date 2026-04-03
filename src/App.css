@@ -961,6 +961,10 @@ input {
     padding: 14px;
   }
 
+  .mobile-cards-grid {
+    gap: 12px;
+  }
+
   .hero-panel {
     flex-direction: column;
     align-items: flex-start;
@@ -978,7 +982,8 @@ input {
   .tracker-table-row,
   .event-row,
   .timeline-row,
-  .analytics-summary-card {
+  .analytics-summary-card,
+  .mini-kpi {
     border-radius: 16px;
   }
 
@@ -1028,8 +1033,43 @@ input {
   .tracker-card,
   .overview-card,
   .executive-card,
-  .analytics-summary-card {
+  .analytics-summary-card,
+  .stat-card,
+  .mini-kpi {
     padding: 12px;
+  }
+
+  .stat-card {
+    align-items: flex-start;
+  }
+
+  .stat-card strong,
+  .executive-card strong,
+  .overview-card strong,
+  .mini-kpi strong {
+    font-size: 20px;
+  }
+
+  .panel-header {
+    gap: 10px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .panel-header p,
+  .timeline-row p,
+  .alert-row p,
+  .driver-rank-row small,
+  .event-row div,
+  .overview-card span {
+    word-break: break-word;
+  }
+
+  .ghost-btn,
+  .primary-btn,
+  .mobile-nav-toggle,
+  .chip {
+    min-height: 42px;
   }
 
   .panel-header h3 {
