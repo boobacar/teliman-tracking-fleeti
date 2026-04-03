@@ -716,6 +716,32 @@ input {
   font-size: 24px;
 }
 
+.map-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.mini-kpi {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.mini-kpi span {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.mini-kpi strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+}
+
 .action-row {
   display: flex;
   justify-content: space-between;
@@ -927,7 +953,8 @@ input {
   .tracker-overview-grid,
   .command-center-grid,
   .command-center-metrics,
-  .analytics-summary-grid {
+  .analytics-summary-grid,
+  .map-kpi-row {
     grid-template-columns: 1fr !important;
   }
 
