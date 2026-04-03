@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -10,12 +10,12 @@ import { loadFleetData } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
-import { MapPage } from './pages/MapPage'
-import { TrackersPage } from './pages/TrackersPage'
-import { DriversPage } from './pages/DriversPage'
-import { AlertsPage } from './pages/AlertsPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { TrackerDetailPage } from './pages/TrackerDetailPage'
+const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
+const TrackersPage = lazy(() => import('./pages/TrackersPage').then((module) => ({ default: module.TrackersPage })))
+const DriversPage = lazy(() => import('./pages/DriversPage').then((module) => ({ default: module.DriversPage })))
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
+const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -119,15 +119,17 @@ function App() {
       {error && <div className="error-banner">{error}</div>}
       {loading && <div className="info-banner">Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
-      <Routes>
-        <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} />} />
-        <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-        <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-        <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
-        <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
-        <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
-        <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
-      </Routes>
+      <Suspense fallback={<div className="info-banner">Chargement de la vue…</div>}>
+        <Routes>
+          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} />} />
+          <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+          <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+          <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
+          <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
+          <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
+          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
+        </Routes>
+      </Suspense>
 
       <section className="dashboard-grid premium-grid phase2-grid">
         <div className="panel">
