@@ -108,6 +108,11 @@ function App() {
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
+  const priorityActions = [
+    { label: 'Vérifier offline', value: offlineTrackers[0]?.label || 'Aucune unité', route: offlineTrackers[0] ? `/tracker/${offlineTrackers[0].id}` : '/trackers' },
+    { label: 'Suivre top risque', value: riskRanking[0]?.label || 'Aucune unité', route: riskRanking[0] ? `/tracker/${riskRanking[0].id}` : '/analytics' },
+    { label: 'Traiter alerte', value: importantEvents[0]?.label || importantEvents[0]?.extra?.tracker_label || 'Aucune alerte', route: importantEvents[0] ? `/tracker/${importantEvents[0].tracker_id}` : '/alerts' },
+  ]
 
   return (
     <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} dataset={dataset}>
@@ -123,6 +128,17 @@ function App() {
         <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
         <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
       </Routes>
+
+      <section className="dashboard-grid premium-grid phase2-grid">
+        <div className="panel">
+          <div className="panel-header"><div><h3>Priorités du jour</h3><p>Raccourcis opérateur immédiats</p></div></div>
+          <div className="driver-ranking">{priorityActions.map((action) => <button key={action.label} className="driver-rank-row event-button" onClick={() => window.location.assign(action.route)}><strong>→</strong><div><span>{action.label}</span><small>{action.value}</small></div></button>)}</div>
+        </div>
+        <div className="panel">
+          <div className="panel-header"><div><h3>Workflow rapide</h3><p>Chemins métier les plus utilisés</p></div></div>
+          <div className="driver-ranking"><button className="driver-rank-row event-button" onClick={() => window.location.assign('/alerts')}><strong>1</strong><div><span>Contrôler alertes</span><small>centre critique</small></div></button><button className="driver-rank-row event-button" onClick={() => window.location.assign('/map')}><strong>2</strong><div><span>Ouvrir la carte</span><small>vision terrain</small></div></button><button className="driver-rank-row event-button" onClick={() => window.location.assign('/trackers')}><strong>3</strong><div><span>Consulter trackers</span><small>inventaire flotte</small></div></button></div>
+        </div>
+      </section>
 
       <section className="command-center-grid">
         <div className="panel command-center-panel">
