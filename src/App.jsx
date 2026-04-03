@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AlertTriangle, Battery, Gauge, MapPin, Users } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { fallbackEvents } from './data/mock'
 import { loadFleetData } from './lib/fleeti'
+import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
 import { MapPage } from './pages/MapPage'
@@ -32,7 +33,7 @@ function App() {
   const [filter, setFilter] = useState('all')
   const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -42,9 +43,10 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { refreshData() }, [])
+  useEffect(() => { refreshData() }, [refreshData])
+  useAutoRefresh(refreshData, 90000)
 
   const enrichedTrackers = useMemo(() => {
     const employees = Object.fromEntries((dataset?.employees ?? []).map((e) => [e.tracker_id, e]))
