@@ -63,7 +63,7 @@ export function ReportsPage({ reports }) {
         <div className="overview-card"><span>Temps trajet total</span><strong>{summary.tempsTrajetTotalH ?? 0} h</strong></div>
         <div className="overview-card"><span>Temps inactivité</span><strong>{summary.tempsInactiviteTotalH ?? 0} h</strong></div>
         <div className="overview-card"><span>Vitesse moyenne flotte</span><strong>{summary.vitesseMoyenneFlotte ?? 0} km/h</strong></div>
-        <div className="overview-card"><span>Carburant total</span><strong>{summary.carburantTotalL ?? 0} L</strong></div>
+        <div className="overview-card"><span>Carburant total</span><strong>{summary.carburantTotalL ?? 'N/A'}</strong></div>
       </div>
     </section>
 

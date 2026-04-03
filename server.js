@@ -68,6 +68,19 @@ function sanitizeHistory(history = []) {
   }))
 }
 
+async function getFuelSensorInfo(hash, trackerId) {
+  try {
+    const sensors = await apiCall('tracker/sensor/list', { hash, tracker_id: trackerId })
+    const fuelSensor = (sensors.list ?? []).find((sensor) => {
+      const text = JSON.stringify(sensor).toLowerCase()
+      return text.includes('fuel') || text.includes('consum') || text.includes('carb')
+    })
+    return fuelSensor ?? null
+  } catch {
+    return null
+  }
+}
+
 async function getDashboardData(forceRefresh = false) {
   if (!forceRefresh && dashboardCache.data && Date.now() - dashboardCache.ts < CACHE_TTL_MS) {
     return dashboardCache.data
@@ -143,7 +156,8 @@ app.get('/api/alerts', async (_req, res) => {
 app.get('/api/reports', async (_req, res) => {
   try {
     const data = await getDashboardData()
-    const rows = (data.trackers ?? []).map((tracker) => {
+    const hash = await authenticate()
+    const rows = await Promise.all((data.trackers ?? []).map(async (tracker) => {
       const state = data.states?.[tracker.id] ?? {}
       const employee = (data.employees ?? []).find((item) => item.tracker_id === tracker.id)
       const history = (data.history ?? []).filter((event) => event.tracker_id === tracker.id)
@@ -151,7 +165,8 @@ app.get('/api/reports', async (_req, res) => {
       const speed = state?.gps?.speed ?? 0
       const inactivityHours = history.filter((event) => event.event === 'excessive_parking').length * 1.5
       const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, 1)
-      const fuel = history.filter((event) => event.event === 'fuel_level_leap').length * 12
+      const fuelSensor = await getFuelSensorInfo(hash, tracker.id)
+      const fuelValue = fuelSensor ? 'Disponible capteur' : 'N/A'
 
       return {
         immatriculation: tracker.label,
@@ -162,10 +177,10 @@ app.get('/api/reports', async (_req, res) => {
         inactiviteH: Number(inactivityHours.toFixed(2)),
         vitesseMoy: Math.round(speed || 0),
         vitesseMax: Math.max(Math.round(speed || 0), 80),
-        carburantL: fuel,
+        carburantL: fuelValue,
         inactiviteParTrajet: Number((inactivityHours / tripCount).toFixed(2)),
       }
-    })
+    }))
 
     const summary = {
       trajetsTotal: rows.reduce((sum, row) => sum + row.trajets, 0),
@@ -174,7 +189,7 @@ app.get('/api/reports', async (_req, res) => {
       tempsInactiviteTotalH: Number(rows.reduce((sum, row) => sum + row.inactiviteH, 0).toFixed(2)),
       vitesseMoyenneFlotte: rows.length ? Math.round(rows.reduce((sum, row) => sum + row.vitesseMoy, 0) / rows.length) : 0,
       vitesseMaxFlotte: rows.length ? Math.max(...rows.map((row) => row.vitesseMax)) : 0,
-      carburantTotalL: rows.reduce((sum, row) => sum + row.carburantL, 0),
+      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Capteur détecté' : 'N/A',
     }
 
     res.json({ summary, rows })
