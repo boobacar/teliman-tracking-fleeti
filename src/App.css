@@ -947,6 +947,24 @@ input {
   color: #e2e8f0;
 }
 
+.sticky-subnav-panel {
+  position: sticky;
+  top: 14px;
+  z-index: 15;
+  padding: 12px 14px;
+  backdrop-filter: blur(18px);
+}
+
+.delivery-subnav .filters {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.delivery-subnav .chip {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .reports-table {
   width: 100%;
   border-collapse: collapse;

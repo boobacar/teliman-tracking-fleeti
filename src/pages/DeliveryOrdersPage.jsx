@@ -92,7 +92,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 5)
 
   return <div style={{ display: 'grid', gap: 20 }}>
-    <section className="stats-grid premium-stats phase2-stats">
+    <section className="panel sticky-subnav-panel delivery-subnav">
+      <div className="filters">
+        <a className="chip selected" href="#bl-summary">Résumé</a>
+        <a className="chip" href="#bl-form">Nouveau bon</a>
+        <a className="chip" href="#bl-table">Historique</a>
+        <a className="chip" href="#bl-trucks">Par camion</a>
+      </div>
+    </section>
+    <section id="bl-summary" className="stats-grid premium-stats phase2-stats">
       <div className="stat-card"><div><span>Bons actifs</span><strong>{missionStats.active}</strong><small>missions en cours</small></div></div>
       <div className="stat-card"><div><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div></div>
       <div className="stat-card"><div><span>Prévu</span><strong>{missionStats.planned}</strong><small>à lancer</small></div></div>
@@ -120,7 +128,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <div className="driver-ranking">{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}{pendingProofs.length === 0 && <p style={{ color: '#94a3b8' }}>Aucune preuve en attente.</p>}</div>
       </section>
     </section>
-    <section className="dashboard-grid premium-grid phase2-grid">
+    <section id="bl-form" className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large">
         <div className="panel-header"><div><h3>Nouveau bon de livraison</h3><p>Affecter une mission à un camion précis</p></div></div>
         <form className="delivery-form" onSubmit={submit}>
@@ -153,7 +161,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </section>
     </section>
 
-    <section className="panel panel-large">
+    <section id="bl-table" className="panel panel-large">
       <div className="panel-header"><div><h3>Historique des bons de livraison</h3><p>Tous les bons créés dans la plateforme</p></div></div>
       <div className="filters filter-row">
         <button className={`chip ${statusFilter === 'all' ? 'selected' : ''}`} onClick={() => setStatusFilter('all')}>Tous</button>
@@ -191,7 +199,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </div>
     </section>
 
-    <section className="panel panel-large">
+    <section id="bl-trucks" className="panel panel-large">
       <div className="panel-header"><div><h3>Historique par camion</h3><p>Lecture camion par camion</p></div></div>
       <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
     </section>
