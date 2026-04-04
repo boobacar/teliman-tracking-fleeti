@@ -41,3 +41,4 @@ export const deleteDeliveryOrder = async (id) => {
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
 }
+export const loadDeliveryOrder = (id) => getJson(`/api/delivery-order/${id}`)

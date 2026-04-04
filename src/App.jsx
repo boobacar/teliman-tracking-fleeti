@@ -17,6 +17,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ d
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const DeliveryOrdersPage = lazy(() => import('./pages/DeliveryOrdersPage').then((module) => ({ default: module.DeliveryOrdersPage })))
+const DeliveryOrderDetailPage = lazy(() => import('./pages/DeliveryOrderDetailPage').then((module) => ({ default: module.DeliveryOrderDetailPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -146,6 +147,7 @@ function App() {
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} enrichedTrackers={enrichedTrackers} refreshData={refreshData} />} />
+          <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
         </Routes>
       </Suspense>

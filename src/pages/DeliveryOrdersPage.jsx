@@ -143,7 +143,7 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map((item) => <tr key={item.id}><td>{item.reference}</td><td><Link className="link-row" to={`/tracker/${item.trackerId}`}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.active ? 'Actif' : item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn" onClick={() => removeOrder(item)}>Supprimer</button></div></td></tr>)}
+            {filteredOrders.map((item) => <tr key={item.id}><td><Link className="link-row" to={`/delivery-order/${item.id}`}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.active ? 'Actif' : item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn" onClick={() => removeOrder(item)}>Supprimer</button></div></td></tr>)}
           </tbody>
         </table>
       </div>

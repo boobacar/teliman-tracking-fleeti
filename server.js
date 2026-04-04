@@ -336,6 +336,13 @@ app.get('/api/delivery-orders/:trackerId', (req, res) => {
   res.json({ items })
 })
 
+app.get('/api/delivery-order/:id', (req, res) => {
+  const id = Number(req.params.id)
+  const item = readDeliveryOrders().find((entry) => Number(entry.id) === id)
+  if (!item) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
+  res.json({ item })
+})
+
 app.post('/api/delivery-orders', (req, res) => {
   const items = readDeliveryOrders()
   const payload = {
