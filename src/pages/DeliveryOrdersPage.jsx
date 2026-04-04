@@ -103,44 +103,17 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
     <section className="panel sticky-subnav-panel delivery-subnav">
       <div className="filters">
-        <a className="chip selected" href="#bl-summary">Résumé</a>
-        <a className="chip" href="#bl-form">Nouveau bon</a>
+        <a className="chip selected" href="#bl-form">Nouveau bon</a>
         <a className="chip" href="#bl-table">Historique</a>
+        <a className="chip" href="#bl-summary">Résumé</a>
         <a className="chip" href="#bl-trucks">Par camion</a>
       </div>
     </section>
-    <section id="bl-summary" className="stats-grid premium-stats phase2-stats">
-      <div className="stat-card"><div><span>Bons actifs</span><strong>{missionStats.active}</strong><small>missions en cours</small></div></div>
-      <div className="stat-card"><div><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div></div>
-      <div className="stat-card"><div><span>Prévu</span><strong>{missionStats.planned}</strong><small>à lancer</small></div></div>
-      <div className="stat-card"><div><span>En chargement</span><strong>{missionStats.loading}</strong><small>préparation</small></div></div>
-    </section>
 
-    <section className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel">
-        <div className="panel-header"><div><h3>Résumé module BL</h3><p>Vue consolidée des missions</p></div></div>
-        <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.total || 0}</strong><div><span>Total bons</span><small>enregistrés</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.active || 0}</strong><div><span>Bons actifs</span><small>en cours</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.delivered || 0}</strong><div><span>Livrés</span><small>terminés</small></div></div></div>
-      </section>
-      <section className="panel">
-        <div className="panel-header"><div><h3>Camions les plus chargés</h3><p>Ceux avec le plus de bons</p></div></div>
-        <div className="driver-ranking">{topTruckOrders.map(([truck, count], index) => <div key={truck} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{truck}</span><small>bons enregistrés</small></div><div><span>{count}</span><small>missions</small></div></div>)}</div>
-      </section>
-    </section>
-
-    <section className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel">
-        <div className="panel-header"><div><h3>Top clients</h3><p>Clients avec le plus de missions</p></div></div>
-        <div className="driver-ranking">{topClients.map(([client, count], index) => <div key={client} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{client}</span><small>fréquence</small></div><div><span>{count}</span><small>bons</small></div></div>)}</div>
-      </section>
-      <section className="panel">
-        <div className="panel-header"><div><h3>Preuves en attente</h3><p>BL nécessitant une validation POD</p></div></div>
-        <div className="driver-ranking">{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}{pendingProofs.length === 0 && <p style={{ color: '#94a3b8' }}>Aucune preuve en attente.</p>}</div>
-      </section>
-    </section>
     <section id="bl-form" className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large delivery-form-panel">
         <div className="panel-header"><div><h3>Nouveau bon de livraison</h3><p>Affecter une mission à un camion précis</p></div></div>
-        <form className="delivery-form" onSubmit={submit}>
+        <form className="delivery-form delivery-form-premium" onSubmit={submit}>
           <select value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
             <option value="">Sélectionner un camion</option>
             {trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}
@@ -202,10 +175,43 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map((item) => { const statusLabel = item.active ? 'Actif' : item.status; const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'; return <tr key={item.id} className={item.active ? 'active-order-row' : ''}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeOrder(item)} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>})}
+            {filteredOrders.map((item) => {
+              const statusLabel = item.active ? 'Actif' : item.status
+              const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
+              return <tr key={item.id} className={item.active ? 'active-order-row' : ''}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeOrder(item)} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
+            })}
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section id="bl-summary" className="stats-grid premium-stats phase2-stats">
+      <div className="stat-card"><div><span>Bons actifs</span><strong>{missionStats.active}</strong><small>missions en cours</small></div></div>
+      <div className="stat-card"><div><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div></div>
+      <div className="stat-card"><div><span>Prévu</span><strong>{missionStats.planned}</strong><small>à lancer</small></div></div>
+      <div className="stat-card"><div><span>En chargement</span><strong>{missionStats.loading}</strong><small>préparation</small></div></div>
+    </section>
+
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <section className="panel">
+        <div className="panel-header"><div><h3>Résumé module BL</h3><p>Vue consolidée des missions</p></div></div>
+        <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.total || 0}</strong><div><span>Total bons</span><small>enregistrés</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.active || 0}</strong><div><span>Bons actifs</span><small>en cours</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.delivered || 0}</strong><div><span>Livrés</span><small>terminés</small></div></div></div>
+      </section>
+      <section className="panel">
+        <div className="panel-header"><div><h3>Camions les plus chargés</h3><p>Ceux avec le plus de bons</p></div></div>
+        <div className="driver-ranking">{topTruckOrders.map(([truck, count], index) => <div key={truck} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{truck}</span><small>bons enregistrés</small></div><div><span>{count}</span><small>missions</small></div></div>)}</div>
+      </section>
+    </section>
+
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <section className="panel">
+        <div className="panel-header"><div><h3>Top clients</h3><p>Clients avec le plus de missions</p></div></div>
+        <div className="driver-ranking">{topClients.map(([client, count], index) => <div key={client} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{client}</span><small>fréquence</small></div><div><span>{count}</span><small>bons</small></div></div>)}</div>
+      </section>
+      <section className="panel">
+        <div className="panel-header"><div><h3>Preuves en attente</h3><p>BL nécessitant une validation POD</p></div></div>
+        <div className="driver-ranking">{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}{pendingProofs.length === 0 && <p style={{ color: '#94a3b8' }}>Aucune preuve en attente.</p>}</div>
+      </section>
     </section>
 
     <section id="bl-trucks" className="panel panel-large delivery-history-panel">

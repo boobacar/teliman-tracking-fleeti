@@ -983,6 +983,16 @@ input {
   border-color: rgba(148, 163, 184, 0.12);
 }
 
+.delivery-form-premium {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.delivery-form-premium textarea,
+.delivery-form-premium .toggle-row,
+.delivery-form-premium .primary-btn {
+  grid-column: 1 / -1;
+}
+
 .delivery-table-panel .reports-table th {
   position: sticky;
   top: 0;
