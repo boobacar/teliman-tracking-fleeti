@@ -85,6 +85,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     loading: deliveryOrders.filter((item) => item.status === 'En chargement').length,
   }
   const topTruckOrders = Object.entries(deliveryOrdersSummary?.byTruck || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  const topClients = Object.entries(deliveryOrders.reduce((acc, item) => {
+    acc[item.client] = (acc[item.client] || 0) + 1
+    return acc
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 5)
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="stats-grid premium-stats phase2-stats">
@@ -102,6 +107,17 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       <section className="panel">
         <div className="panel-header"><div><h3>Camions les plus chargés</h3><p>Ceux avec le plus de bons</p></div></div>
         <div className="driver-ranking">{topTruckOrders.map(([truck, count], index) => <div key={truck} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{truck}</span><small>bons enregistrés</small></div><div><span>{count}</span><small>missions</small></div></div>)}</div>
+      </section>
+    </section>
+
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <section className="panel">
+        <div className="panel-header"><div><h3>Top clients</h3><p>Clients avec le plus de missions</p></div></div>
+        <div className="driver-ranking">{topClients.map(([client, count], index) => <div key={client} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{client}</span><small>fréquence</small></div><div><span>{count}</span><small>bons</small></div></div>)}</div>
+      </section>
+      <section className="panel">
+        <div className="panel-header"><div><h3>Preuves en attente</h3><p>BL nécessitant une validation POD</p></div></div>
+        <div className="driver-ranking">{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}{pendingProofs.length === 0 && <p style={{ color: '#94a3b8' }}>Aucune preuve en attente.</p>}</div>
       </section>
     </section>
     <section className="dashboard-grid premium-grid phase2-grid">
