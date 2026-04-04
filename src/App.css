@@ -881,6 +881,48 @@ input {
   color: #cbd5e1;
 }
 
+.order-ref {
+  font-weight: 700;
+}
+
+.active-ref {
+  color: #93c5fd;
+}
+
+.active-order-row {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.mission-hero-card {
+  border-color: rgba(96, 165, 250, 0.16);
+}
+
+.mission-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.mission-highlight-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(30, 41, 59, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.mission-highlight-card span,
+.mission-highlight-card small {
+  display: block;
+  color: #94a3b8;
+}
+
+.mission-highlight-card strong {
+  display: block;
+  margin: 6px 0;
+  font-size: 20px;
+}
+
 .delivery-notes-box {
   width: 100%;
   padding: 12px 14px;
@@ -1151,7 +1193,8 @@ input {
   .command-center-metrics,
   .analytics-summary-grid,
   .map-kpi-row,
-  .reports-summary-grid {
+  .reports-summary-grid,
+  .mission-highlight-grid {
     grid-template-columns: 1fr !important;
   }
 

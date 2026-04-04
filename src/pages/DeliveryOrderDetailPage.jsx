@@ -35,8 +35,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   }
 
   return <div style={{ display: 'grid', gap: 20 }}>
-    <section className="panel panel-large">
+    <section className="panel panel-large mission-hero-card">
       <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div>
+      <div className="mission-highlight-grid"><div className="mission-highlight-card"><span>Mission</span><strong>{order.reference}</strong><small>{order.client}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{order.quantity || '-'}</small></div></div>
       <div className="tracker-overview-grid">
         <div className="overview-card"><span>Client</span><strong>{order.client}</strong></div>
         <div className="overview-card"><span>Destination</span><strong>{order.destination}</strong></div>
@@ -45,6 +46,15 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="overview-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong></div>
         <div className="overview-card"><span>Date</span><strong>{order.date ? new Date(order.date).toLocaleString() : '-'}</strong></div>
         <div className="overview-card"><span>Fin mission</span><strong>{order.completedAt ? new Date(order.completedAt).toLocaleString() : '-'}</strong></div>
+      </div>
+    </section>
+
+    <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Timeline mission</h3><p>Étapes principales du bon</p></div></div>
+      <div className="timeline-list">
+        <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Bon créé</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée dans la plateforme</span></div></div>
+        <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Statut actuel</strong><p>{order.active ? 'Actif' : order.status}</p><span>{order.destination}</span></div></div>
+        {order.completedAt && <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Mission terminée</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon marqué livré</span></div></div>}
       </div>
     </section>
 
