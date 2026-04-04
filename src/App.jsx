@@ -148,7 +148,7 @@ function App() {
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} enrichedTrackers={enrichedTrackers} refreshData={refreshData} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
-          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} />} />
+          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
         </Routes>
       </Suspense>
 

@@ -10,7 +10,7 @@ function statusLabel(status) {
   return { label: 'Inconnu', color: '#64748b' }
 }
 
-export function TrackerDetailPage({ enrichedTrackers }) {
+export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
   const { id } = useParams()
   const tracker = enrichedTrackers?.find((t) => String(t.id) === String(id))
 
@@ -25,6 +25,8 @@ export function TrackerDetailPage({ enrichedTrackers }) {
   const mileageData = Object.entries(tracker.mileage).map(([day, value]) => ({ day, mileage: value?.mileage ?? 0 }))
   const eventsByType = Object.entries(tracker.eventCounts).map(([event, count]) => ({ event: event.replace(/_/g, ' '), count }))
   const gps = tracker.state?.gps?.location
+  const trackerOrders = deliveryOrders.filter((item) => Number(item.trackerId) === Number(tracker.id))
+  const activeOrder = trackerOrders.find((item) => item.active)
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
@@ -60,6 +62,17 @@ export function TrackerDetailPage({ enrichedTrackers }) {
             <div className="driver-rank-row static-row"><strong>Lng</strong><div><span>{tracker.state?.gps?.location?.lng ?? '-'}</span><small>longitude</small></div></div>
             <div className="driver-rank-row static-row"><strong>Adr</strong><div><span>{tracker.state?.gps?.address || 'Adresse indisponible'}</span><small>dernier point connu</small></div></div>
           </div>
+        </div>
+      </section>
+
+      <section className="dashboard-grid premium-grid phase2-grid">
+        <div className="panel">
+          <div className="panel-header"><div><h3>Mission active</h3><p>Bon de livraison en cours</p></div></div>
+          {activeOrder ? <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{activeOrder.reference}</strong><div><span>{activeOrder.client}</span><small>{activeOrder.destination}</small></div></div><div className="driver-rank-row static-row"><strong>March.</strong><div><span>{activeOrder.goods || '-'}</span><small>{activeOrder.quantity || '-'}</small></div></div><div className="driver-rank-row static-row"><strong>Statut</strong><div><span>{activeOrder.status}</span><small>{activeOrder.date ? new Date(activeOrder.date).toLocaleString() : '-'}</small></div></div></div> : <p style={{ color: '#94a3b8' }}>Aucune mission active sur ce camion.</p>}
+        </div>
+        <div className="panel">
+          <div className="panel-header"><div><h3>Historique missions</h3><p>Derniers bons liés à l'unité</p></div></div>
+          <div className="driver-ranking">{trackerOrders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}{trackerOrders.length === 0 && <p style={{ color: '#94a3b8' }}>Aucun bon de livraison lié à ce camion.</p>}</div>
         </div>
       </section>
 
