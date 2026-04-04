@@ -374,6 +374,8 @@ app.post('/api/delivery-orders', (req, res) => {
     notes: req.body.notes || '',
     active: req.body.active !== false,
     completedAt: req.body.completedAt || null,
+    proofNote: req.body.proofNote || '',
+    proofStatus: req.body.proofStatus || 'En attente',
   }
   const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
   normalized.unshift(payload)

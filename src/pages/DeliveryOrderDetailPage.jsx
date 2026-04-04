@@ -81,11 +81,24 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     </section>
 
     <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Preuve de livraison</h3><p>Suivi simple de la POD</p></div></div>
+      <div className="delivery-form">
+        <select value={order.proofStatus || 'En attente'} onChange={(e) => updateField('proofStatus', e.target.value)} disabled={saving}>
+          <option>En attente</option>
+          <option>Reçue</option>
+          <option>Validée</option>
+        </select>
+        <textarea className="delivery-notes-box" value={order.proofNote || ''} onChange={(e) => updateField('proofNote', e.target.value)} rows={4} placeholder="Commentaire sur la preuve de livraison" disabled={saving} />
+      </div>
+    </section>
+
+    <section className="panel panel-large">
       <div className="panel-header"><div><h3>Timeline mission</h3><p>Étapes principales du bon</p></div></div>
       <div className="timeline-list">
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Bon créé</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée dans la plateforme</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Statut actuel</strong><p>{order.active ? 'Actif' : order.status}</p><span>{order.destination}</span></div></div>
-        {order.completedAt && <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Mission terminée</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon marqué livré</span></div></div>}
+        <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofNote || 'Aucun commentaire'}</span></div></div>
+        {order.completedAt && <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Mission terminée</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon marqué livré</span></div></div>}
       </div>
     </section>
 
