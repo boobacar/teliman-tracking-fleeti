@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Printer } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
+import { printDeliveryOrder } from '../lib/printDeliveryOrder'
 
 export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const { id } = useParams()
@@ -46,7 +47,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
-      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div>
+      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
       <div className="mission-highlight-grid"><div className="mission-highlight-card"><span>Mission</span><strong>{order.reference}</strong><small>{order.client}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{order.quantity || '-'}</small></div></div>
       <div className="tracker-overview-grid">
         <div className="overview-card"><span>Client</span><strong>{order.client}</strong></div>
