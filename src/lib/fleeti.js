@@ -42,3 +42,4 @@ export const deleteDeliveryOrder = async (id) => {
   return data
 }
 export const loadDeliveryOrder = (id) => getJson(`/api/delivery-order/${id}`)
+export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')

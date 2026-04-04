@@ -18,7 +18,7 @@ const initialForm = {
   active: true,
 }
 
-export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshData }) {
+export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -83,6 +83,7 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
     planned: deliveryOrders.filter((item) => item.status === 'Prévu').length,
     loading: deliveryOrders.filter((item) => item.status === 'En chargement').length,
   }
+  const topTruckOrders = Object.entries(deliveryOrdersSummary?.byTruck || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="stats-grid premium-stats phase2-stats">
@@ -90,6 +91,17 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
       <div className="stat-card"><div><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div></div>
       <div className="stat-card"><div><span>Prévu</span><strong>{missionStats.planned}</strong><small>à lancer</small></div></div>
       <div className="stat-card"><div><span>En chargement</span><strong>{missionStats.loading}</strong><small>préparation</small></div></div>
+    </section>
+
+    <section className="dashboard-grid premium-grid phase2-grid">
+      <section className="panel">
+        <div className="panel-header"><div><h3>Résumé module BL</h3><p>Vue consolidée des missions</p></div></div>
+        <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.total || 0}</strong><div><span>Total bons</span><small>enregistrés</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.active || 0}</strong><div><span>Bons actifs</span><small>en cours</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.delivered || 0}</strong><div><span>Livrés</span><small>terminés</small></div></div></div>
+      </section>
+      <section className="panel">
+        <div className="panel-header"><div><h3>Camions les plus chargés</h3><p>Ceux avec le plus de bons</p></div></div>
+        <div className="driver-ranking">{topTruckOrders.map(([truck, count], index) => <div key={truck} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{truck}</span><small>bons enregistrés</small></div><div><span>{count}</span><small>missions</small></div></div>)}</div>
+      </section>
     </section>
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large">

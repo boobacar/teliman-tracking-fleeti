@@ -343,6 +343,19 @@ app.get('/api/delivery-order/:id', (req, res) => {
   res.json({ item })
 })
 
+app.get('/api/delivery-orders-summary', (_req, res) => {
+  const items = readDeliveryOrders()
+  res.json({
+    total: items.length,
+    active: items.filter((item) => item.active).length,
+    delivered: items.filter((item) => item.status === 'Livré').length,
+    byTruck: items.reduce((acc, item) => {
+      acc[item.truckLabel] = (acc[item.truckLabel] || 0) + 1
+      return acc
+    }, {}),
+  })
+})
+
 app.post('/api/delivery-orders', (req, res) => {
   const items = readDeliveryOrders()
   const payload = {

@@ -39,6 +39,7 @@ function App() {
   const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
   const [reports, setReports] = useState({ summary: {}, rows: [] })
   const [deliveryOrders, setDeliveryOrders] = useState([])
+  const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -48,15 +49,18 @@ function App() {
       setDataset(fleet)
       try {
         const module = await import('./lib/fleeti')
-        const [reportsPayload, ordersPayload] = await Promise.all([
+        const [reportsPayload, ordersPayload, ordersSummaryPayload] = await Promise.all([
           module.loadReports(),
           module.loadDeliveryOrders(),
+          module.loadDeliveryOrdersSummary(),
         ])
         setReports(reportsPayload)
         setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
       } catch {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
+        setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
       }
     } catch (err) {
       setError(err.message)
@@ -146,7 +150,7 @@ function App() {
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
-          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} enrichedTrackers={enrichedTrackers} refreshData={refreshData} />} />
+          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
         </Routes>
