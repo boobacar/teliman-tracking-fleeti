@@ -987,7 +987,8 @@ input {
 
 .delivery-form-panel,
 .delivery-table-panel,
-.delivery-history-panel {
+.delivery-history-panel,
+.compact-side-panel {
   border-color: rgba(148, 163, 184, 0.12);
 }
 
