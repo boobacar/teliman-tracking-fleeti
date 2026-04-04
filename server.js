@@ -411,6 +411,22 @@ app.delete('/api/delivery-orders/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+app.get('/api/tracks', async (req, res) => {
+  try {
+    const trackerId = Number(req.query.trackerId)
+    const from = req.query.from || new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
+    const to = req.query.to || new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const hash = await authenticate()
+    const [segments, points] = await Promise.all([
+      apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
+      apiCall('track/read', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
+    ])
+    res.json({ trackerId, from, to, segments: segments.list ?? [], points: points.list ?? [] })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.get('/api/reports', async (_req, res) => {
   try {
     const data = await getDashboardData()

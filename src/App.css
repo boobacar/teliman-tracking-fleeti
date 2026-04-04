@@ -348,6 +348,12 @@ input {
   border: none;
 }
 
+.custom-tracker-pin-shell {
+  position: relative;
+  width: 38px;
+  height: 38px;
+}
+
 .custom-tracker-pin {
   width: 28px;
   height: 28px;
@@ -359,6 +365,19 @@ input {
   font-size: 12px;
   border: 2px solid rgba(255,255,255,0.8);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  position: absolute;
+  left: 5px;
+  top: 5px;
+}
+
+.pin-heading {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  text-shadow: 0 2px 4px rgba(2, 6, 23, 0.9);
+  transform-origin: center 18px;
 }
 
 .mission-dot {
@@ -374,6 +393,14 @@ input {
 
 .mission-legend-dot {
   background: #38bdf8 !important;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: #38bdf8;
 }
 
 .detail-panel {
