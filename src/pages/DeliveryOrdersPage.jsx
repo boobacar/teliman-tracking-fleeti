@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { createDeliveryOrder, deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 
 const initialForm = {
@@ -20,6 +21,8 @@ const initialForm = {
 export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshData }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [trackerFilter, setTrackerFilter] = useState('all')
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
@@ -64,6 +67,16 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
     await refreshData()
   }
 
+  const filteredOrders = deliveryOrders.filter((item) => {
+    const statusOk = statusFilter === 'all' ? true : statusFilter === 'active' ? item.active : item.status === statusFilter
+    const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
+    return statusOk && trackerOk
+  })
+
+  const groupedByTracker = enrichedTrackers
+    .map((tracker) => ({ tracker, orders: deliveryOrders.filter((item) => Number(item.trackerId) === Number(tracker.id)) }))
+    .filter((group) => group.orders.length > 0)
+
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large">
@@ -100,6 +113,19 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
 
     <section className="panel panel-large">
       <div className="panel-header"><div><h3>Historique des bons de livraison</h3><p>Tous les bons créés dans la plateforme</p></div></div>
+      <div className="filters filter-row">
+        <button className={`chip ${statusFilter === 'all' ? 'selected' : ''}`} onClick={() => setStatusFilter('all')}>Tous</button>
+        <button className={`chip ${statusFilter === 'active' ? 'selected' : ''}`} onClick={() => setStatusFilter('active')}>Actifs</button>
+        <button className={`chip ${statusFilter === 'Prévu' ? 'selected' : ''}`} onClick={() => setStatusFilter('Prévu')}>Prévu</button>
+        <button className={`chip ${statusFilter === 'En cours' ? 'selected' : ''}`} onClick={() => setStatusFilter('En cours')}>En cours</button>
+        <button className={`chip ${statusFilter === 'Livré' ? 'selected' : ''}`} onClick={() => setStatusFilter('Livré')}>Livré</button>
+      </div>
+      <div className="filters filter-row">
+        <select value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
+          <option value="all">Tous les camions</option>
+          {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+        </select>
+      </div>
       <div className="reports-table-wrap">
         <table className="reports-table">
           <thead>
@@ -117,10 +143,15 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
             </tr>
           </thead>
           <tbody>
-            {deliveryOrders.map((item) => <tr key={item.id}><td>{item.reference}</td><td>{item.truckLabel}</td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.active ? 'Actif' : item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn" onClick={() => removeOrder(item)}>Supprimer</button></div></td></tr>)}
+            {filteredOrders.map((item) => <tr key={item.id}><td>{item.reference}</td><td><Link className="link-row" to={`/tracker/${item.trackerId}`}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.active ? 'Actif' : item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn" onClick={() => removeOrder(item)}>Supprimer</button></div></td></tr>)}
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Historique par camion</h3><p>Lecture camion par camion</p></div></div>
+      <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
     </section>
   </div>
 }

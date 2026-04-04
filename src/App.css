@@ -812,6 +812,13 @@ input {
   flex-wrap: wrap;
 }
 
+.tracker-history-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(30, 41, 59, 0.5);
+}
+
 .danger-btn {
   border-color: rgba(239, 68, 68, 0.28);
   color: #fca5a5;
