@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 
@@ -35,7 +36,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large">
-      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div></div>
+      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div>
       <div className="tracker-overview-grid">
         <div className="overview-card"><span>Client</span><strong>{order.client}</strong></div>
         <div className="overview-card"><span>Destination</span><strong>{order.destination}</strong></div>

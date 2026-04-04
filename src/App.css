@@ -842,6 +842,45 @@ input {
   color: #fca5a5;
 }
 
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-success {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.status-warn {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+}
+
+.status-live {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+
+.status-neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
 .delivery-notes-box {
   width: 100%;
   padding: 12px 14px;
