@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CircleMarker, LayersControl, MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet'
 import { loadTracks } from '../lib/fleeti'
@@ -42,6 +42,7 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
   const [selectedTrackId, setSelectedTrackId] = useState('')
   const [period, setPeriod] = useState('1h')
   const [trackData, setTrackData] = useState({ points: [], segments: [], events: [] })
+  const trackCacheRef = useRef(new Map())
 
   const visibleTrackers = useMemo(() => filteredTrackers.filter((tracker) => {
     if (!tracker.state?.gps?.location) return false
@@ -70,12 +71,42 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
     if (period === 'today') fromDate.setHours(0, 0, 0, 0)
     if (period === '48h') fromDate.setHours(now.getHours() - 48)
 
-    loadTracks({
-      trackerId,
-      from: fromDate.toISOString().slice(0, 19).replace('T', ' '),
-      to: now.toISOString().slice(0, 19).replace('T', ' '),
-    }).then(setTrackData).catch(() => setTrackData({ points: [], segments: [], events: [] }))
+    const from = fromDate.toISOString().slice(0, 19).replace('T', ' ')
+    const to = now.toISOString().slice(0, 19).replace('T', ' ')
+    const cacheKey = `${trackerId}_${period}`
+
+    if (trackCacheRef.current.has(cacheKey)) {
+      setTrackData(trackCacheRef.current.get(cacheKey))
+      return
+    }
+
+    loadTracks({ trackerId, from, to }).then((data) => {
+      trackCacheRef.current.set(cacheKey, data)
+      setTrackData(data)
+    }).catch(() => setTrackData({ points: [], segments: [], events: [] }))
   }, [selectedTrackId, period, visibleTrackers])
+
+  useEffect(() => {
+    const now = new Date()
+    visibleTrackers.slice(0, 6).forEach((tracker) => {
+      const trackerId = tracker.id
+      ;['1h', '6h', '24h'].forEach((p) => {
+        const cacheKey = `${trackerId}_${p}`
+        if (trackCacheRef.current.has(cacheKey)) return
+        const fromDate = new Date(now)
+        if (p === '1h') fromDate.setHours(now.getHours() - 1)
+        if (p === '6h') fromDate.setHours(now.getHours() - 6)
+        if (p === '24h') fromDate.setHours(now.getHours() - 24)
+        loadTracks({
+          trackerId,
+          from: fromDate.toISOString().slice(0, 19).replace('T', ' '),
+          to: now.toISOString().slice(0, 19).replace('T', ' '),
+        }).then((data) => {
+          trackCacheRef.current.set(cacheKey, data)
+        }).catch(() => {})
+      })
+    })
+  }, [visibleTrackers])
 
   const polylinePositions = trackData.points.map((point) => [point.lat, point.lng])
   const alertMarkers = (trackData.events || []).map((event) => ({
