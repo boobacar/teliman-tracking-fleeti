@@ -23,6 +23,16 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     }
   }
 
+  const updateMany = async (payload) => {
+    setSaving(true)
+    try {
+      await updateDeliveryOrder(order.id, payload)
+      await refreshData()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const remove = async () => {
     setSaving(true)
     try {
@@ -50,6 +60,26 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     </section>
 
     <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Édition complète du bon</h3><p>Modifier toutes les informations de mission</p></div></div>
+      <div className="delivery-form">
+        <input value={order.reference || ''} onChange={(e) => updateField('reference', e.target.value)} disabled={saving} placeholder="Référence" />
+        <input value={order.client || ''} onChange={(e) => updateField('client', e.target.value)} disabled={saving} placeholder="Client" />
+        <input value={order.loadingPoint || ''} onChange={(e) => updateField('loadingPoint', e.target.value)} disabled={saving} placeholder="Point de chargement" />
+        <input value={order.destination || ''} onChange={(e) => updateField('destination', e.target.value)} disabled={saving} placeholder="Destination" />
+        <input value={order.goods || ''} onChange={(e) => updateField('goods', e.target.value)} disabled={saving} placeholder="Marchandise" />
+        <input value={order.quantity || ''} onChange={(e) => updateField('quantity', e.target.value)} disabled={saving} placeholder="Quantité / tonnage" />
+        <input type="datetime-local" value={order.date ? new Date(order.date).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('date', e.target.value)} disabled={saving} />
+      </div>
+    </section>
+
+    <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Workflow mission</h3><p>Faire évoluer la mission avec des statuts plus métier</p></div></div>
+      <div className="filters filter-row">
+        {['Prévu', 'Validé', 'En chargement', 'En route', 'Arrivé site', 'Déchargement', 'Livré', 'Annulé'].map((status) => <button key={status} className={`chip ${order.status === status ? 'selected' : ''}`} onClick={() => updateMany({ status, active: status !== 'Livré' && status !== 'Annulé', completedAt: status === 'Livré' ? new Date().toISOString() : null })}>{status}</button>)}
+      </div>
+    </section>
+
+    <section className="panel panel-large">
       <div className="panel-header"><div><h3>Timeline mission</h3><p>Étapes principales du bon</p></div></div>
       <div className="timeline-list">
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Bon créé</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée dans la plateforme</span></div></div>
@@ -60,13 +90,18 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
 
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel">
-        <div className="panel-header"><div><h3>Mise à jour rapide</h3><p>Faire évoluer la mission</p></div></div>
+        <div className="panel-header"><div><h3>Mise à jour rapide</h3><p>Actions importantes</p></div></div>
         <div className="delivery-form">
           <select defaultValue={order.status} onChange={(e) => updateField('status', e.target.value)} disabled={saving}>
             <option>Prévu</option>
+            <option>Validé</option>
             <option>En chargement</option>
+            <option>En route</option>
+            <option>Arrivé site</option>
+            <option>Déchargement</option>
             <option>En cours</option>
             <option>Livré</option>
+            <option>Annulé</option>
           </select>
           <label className="toggle-row"><input type="checkbox" checked={!!order.active} onChange={(e) => updateField('active', e.target.checked)} disabled={saving} />Bon actif</label>
           <button className="ghost-btn danger-btn" onClick={remove} disabled={saving}>Supprimer le bon</button>
