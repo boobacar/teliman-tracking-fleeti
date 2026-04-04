@@ -56,7 +56,7 @@ export function ReportsPage({ reports }) {
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large">
-      <div className="panel-header"><div><h3>Rapports flotte</h3><p>Vue tabulaire exploitable et exportable</p></div><button className="primary-btn" onClick={() => downloadCsv(summary, rows)}>Télécharger CSV</button></div>
+      <div className="panel-header"><div><h3>Rapports flotte</h3></div><button className="primary-btn" onClick={() => downloadCsv(summary, rows)}>Télécharger CSV</button></div>
       <div className="reports-summary-grid">
         <div className="overview-card"><span>Trajets total</span><strong>{summary.trajetsTotal ?? 0}</strong></div>
         <div className="overview-card"><span>Distance totale</span><strong>{summary.distanceTotaleKm ?? 0} km</strong></div>
@@ -68,7 +68,7 @@ export function ReportsPage({ reports }) {
     </section>
 
     <section className="panel panel-large">
-      <div className="panel-header"><div><h3>Tableau détaillé</h3><p>Données réelles consolidées par unité</p></div></div>
+      <div className="panel-header"><div><h3>Tableau détaillé</h3></div></div>
       <div className="reports-table-wrap">
         <table className="reports-table">
           <thead>

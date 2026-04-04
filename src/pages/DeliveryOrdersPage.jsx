@@ -94,7 +94,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large delivery-hero-panel">
-      <div className="panel-header"><div><h3>Centre de missions & bons de livraison</h3><p>Vue compacte pour créer, suivre et piloter les missions sans surcharge visuelle.</p></div><div className="mission-hero-badge">BL Ops</div></div>
+      <div className="panel-header"><div><h3>Centre de missions & bons de livraison</h3></div><div className="mission-hero-badge">BL Ops</div></div>
       <div className="mission-highlight-grid">
         <div className="mission-highlight-card"><span>Total bons</span><strong>{missionStats.total}</strong><small>missions enregistrées</small></div>
         <div className="mission-highlight-card"><span>Actifs</span><strong>{missionStats.active}</strong><small>en cours</small></div>
@@ -113,7 +113,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
     <section id="bl-form" className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large delivery-form-panel">
-        <div className="panel-header"><div><h3>Nouveau bon de livraison</h3><p>Affecter rapidement une mission</p></div></div>
+        <div className="panel-header"><div><h3>Nouveau bon de livraison</h3></div></div>
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
           <select value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
             <option value="">Sélectionner un camion</option>
@@ -137,13 +137,13 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </section>
 
       <section className="panel compact-side-panel">
-        <div className="panel-header"><div><h3>Missions prioritaires</h3><p>Actives ou récentes</p></div></div>
+        <div className="panel-header"><div><h3>Missions prioritaires</h3></div></div>
         <div className="driver-ranking">{deliveryOrders.slice(0, 5).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference || '#'}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.destination}</small></div></div>)}</div>
       </section>
     </section>
 
     <section id="bl-table" className="panel panel-large delivery-table-panel">
-      <div className="panel-header"><div><h3>Historique des bons</h3><p>Tableau principal de suivi</p></div></div>
+      <div className="panel-header"><div><h3>Historique des bons</h3></div></div>
       <div className="filters filter-row">
         <button className={`chip ${statusFilter === 'all' ? 'selected' : ''}`} onClick={() => setStatusFilter('all')}>Tous</button>
         <button className={`chip ${statusFilter === 'active' ? 'selected' : ''}`} onClick={() => setStatusFilter('active')}>Actifs</button>
@@ -186,17 +186,17 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
     <section id="bl-insights" className="dashboard-grid premium-grid phase2-grid">
       <section className="panel">
-        <div className="panel-header"><div><h3>Insights opérationnels</h3><p>Lecture consolidée</p></div></div>
+        <div className="panel-header"><div><h3>Insights opérationnels</h3></div></div>
         <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{missionStats.planned}</strong><div><span>Prévu</span><small>à lancer</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.active || 0}</strong><div><span>Actifs</span><small>suivi terrain</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.delivered || 0}</strong><div><span>Livrés</span><small>clôturés</small></div></div></div>
       </section>
       <section className="panel">
-        <div className="panel-header"><div><h3>Top clients & preuves</h3><p>Points d’attention</p></div></div>
+        <div className="panel-header"><div><h3>Top clients & preuves</h3></div></div>
         <div className="driver-ranking">{topClients.map(([client, count], index) => <div key={client} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{client}</span><small>fréquence</small></div><div><span>{count}</span><small>bons</small></div></div>)}{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}</div>
       </section>
     </section>
 
     <section id="bl-trucks" className="panel panel-large delivery-history-panel">
-      <div className="panel-header"><div><h3>Historique par camion</h3><p>Lecture camion par camion</p></div></div>
+      <div className="panel-header"><div><h3>Historique par camion</h3></div></div>
       <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
     </section>
   </div>
