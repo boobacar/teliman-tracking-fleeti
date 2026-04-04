@@ -360,6 +360,7 @@ app.post('/api/delivery-orders', (req, res) => {
     date: req.body.date || new Date().toISOString(),
     notes: req.body.notes || '',
     active: req.body.active !== false,
+    completedAt: req.body.completedAt || null,
   }
   const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
   normalized.unshift(payload)
@@ -380,7 +381,7 @@ app.patch('/api/delivery-orders/:id', (req, res) => {
       }
       return item
     }
-    return { ...item, ...req.body }
+    return { ...item, ...req.body, completedAt: req.body.status === 'Livré' ? (req.body.completedAt || new Date().toISOString()) : item.completedAt }
   })
 
   writeDeliveryOrders(updatedItems)

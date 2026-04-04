@@ -77,7 +77,20 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
     .map((tracker) => ({ tracker, orders: deliveryOrders.filter((item) => Number(item.trackerId) === Number(tracker.id)) }))
     .filter((group) => group.orders.length > 0)
 
+  const missionStats = {
+    active: deliveryOrders.filter((item) => item.active).length,
+    delivered: deliveryOrders.filter((item) => item.status === 'Livré').length,
+    planned: deliveryOrders.filter((item) => item.status === 'Prévu').length,
+    loading: deliveryOrders.filter((item) => item.status === 'En chargement').length,
+  }
+
   return <div style={{ display: 'grid', gap: 20 }}>
+    <section className="stats-grid premium-stats phase2-stats">
+      <div className="stat-card"><div><span>Bons actifs</span><strong>{missionStats.active}</strong><small>missions en cours</small></div></div>
+      <div className="stat-card"><div><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div></div>
+      <div className="stat-card"><div><span>Prévu</span><strong>{missionStats.planned}</strong><small>à lancer</small></div></div>
+      <div className="stat-card"><div><span>En chargement</span><strong>{missionStats.loading}</strong><small>préparation</small></div></div>
+    </section>
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large">
         <div className="panel-header"><div><h3>Nouveau bon de livraison</h3><p>Affecter une mission à un camion précis</p></div></div>

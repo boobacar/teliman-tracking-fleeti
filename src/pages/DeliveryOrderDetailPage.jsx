@@ -43,6 +43,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="overview-card"><span>Quantité</span><strong>{order.quantity || '-'}</strong></div>
         <div className="overview-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong></div>
         <div className="overview-card"><span>Date</span><strong>{order.date ? new Date(order.date).toLocaleString() : '-'}</strong></div>
+        <div className="overview-card"><span>Fin mission</span><strong>{order.completedAt ? new Date(order.completedAt).toLocaleString() : '-'}</strong></div>
       </div>
     </section>
 
