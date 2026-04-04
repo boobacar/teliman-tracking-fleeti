@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { createDeliveryOrder } from '../lib/fleeti'
+import { createDeliveryOrder, deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 
 const initialForm = {
   trackerId: '',
@@ -14,6 +14,7 @@ const initialForm = {
   status: 'Prévu',
   date: '',
   notes: '',
+  active: true,
 }
 
 export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshData }) {
@@ -48,6 +49,21 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
     }
   }
 
+  const markDelivered = async (item) => {
+    await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
+    await refreshData()
+  }
+
+  const setActive = async (item) => {
+    await updateDeliveryOrder(item.id, { active: true, status: item.status === 'Livré' ? 'En cours' : item.status })
+    await refreshData()
+  }
+
+  const removeOrder = async (item) => {
+    await deleteDeliveryOrder(item.id)
+    await refreshData()
+  }
+
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel panel-large">
@@ -70,6 +86,7 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
             <option>En cours</option>
             <option>Livré</option>
           </select>
+          <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />Bon actif</label>
           <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={4} />
           <button className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
         </form>
@@ -77,7 +94,7 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
 
       <section className="panel">
         <div className="panel-header"><div><h3>Historique rapide</h3><p>Derniers bons enregistrés</p></div></div>
-        <div className="driver-ranking">{deliveryOrders.slice(0, 6).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference || '#'}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.status}</span><small>{item.destination}</small></div></div>)}</div>
+        <div className="driver-ranking">{deliveryOrders.slice(0, 6).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference || '#'}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.destination}</small></div></div>)}</div>
       </section>
     </section>
 
@@ -96,10 +113,11 @@ export function DeliveryOrdersPage({ deliveryOrders, enrichedTrackers, refreshDa
               <th>Quantité</th>
               <th>Statut</th>
               <th>Date</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {deliveryOrders.map((item) => <tr key={item.id}><td>{item.reference}</td><td>{item.truckLabel}</td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td></tr>)}
+            {deliveryOrders.map((item) => <tr key={item.id}><td>{item.reference}</td><td>{item.truckLabel}</td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td>{item.active ? 'Actif' : item.status}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => setActive(item)}>Activer</button><button className="ghost-btn small-btn" onClick={() => markDelivered(item)}>Livré</button><button className="ghost-btn small-btn danger-btn" onClick={() => removeOrder(item)}>Supprimer</button></div></td></tr>)}
           </tbody>
         </table>
       </div>

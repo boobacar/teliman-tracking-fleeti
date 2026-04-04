@@ -352,10 +352,40 @@ app.post('/api/delivery-orders', (req, res) => {
     status: req.body.status || 'Prévu',
     date: req.body.date || new Date().toISOString(),
     notes: req.body.notes || '',
+    active: req.body.active !== false,
   }
-  items.unshift(payload)
-  writeDeliveryOrders(items)
+  const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
+  normalized.unshift(payload)
+  writeDeliveryOrders(normalized)
   res.status(201).json({ ok: true, item: payload })
+})
+
+app.patch('/api/delivery-orders/:id', (req, res) => {
+  const id = Number(req.params.id)
+  const items = readDeliveryOrders()
+  const current = items.find((item) => Number(item.id) === id)
+  if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
+
+  const updatedItems = items.map((item) => {
+    if (Number(item.id) !== id) {
+      if (req.body.active && Number(item.trackerId) === Number(current.trackerId)) {
+        return { ...item, active: false }
+      }
+      return item
+    }
+    return { ...item, ...req.body }
+  })
+
+  writeDeliveryOrders(updatedItems)
+  res.json({ ok: true, item: updatedItems.find((item) => Number(item.id) === id) })
+})
+
+app.delete('/api/delivery-orders/:id', (req, res) => {
+  const id = Number(req.params.id)
+  const items = readDeliveryOrders()
+  const filtered = items.filter((item) => Number(item.id) !== id)
+  writeDeliveryOrders(filtered)
+  res.json({ ok: true })
 })
 
 app.get('/api/reports', async (_req, res) => {

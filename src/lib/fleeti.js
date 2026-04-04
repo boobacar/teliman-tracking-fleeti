@@ -25,3 +25,19 @@ export const loadAlerts = () => getJson('/api/alerts')
 export const loadReports = () => getJson('/api/reports')
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const createDeliveryOrder = (payload) => postJson('/api/delivery-orders', payload)
+export const updateDeliveryOrder = async (id, payload) => {
+  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
+export const deleteDeliveryOrder = async (id) => {
+  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE' })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}

@@ -799,6 +799,24 @@ input {
   color: #e2e8f0;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #cbd5e1;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.danger-btn {
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #fca5a5;
+}
+
 .reports-table {
   width: 100%;
   border-collapse: collapse;
