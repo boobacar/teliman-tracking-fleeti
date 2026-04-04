@@ -1002,6 +1002,15 @@ input {
   grid-column: 1 / -1;
 }
 
+.compact-mission-grid {
+  margin-bottom: 0;
+}
+
+.compact-pilot-form,
+.compact-detail-form {
+  gap: 10px;
+}
+
 .delivery-table-panel .reports-table th {
   position: sticky;
   top: 0;
