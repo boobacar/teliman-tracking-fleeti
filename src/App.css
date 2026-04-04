@@ -804,6 +804,13 @@ input {
   align-items: center;
   gap: 10px;
   color: #cbd5e1;
+  justify-content: flex-start;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
 }
 
 .table-actions {
