@@ -955,6 +955,40 @@ input {
   backdrop-filter: blur(18px);
 }
 
+.delivery-hero-panel {
+  border-color: rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.72));
+}
+
+.mission-hero-badge {
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.delivery-subnav {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.delivery-subnav .chip {
+  background: rgba(30, 41, 59, 0.82);
+}
+
+.delivery-form-panel,
+.delivery-table-panel,
+.delivery-history-panel {
+  border-color: rgba(148, 163, 184, 0.12);
+}
+
+.delivery-table-panel .reports-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .delivery-subnav .filters {
   overflow-x: auto;
   flex-wrap: nowrap;

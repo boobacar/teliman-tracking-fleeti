@@ -92,6 +92,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 5)
 
   return <div style={{ display: 'grid', gap: 20 }}>
+    <section className="panel panel-large delivery-hero-panel">
+      <div className="panel-header"><div><h3>Centre de missions & bons de livraison</h3><p>Pilotage premium des ordres, missions actives, historiques et preuves de livraison.</p></div><div className="mission-hero-badge">BL Ops</div></div>
+      <div className="mission-highlight-grid">
+        <div className="mission-highlight-card"><span>Bons actifs</span><strong>{missionStats.active}</strong><small>missions à suivre</small></div>
+        <div className="mission-highlight-card"><span>Livrés</span><strong>{missionStats.delivered}</strong><small>missions terminées</small></div>
+        <div className="mission-highlight-card"><span>Clients suivis</span><strong>{topClients.length}</strong><small>clients majeurs</small></div>
+      </div>
+    </section>
+
     <section className="panel sticky-subnav-panel delivery-subnav">
       <div className="filters">
         <a className="chip selected" href="#bl-summary">Résumé</a>
@@ -129,7 +138,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </section>
     </section>
     <section id="bl-form" className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel panel-large">
+      <section className="panel panel-large delivery-form-panel">
         <div className="panel-header"><div><h3>Nouveau bon de livraison</h3><p>Affecter une mission à un camion précis</p></div></div>
         <form className="delivery-form" onSubmit={submit}>
           <select value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
@@ -161,7 +170,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </section>
     </section>
 
-    <section id="bl-table" className="panel panel-large">
+    <section id="bl-table" className="panel panel-large delivery-table-panel">
       <div className="panel-header"><div><h3>Historique des bons de livraison</h3><p>Tous les bons créés dans la plateforme</p></div></div>
       <div className="filters filter-row">
         <button className={`chip ${statusFilter === 'all' ? 'selected' : ''}`} onClick={() => setStatusFilter('all')}>Tous</button>
@@ -199,7 +208,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </div>
     </section>
 
-    <section id="bl-trucks" className="panel panel-large">
+    <section id="bl-trucks" className="panel panel-large delivery-history-panel">
       <div className="panel-header"><div><h3>Historique par camion</h3><p>Lecture camion par camion</p></div></div>
       <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
     </section>
