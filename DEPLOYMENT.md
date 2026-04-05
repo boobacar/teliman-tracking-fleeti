@@ -19,15 +19,24 @@
 ## Required environment variables
 ```env
 FLEETI_API_BASE=https://tracking.ci.fleeti.co/api-v2
-FLEETI_LOGIN=boubsfal@gmail.com
-FLEETI_PASSWORD="Azerty123456#"
+FLEETI_LOGIN=your-login@example.com
+FLEETI_PASSWORD='replace-with-secure-password'
 FLEETI_DEALER_ID=23241
 FLEETI_LOCALE=fr
 PORT=8787
+ALLOWED_ORIGINS=https://your-frontend-domain.example
+```
+
+## Optional hardening
+```env
+FLEETI_TRACKER_IDS=3487533,3487539,3488325
+REQUIRE_API_TOKEN=true
+INTERNAL_API_TOKEN=replace-with-long-random-token
+CACHE_TTL_MS=60000
 ```
 
 ## Important note
-`FLEETI_PASSWORD` must stay quoted because of `#` in dotenv parsing.
+If the Fleeti password contains `#`, spaces, or shell-sensitive characters, keep it quoted in `.env`.
 
 ## Suggested backend restart flow
 ```bash
@@ -47,9 +56,12 @@ Ensure HTTPS is enabled with Let's Encrypt.
 - `/map`, `/trackers`, `/alerts`, `/analytics` routes work
 - Vercel SPA rewrites active
 - Fleeti credentials loaded server-side only
+- `.env` is not committed
+- CORS only allows trusted frontend origins
 
 ## Operational recommendations
 - keep backend logs enabled
 - monitor API health regularly
 - restart backend after env changes
 - keep frontend and backend deploys in sync when API shape changes
+- rotate secrets if they were ever committed before
