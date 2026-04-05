@@ -34,7 +34,7 @@ function createTrackerIcon(tracker, hasMission = false, isActive = false) {
   const speed = Number(tracker.state?.gps?.speed ?? 0)
   const isMoving = tracker.state?.movement_status === 'moving' || speed > 0
   const movingArrow = isMoving
-    ? `<div class="pin-heading-strong ${isActive ? 'active' : ''}" style="transform: translateX(-50%) rotate(${heading}deg)"><span>➤</span></div>`
+    ? `<div class="pin-heading-tail ${isActive ? 'active' : ''}" style="transform: rotate(${heading}deg)"></div>`
     : ''
 
   return L.divIcon({
