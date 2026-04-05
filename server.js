@@ -240,6 +240,246 @@ function sanitizeHistory(history = []) {
   }))
 }
 
+function parseReportFilters(query = {}) {
+  return {
+    period: String(query.period || '48h'),
+    trackerId: ensureValidTrackerId(query.trackerId),
+    driver: String(query.driver || '').trim().toLowerCase(),
+    status: String(query.status || '').trim().toLowerCase(),
+    eventType: String(query.eventType || '').trim().toLowerCase(),
+    client: String(query.client || '').trim().toLowerCase(),
+    destination: String(query.destination || '').trim().toLowerCase(),
+    pivotRows: String(query.pivotRows || 'tracker').trim().toLowerCase(),
+    pivotCols: String(query.pivotCols || 'event').trim().toLowerCase(),
+    metric: String(query.metric || 'count').trim().toLowerCase(),
+  }
+}
+
+function buildLookupMaps(data) {
+  const employeesByTracker = Object.fromEntries((data.employees ?? []).map((employee) => [Number(employee.tracker_id), employee]))
+  const trackersById = Object.fromEntries((data.trackers ?? []).map((tracker) => [Number(tracker.id), tracker]))
+  return { employeesByTracker, trackersById }
+}
+
+function buildReportDataset(data, filters = {}) {
+  const preferredKeys = [data.dateKeys?.todayKey, data.dateKeys?.yesterdayKey].filter(Boolean)
+  const { employeesByTracker } = buildLookupMaps(data)
+  const deliveryOrders = readDeliveryOrders()
+
+  const trackerRows = (data.trackers ?? []).map((tracker) => {
+    const state = data.states?.[tracker.id] ?? {}
+    const employee = employeesByTracker[tracker.id]
+    const history = (data.history ?? []).filter((event) => Number(event.tracker_id) === Number(tracker.id))
+    const distance = pickMileageValue(data.mileage?.[tracker.id] ?? {}, preferredKeys)
+    const speed = Number(state?.gps?.speed ?? 0)
+    const inactivityHours = history.filter((event) => event.event === 'excessive_parking').length * 1.5
+    const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, history.length ? 1 : 0)
+    const driverName = employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Non assigné'
+    const activeMission = deliveryOrders.find((item) => Number(item.trackerId) === Number(tracker.id) && item.active)
+    return {
+      trackerId: Number(tracker.id),
+      immatriculation: tracker.label,
+      trackerLabel: tracker.label,
+      model: tracker.model || 'Modèle inconnu',
+      conducteur: driverName,
+      driverName,
+      phone: employee?.phone || 'N/A',
+      status: state?.connection_status || 'unknown',
+      movementStatus: state?.movement_status || 'unknown',
+      speed,
+      speedMax: Math.max(speed, ...history.map((event) => Number(event.speed || 0)).filter(Number.isFinite), 0),
+      alertCount: history.length,
+      trajets: tripCount,
+      distanceKm: Number(distance.toFixed?.(1) ? distance.toFixed(1) : distance),
+      tempsTrajetH: Number((distance / 45).toFixed(2)),
+      inactiviteH: Number(inactivityHours.toFixed(2)),
+      inactiviteParTrajet: Number((inactivityHours / Math.max(tripCount, 1)).toFixed(2)),
+      activeMission: activeMission || null,
+      lastUpdate: state?.last_update || null,
+      location: state?.gps?.location || null,
+      batteryLevel: state?.battery_level ?? null,
+      rawState: state,
+      rawTracker: tracker,
+    }
+  })
+
+  const filteredTrackerRows = trackerRows.filter((row) => {
+    if (filters.trackerId && Number(row.trackerId) !== Number(filters.trackerId)) return false
+    if (filters.driver && !String(row.driverName || '').toLowerCase().includes(filters.driver)) return false
+    if (filters.status && String(row.status || '').toLowerCase() !== filters.status) return false
+    if (filters.client && !String(row.activeMission?.client || '').toLowerCase().includes(filters.client)) return false
+    if (filters.destination && !String(row.activeMission?.destination || '').toLowerCase().includes(filters.destination)) return false
+    return true
+  })
+
+  const allowedTrackerIds = new Set(filteredTrackerRows.map((row) => Number(row.trackerId)))
+
+  const alertRows = (data.history ?? [])
+    .filter((event) => allowedTrackerIds.has(Number(event.tracker_id)))
+    .map((event, index) => {
+      const trackerRow = filteredTrackerRows.find((row) => Number(row.trackerId) === Number(event.tracker_id))
+      return {
+        id: `${event.tracker_id}-${event.time}-${index}`,
+        trackerId: Number(event.tracker_id),
+        immatriculation: trackerRow?.trackerLabel || event.label || event.extra?.tracker_label || `Tracker ${event.tracker_id}`,
+        conducteur: trackerRow?.driverName || 'Non assigné',
+        eventType: event.event || 'unknown',
+        severity: getAlertPriority(event.event),
+        message: event.message || 'Événement sans description',
+        address: event.address || 'Adresse indisponible',
+        time: event.time,
+        date: event.time ? String(event.time).slice(0, 10) : null,
+        raw: event,
+      }
+    })
+    .filter((row) => !filters.eventType || String(row.eventType).toLowerCase() === filters.eventType)
+
+  const missionRows = deliveryOrders
+    .map((item) => {
+      const trackerRow = trackerRows.find((row) => Number(row.trackerId) === Number(item.trackerId))
+      return {
+        id: Number(item.id),
+        trackerId: Number(item.trackerId),
+        immatriculation: item.truckLabel || trackerRow?.trackerLabel || `Tracker ${item.trackerId}`,
+        conducteur: item.driver || trackerRow?.driverName || 'Non assigné',
+        reference: item.reference || '',
+        client: item.client || '',
+        destination: item.destination || '',
+        loadingPoint: item.loadingPoint || '',
+        goods: item.goods || '',
+        quantity: item.quantity || '',
+        status: item.status || 'Prévu',
+        active: Boolean(item.active),
+        date: item.date || null,
+        completedAt: item.completedAt || null,
+        proofStatus: item.proofStatus || 'En attente',
+        proofNote: item.proofNote || '',
+      }
+    })
+    .filter((row) => !filters.trackerId || Number(row.trackerId) === Number(filters.trackerId))
+    .filter((row) => !filters.driver || String(row.conducteur).toLowerCase().includes(filters.driver))
+    .filter((row) => !filters.client || String(row.client).toLowerCase().includes(filters.client))
+    .filter((row) => !filters.destination || String(row.destination).toLowerCase().includes(filters.destination))
+    .filter((row) => !filters.status || String(row.status).toLowerCase() === filters.status)
+
+  return { trackerRows: filteredTrackerRows, alertRows, missionRows, preferredKeys }
+}
+
+function buildFleetSummary(rows = []) {
+  return {
+    totalVehicles: rows.length,
+    activeVehicles: rows.filter((row) => row.status === 'active').length,
+    offlineVehicles: rows.filter((row) => row.status === 'offline').length,
+    movingVehicles: rows.filter((row) => row.movementStatus === 'moving').length,
+    totalTrips: rows.reduce((sum, row) => sum + (row.trajets || 0), 0),
+    totalDistanceKm: Number(rows.reduce((sum, row) => sum + (row.distanceKm || 0), 0).toFixed(1)),
+    totalInactivityH: Number(rows.reduce((sum, row) => sum + (row.inactiviteH || 0), 0).toFixed(2)),
+    averageSpeed: rows.length ? Math.round(rows.reduce((sum, row) => sum + (row.speed || 0), 0) / rows.length) : 0,
+    maxSpeed: rows.length ? Math.max(...rows.map((row) => row.speedMax || 0)) : 0,
+    activeMissions: rows.filter((row) => row.activeMission).length,
+  }
+}
+
+function buildPivotTable({ trackerRows = [], alertRows = [], missionRows = [] }, filters = {}) {
+  const rowsKey = filters.pivotRows || 'tracker'
+  const colsKey = filters.pivotCols || 'event'
+  const metric = filters.metric || 'count'
+
+  const source = colsKey === 'status' || rowsKey === 'status' || metric === 'distance' ? trackerRows : alertRows.length ? alertRows : missionRows
+
+  const pickDimension = (item, key) => {
+    if (key === 'tracker') return item.immatriculation || item.trackerLabel || 'N/A'
+    if (key === 'driver') return item.conducteur || item.driverName || 'Non assigné'
+    if (key === 'event') return item.eventType || 'N/A'
+    if (key === 'status') return item.status || 'N/A'
+    if (key === 'destination') return item.destination || 'N/A'
+    if (key === 'client') return item.client || 'N/A'
+    if (key === 'date') return item.date || (item.time ? String(item.time).slice(0, 10) : 'N/A')
+    return item[key] || 'N/A'
+  }
+
+  const matrix = new Map()
+  const rowLabels = new Set()
+  const colLabels = new Set()
+
+  source.forEach((item) => {
+    const rowLabel = pickDimension(item, rowsKey)
+    const colLabel = pickDimension(item, colsKey)
+    rowLabels.add(rowLabel)
+    colLabels.add(colLabel)
+    const key = `${rowLabel}:::${colLabel}`
+    const previous = matrix.get(key) || 0
+    const increment = metric === 'distance' ? Number(item.distanceKm || 0) : 1
+    matrix.set(key, previous + increment)
+  })
+
+  const columns = Array.from(colLabels)
+  const rows = Array.from(rowLabels).map((label) => {
+    const values = Object.fromEntries(columns.map((column) => [column, Number((matrix.get(`${label}:::${column}`) || 0).toFixed?.(1) ? (matrix.get(`${label}:::${column}`) || 0).toFixed(1) : (matrix.get(`${label}:::${column}`) || 0))]))
+    const total = Object.values(values).reduce((sum, value) => sum + Number(value || 0), 0)
+    return { label, values, total: Number(total.toFixed?.(1) ? total.toFixed(1) : total) }
+  })
+
+  return { rowsKey, colsKey, metric, columns, rows }
+}
+
+async function buildReportsPayload(filters = {}) {
+  const data = await getDashboardData(filters.forceRefresh === true)
+  const hash = await authenticate()
+  const dataset = buildReportDataset(data, filters)
+
+  const fleetRows = await Promise.all(dataset.trackerRows.map(async (row) => {
+    const fuelSensors = await getFuelSensorInfo(hash, row.trackerId)
+    const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
+    return {
+      ...row,
+      carburantL: preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A',
+      vitesseMoy: Math.round(row.speed || 0),
+      vitesseMax: Math.round(row.speedMax || 0),
+    }
+  }))
+
+  const fleetSummary = buildFleetSummary(fleetRows)
+  const alertsSummary = {
+    totalAlerts: dataset.alertRows.length,
+    criticalAlerts: dataset.alertRows.filter((row) => row.severity === 'Critique').length,
+    surveillanceAlerts: dataset.alertRows.filter((row) => row.severity === 'Surveillance').length,
+    exploitationAlerts: dataset.alertRows.filter((row) => row.severity === 'Exploitation').length,
+    byType: dataset.alertRows.reduce((acc, row) => {
+      acc[row.eventType] = (acc[row.eventType] || 0) + 1
+      return acc
+    }, {}),
+  }
+  const missionsSummary = {
+    totalMissions: dataset.missionRows.length,
+    activeMissions: dataset.missionRows.filter((row) => row.active).length,
+    deliveredMissions: dataset.missionRows.filter((row) => row.status === 'Livré').length,
+    pendingProofs: dataset.missionRows.filter((row) => row.proofStatus === 'En attente').length,
+    byStatus: dataset.missionRows.reduce((acc, row) => {
+      acc[row.status] = (acc[row.status] || 0) + 1
+      return acc
+    }, {}),
+  }
+
+  return {
+    filters,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      trajetsTotal: fleetSummary.totalTrips,
+      distanceTotaleKm: fleetSummary.totalDistanceKm,
+      tempsTrajetTotalH: Number(fleetRows.reduce((sum, row) => sum + (row.tempsTrajetH || 0), 0).toFixed(2)),
+      tempsInactiviteTotalH: fleetSummary.totalInactivityH,
+      vitesseMoyenneFlotte: fleetSummary.averageSpeed,
+      vitesseMaxFlotte: fleetSummary.maxSpeed,
+      carburantTotalL: fleetRows.some((row) => row.carburantL !== 'N/A') ? 'Mesure numérique indisponible via API actuelle' : 'N/A',
+    },
+    fleet: { summary: fleetSummary, rows: fleetRows },
+    alerts: { summary: alertsSummary, rows: dataset.alertRows },
+    missions: { summary: missionsSummary, rows: dataset.missionRows },
+    pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters),
+  }
+}
+
 async function getFuelSensorInfo(hash, trackerId) {
   try {
     const sensors = await apiCall('tracker/sensor/list', { hash, tracker_id: trackerId })
@@ -621,49 +861,73 @@ app.post('/api/tracks/batch', async (req, res) => {
   }
 })
 
-app.get('/api/reports', async (_req, res) => {
+app.get('/api/reports', async (req, res) => {
   try {
-    const data = await getDashboardData()
-    const hash = await authenticate()
-    const preferredKeys = [data.dateKeys?.todayKey, data.dateKeys?.yesterdayKey].filter(Boolean)
-
-    const rows = await Promise.all((data.trackers ?? []).map(async (tracker) => {
-      const state = data.states?.[tracker.id] ?? {}
-      const employee = (data.employees ?? []).find((item) => item.tracker_id === tracker.id)
-      const history = (data.history ?? []).filter((event) => event.tracker_id === tracker.id)
-      const distance = pickMileageValue(data.mileage?.[tracker.id] ?? {}, preferredKeys)
-      const speed = state?.gps?.speed ?? 0
-      const inactivityHours = history.filter((event) => event.event === 'excessive_parking').length * 1.5
-      const tripCount = Math.max(history.filter((event) => event.event === 'speedup').length, 1)
-      const fuelSensors = await getFuelSensorInfo(hash, tracker.id)
-      const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
-      const fuelValue = preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A'
-
-      return {
-        immatriculation: tracker.label,
-        conducteur: employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Non assigné',
-        trajets: tripCount,
-        distanceKm: Number(distance.toFixed?.(1) ? distance.toFixed(1) : distance),
-        tempsTrajetH: Number((distance / 45).toFixed(2)),
-        inactiviteH: Number(inactivityHours.toFixed(2)),
-        vitesseMoy: Math.round(speed || 0),
-        vitesseMax: Math.max(Math.round(speed || 0), 80),
-        carburantL: fuelValue,
-        inactiviteParTrajet: Number((inactivityHours / tripCount).toFixed(2)),
-      }
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    const rows = payload.fleet.rows.map((row) => ({
+      immatriculation: row.immatriculation,
+      conducteur: row.conducteur,
+      trajets: row.trajets,
+      distanceKm: row.distanceKm,
+      tempsTrajetH: row.tempsTrajetH,
+      inactiviteH: row.inactiviteH,
+      vitesseMoy: row.vitesseMoy,
+      vitesseMax: row.vitesseMax,
+      carburantL: row.carburantL,
+      inactiviteParTrajet: row.inactiviteParTrajet,
     }))
+    res.json({ summary: payload.summary, rows })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
 
-    const summary = {
-      trajetsTotal: rows.reduce((sum, row) => sum + row.trajets, 0),
-      distanceTotaleKm: Number(rows.reduce((sum, row) => sum + row.distanceKm, 0).toFixed(1)),
-      tempsTrajetTotalH: Number(rows.reduce((sum, row) => sum + row.tempsTrajetH, 0).toFixed(2)),
-      tempsInactiviteTotalH: Number(rows.reduce((sum, row) => sum + row.inactiviteH, 0).toFixed(2)),
-      vitesseMoyenneFlotte: rows.length ? Math.round(rows.reduce((sum, row) => sum + row.vitesseMoy, 0) / rows.length) : 0,
-      vitesseMaxFlotte: rows.length ? Math.max(...rows.map((row) => row.vitesseMax)) : 0,
-      carburantTotalL: rows.some((row) => row.carburantL !== 'N/A') ? 'Mesure numérique indisponible via API actuelle' : 'N/A',
-    }
+app.get('/api/reports/summary', async (req, res) => {
+  try {
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    res.json({ summary: payload.summary, fleet: payload.fleet.summary, alerts: payload.alerts.summary, missions: payload.missions.summary, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
 
-    res.json({ summary, rows })
+app.get('/api/reports/fleet', async (req, res) => {
+  try {
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    res.json({ summary: payload.fleet.summary, rows: payload.fleet.rows, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/alerts', async (req, res) => {
+  try {
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    res.json({ summary: payload.alerts.summary, rows: payload.alerts.rows, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/missions', async (req, res) => {
+  try {
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    res.json({ summary: payload.missions.summary, rows: payload.missions.rows, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/pivot', async (req, res) => {
+  try {
+    const filters = parseReportFilters(req.query)
+    const payload = await buildReportsPayload(filters)
+    res.json({ pivot: payload.pivot, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
