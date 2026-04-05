@@ -127,15 +127,22 @@ function formatDayKey(value) {
 function pickMileageValue(mileageByDay = {}, preferredKeys = []) {
   for (const key of preferredKeys) {
     const value = Number(mileageByDay?.[key]?.mileage)
-    if (Number.isFinite(value)) return value
+    if (Number.isFinite(value) && value > 0) return value
   }
 
-  const fallback = Object.entries(mileageByDay)
-    .sort(([a], [b]) => String(b).localeCompare(String(a)))
-    .map(([, row]) => Number(row?.mileage))
-    .find(Number.isFinite)
+  const datedEntries = Object.entries(mileageByDay)
+    .map(([key, row]) => ({
+      key,
+      mileage: Number(row?.mileage),
+      ts: Date.parse(`${key}T00:00:00Z`),
+    }))
+    .filter((entry) => Number.isFinite(entry.mileage))
+    .sort((a, b) => b.ts - a.ts)
 
-  return fallback || 0
+  const latestPositive = datedEntries.find((entry) => entry.mileage > 0)
+  if (latestPositive) return latestPositive.mileage
+
+  return datedEntries[0]?.mileage || 0
 }
 
 function readDeliveryOrders() {
