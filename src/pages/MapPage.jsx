@@ -44,6 +44,7 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
   const [trackData, setTrackData] = useState({ points: [], segments: [], events: [] })
   const [prefetchReady, setPrefetchReady] = useState(false)
   const trackCacheRef = useRef(new Map())
+  const inflightCacheRef = useRef(new Map())
 
   const visibleTrackers = useMemo(() => filteredTrackers.filter((tracker) => {
     if (!tracker.state?.gps?.location) return false
@@ -57,6 +58,43 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
     ? [visibleTrackers[0].state.gps.location.lat, visibleTrackers[0].state.gps.location.lng]
     : [7.54, -5.55]
 
+  function getWindow(periodValue) {
+    const now = new Date()
+    const fromDate = new Date(now)
+    if (periodValue === '1h') fromDate.setHours(now.getHours() - 1)
+    if (periodValue === '6h') fromDate.setHours(now.getHours() - 6)
+    if (periodValue === '24h') fromDate.setHours(now.getHours() - 24)
+    if (periodValue === 'today') fromDate.setHours(0, 0, 0, 0)
+    if (periodValue === '48h') fromDate.setHours(now.getHours() - 48)
+    return {
+      from: fromDate.toISOString().slice(0, 19).replace('T', ' '),
+      to: now.toISOString().slice(0, 19).replace('T', ' '),
+    }
+  }
+
+  function fetchTrack(trackerId, periodValue) {
+    const cacheKey = `${trackerId}_${periodValue}`
+    if (trackCacheRef.current.has(cacheKey)) {
+      return Promise.resolve(trackCacheRef.current.get(cacheKey))
+    }
+    if (inflightCacheRef.current.has(cacheKey)) {
+      return inflightCacheRef.current.get(cacheKey)
+    }
+    const { from, to } = getWindow(periodValue)
+    const request = loadTracks({ trackerId, from, to })
+      .then((data) => {
+        trackCacheRef.current.set(cacheKey, data)
+        inflightCacheRef.current.delete(cacheKey)
+        return data
+      })
+      .catch((error) => {
+        inflightCacheRef.current.delete(cacheKey)
+        throw error
+      })
+    inflightCacheRef.current.set(cacheKey, request)
+    return request
+  }
+
   useEffect(() => {
     const trackerId = selectedTrackId || visibleTrackers[0]?.id
     if (!trackerId) {
@@ -64,79 +102,41 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
       return
     }
 
-    const now = new Date()
-    const fromDate = new Date(now)
-    if (period === '1h') fromDate.setHours(now.getHours() - 1)
-    if (period === '6h') fromDate.setHours(now.getHours() - 6)
-    if (period === '24h') fromDate.setHours(now.getHours() - 24)
-    if (period === 'today') fromDate.setHours(0, 0, 0, 0)
-    if (period === '48h') fromDate.setHours(now.getHours() - 48)
-
-    const from = fromDate.toISOString().slice(0, 19).replace('T', ' ')
-    const to = now.toISOString().slice(0, 19).replace('T', ' ')
     const cacheKey = `${trackerId}_${period}`
-
     if (trackCacheRef.current.has(cacheKey)) {
       setTrackData(trackCacheRef.current.get(cacheKey))
       return
     }
 
-    loadTracks({ trackerId, from, to }).then((data) => {
-      trackCacheRef.current.set(cacheKey, data)
-      setTrackData(data)
-    }).catch(() => setTrackData({ points: [], segments: [], events: [] }))
+    fetchTrack(trackerId, period)
+      .then(setTrackData)
+      .catch(() => setTrackData({ points: [], segments: [], events: [] }))
   }, [selectedTrackId, period, visibleTrackers])
 
   useEffect(() => {
     let cancelled = false
 
     async function warmup() {
-      const now = new Date()
-      const primaryTrackers = visibleTrackers.slice(0, 8)
-      const primaryPeriods = ['1h', '6h']
-      const jobs = []
-
-      for (const tracker of primaryTrackers) {
-        for (const p of primaryPeriods) {
-          const cacheKey = `${tracker.id}_${p}`
-          if (trackCacheRef.current.has(cacheKey)) continue
-          const fromDate = new Date(now)
-          if (p === '1h') fromDate.setHours(now.getHours() - 1)
-          if (p === '6h') fromDate.setHours(now.getHours() - 6)
-          jobs.push(
-            loadTracks({
-              trackerId: tracker.id,
-              from: fromDate.toISOString().slice(0, 19).replace('T', ' '),
-              to: now.toISOString().slice(0, 19).replace('T', ' '),
-            }).then((data) => {
-              trackCacheRef.current.set(cacheKey, data)
-            }).catch(() => {})
-          )
-        }
-      }
-
-      await Promise.all(jobs)
-      if (!cancelled) {
+      const primaryTrackers = visibleTrackers.slice(0, 6)
+      if (!primaryTrackers.length) {
         setPrefetchReady(true)
-        const activeTrackerId = selectedTrackId || primaryTrackers[0]?.id
-        const activeCacheKey = `${activeTrackerId}_${period}`
-        if (trackCacheRef.current.has(activeCacheKey)) {
-          setTrackData(trackCacheRef.current.get(activeCacheKey))
-        }
+        return
       }
 
-      primaryTrackers.slice(0, 5).forEach((tracker) => {
-        const cacheKey = `${tracker.id}_24h`
-        if (trackCacheRef.current.has(cacheKey)) return
-        const fromDate = new Date(now)
-        fromDate.setHours(now.getHours() - 24)
-        loadTracks({
-          trackerId: tracker.id,
-          from: fromDate.toISOString().slice(0, 19).replace('T', ' '),
-          to: now.toISOString().slice(0, 19).replace('T', ' '),
-        }).then((data) => {
-          trackCacheRef.current.set(cacheKey, data)
-        }).catch(() => {})
+      const activeTrackerId = selectedTrackId || primaryTrackers[0]?.id
+      try {
+        await fetchTrack(activeTrackerId, period)
+        if (!cancelled) {
+          setPrefetchReady(true)
+          setTrackData(trackCacheRef.current.get(`${activeTrackerId}_${period}`) || { points: [], segments: [], events: [] })
+        }
+      } catch {
+        if (!cancelled) setPrefetchReady(true)
+      }
+
+      primaryTrackers.forEach((tracker) => {
+        if (tracker.id === activeTrackerId) return
+        fetchTrack(tracker.id, period).catch(() => {})
       })
     }
 
