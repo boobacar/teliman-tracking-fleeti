@@ -411,18 +411,51 @@ app.delete('/api/delivery-orders/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+async function readTrackBundle(hash, trackerId, from, to) {
+  const [segments, points, events] = await Promise.all([
+    apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
+    apiCall('track/read', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
+    apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
+  ])
+
+  return {
+    trackerId,
+    from,
+    to,
+    segments: segments.list ?? [],
+    points: points.list ?? [],
+    events: events.list ?? [],
+  }
+}
+
 app.get('/api/tracks', async (req, res) => {
   try {
     const trackerId = Number(req.query.trackerId)
     const from = req.query.from || new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
     const to = req.query.to || new Date().toISOString().slice(0, 19).replace('T', ' ')
     const hash = await authenticate()
-    const [segments, points, events] = await Promise.all([
-      apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
-      apiCall('track/read', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
-      apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
-    ])
-    res.json({ trackerId, from, to, segments: segments.list ?? [], points: points.list ?? [], events: events.list ?? [] })
+    res.json(await readTrackBundle(hash, trackerId, from, to))
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/tracks/batch', async (req, res) => {
+  try {
+    const trackerIds = Array.isArray(req.body.trackerIds) ? req.body.trackerIds.map(Number).filter(Boolean).slice(0, 8) : []
+    const period = String(req.body.period || '1h')
+    const now = new Date()
+    const fromDate = new Date(now)
+    if (period === '1h') fromDate.setHours(now.getHours() - 1)
+    if (period === '6h') fromDate.setHours(now.getHours() - 6)
+    if (period === '24h') fromDate.setHours(now.getHours() - 24)
+    if (period === 'today') fromDate.setHours(0, 0, 0, 0)
+    if (period === '48h') fromDate.setHours(now.getHours() - 48)
+    const from = req.body.from || fromDate.toISOString().slice(0, 19).replace('T', ' ')
+    const to = req.body.to || now.toISOString().slice(0, 19).replace('T', ' ')
+    const hash = await authenticate()
+    const items = await Promise.all(trackerIds.map((trackerId) => readTrackBundle(hash, trackerId, from, to).catch(() => ({ trackerId, from, to, segments: [], points: [], events: [] }))))
+    res.json({ from, to, period, items })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }

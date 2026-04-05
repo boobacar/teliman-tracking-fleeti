@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CircleMarker, LayersControl, MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet'
-import { loadTracks } from '../lib/fleeti'
+import { loadTracks, loadTracksBatch } from '../lib/fleeti'
 
 function getPinState(tracker) {
   const connection = tracker.state?.connection_status
@@ -134,10 +134,20 @@ export function MapPage({ filteredTrackers, setSelectedTrackerId, deliveryOrders
         if (!cancelled) setPrefetchReady(true)
       }
 
-      primaryTrackers.forEach((tracker) => {
-        if (tracker.id === activeTrackerId) return
-        fetchTrack(tracker.id, period).catch(() => {})
-      })
+      const secondaryTrackers = primaryTrackers.filter((tracker) => tracker.id !== activeTrackerId)
+      if (secondaryTrackers.length) {
+        loadTracksBatch({ trackerIds: secondaryTrackers.map((tracker) => tracker.id), period })
+          .then((payload) => {
+            ;(payload.items || []).forEach((item) => {
+              trackCacheRef.current.set(`${item.trackerId}_${period}`, item)
+            })
+          })
+          .catch(() => {
+            secondaryTrackers.forEach((tracker) => {
+              fetchTrack(tracker.id, period).catch(() => {})
+            })
+          })
+      }
     }
 
     setPrefetchReady(false)

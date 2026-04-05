@@ -44,3 +44,4 @@ export const deleteDeliveryOrder = async (id) => {
 export const loadDeliveryOrder = (id) => getJson(`/api/delivery-order/${id}`)
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)
