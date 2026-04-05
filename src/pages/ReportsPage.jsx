@@ -124,28 +124,61 @@ export function ReportsPage() {
   const [missionsPayload, setMissionsPayload] = useState({ summary: {}, rows: [] })
   const [pivotPayload, setPivotPayload] = useState({ pivot: { columns: [], rows: [] } })
 
-  const query = useMemo(() => buildQuery(filters), [filters])
+  const summaryQuery = useMemo(() => buildQuery({
+    period: filters.period,
+    trackerId: filters.trackerId,
+    driver: filters.driver,
+    status: filters.status,
+    eventType: filters.eventType,
+    client: filters.client,
+    destination: filters.destination,
+  }), [filters])
+
+  const activeQuery = useMemo(() => buildQuery(filters), [filters])
 
   useEffect(() => {
     let cancelled = false
 
-    async function load() {
+    async function loadSummary() {
+      try {
+        const summary = await loadReportSummary(summaryQuery)
+        if (!cancelled) setSummaryPayload(summary)
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Erreur de chargement des rapports')
+      }
+    }
+
+    loadSummary()
+    return () => {
+      cancelled = true
+    }
+  }, [summaryQuery])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadActiveReport() {
       setLoading(true)
       setError('')
       try {
-        const [summary, fleet, alerts, missions, pivot] = await Promise.all([
-          loadReportSummary(query),
-          loadReportFleet(query),
-          loadReportAlerts(query),
-          loadReportMissions(query),
-          loadReportPivot(query),
-        ])
-        if (cancelled) return
-        setSummaryPayload(summary)
-        setFleetPayload(fleet)
-        setAlertsPayload(alerts)
-        setMissionsPayload(missions)
-        setPivotPayload(pivot)
+        if (reportType === 'overview') {
+          if (!cancelled) setLoading(false)
+          return
+        }
+
+        if (reportType === 'fleet') {
+          const payload = await loadReportFleet(activeQuery)
+          if (!cancelled) setFleetPayload(payload)
+        } else if (reportType === 'alerts') {
+          const payload = await loadReportAlerts(activeQuery)
+          if (!cancelled) setAlertsPayload(payload)
+        } else if (reportType === 'missions') {
+          const payload = await loadReportMissions(activeQuery)
+          if (!cancelled) setMissionsPayload(payload)
+        } else if (reportType === 'pivot') {
+          const payload = await loadReportPivot(activeQuery)
+          if (!cancelled) setPivotPayload(payload)
+        }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Erreur de chargement des rapports')
       } finally {
@@ -153,11 +186,11 @@ export function ReportsPage() {
       }
     }
 
-    load()
+    loadActiveReport()
     return () => {
       cancelled = true
     }
-  }, [query])
+  }, [activeQuery, reportType])
 
   const overviewCards = [
     { label: 'Distance totale', value: `${summaryPayload?.summary?.distanceTotaleKm ?? 0} km`, helper: 'sur la période' },
@@ -195,7 +228,7 @@ export function ReportsPage() {
         <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
       </div>
       {reportType === 'pivot' && <div className="reports-filter-grid reports-pivot-grid"><select value={filters.pivotRows} onChange={(e) => setFilters((current) => ({ ...current, pivotRows: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} lignes</option>)}</select><select value={filters.pivotCols} onChange={(e) => setFilters((current) => ({ ...current, pivotCols: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} colonnes</option>)}</select><select value={filters.metric} onChange={(e) => setFilters((current) => ({ ...current, metric: e.target.value }))}>{PIVOT_METRICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>}
-      {loading && <div className="info-banner">Chargement des rapports…</div>}
+      {loading && reportType !== 'overview' && <div className="info-banner">Chargement du rapport {REPORT_TYPES.find((item) => item.value === reportType)?.label?.toLowerCase()}…</div>}
       {error && <div className="error-banner">{error}</div>}
     </section>
 

@@ -432,15 +432,25 @@ function buildPivotTable({ trackerRows = [], alertRows = [], missionRows = [] },
 
 async function buildReportsPayload(filters = {}) {
   const data = await getDashboardData(filters.forceRefresh === true)
-  const hash = await authenticate()
   const dataset = buildReportDataset(data, filters)
+  const includeFuelSensors = filters.includeFuelSensors === true
+
+  let hash = null
+  if (includeFuelSensors && dataset.trackerRows.length) {
+    hash = await authenticate()
+  }
 
   const fleetRows = await Promise.all(dataset.trackerRows.map(async (row) => {
-    const fuelSensors = await getFuelSensorInfo(hash, row.trackerId)
-    const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
+    let carburantL = 'N/A'
+    if (includeFuelSensors && hash) {
+      const fuelSensors = await getFuelSensorInfo(hash, row.trackerId)
+      const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
+      carburantL = preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A'
+    }
+
     return {
       ...row,
-      carburantL: preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A',
+      carburantL,
       vitesseMoy: Math.round(row.speed || 0),
       vitesseMax: Math.round(row.speedMax || 0),
     }
@@ -870,7 +880,7 @@ app.post('/api/tracks/batch', async (req, res) => {
 
 app.get('/api/reports', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
     const payload = await buildReportsPayload(filters)
     const rows = payload.fleet.rows.map((row) => ({
       immatriculation: row.immatriculation,
@@ -892,7 +902,7 @@ app.get('/api/reports', async (req, res) => {
 
 app.get('/api/reports/summary', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
     const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.summary, fleet: payload.fleet.summary, alerts: payload.alerts.summary, missions: payload.missions.summary, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
@@ -902,7 +912,7 @@ app.get('/api/reports/summary', async (req, res) => {
 
 app.get('/api/reports/fleet', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
     const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.fleet.summary, rows: payload.fleet.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
@@ -912,7 +922,7 @@ app.get('/api/reports/fleet', async (req, res) => {
 
 app.get('/api/reports/alerts', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
     const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.alerts.summary, rows: payload.alerts.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
@@ -922,7 +932,7 @@ app.get('/api/reports/alerts', async (req, res) => {
 
 app.get('/api/reports/missions', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
     const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.missions.summary, rows: payload.missions.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
@@ -932,7 +942,7 @@ app.get('/api/reports/missions', async (req, res) => {
 
 app.get('/api/reports/pivot', async (req, res) => {
   try {
-    const filters = parseReportFilters(req.query)
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
     const payload = await buildReportsPayload(filters)
     res.json({ pivot: payload.pivot, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
