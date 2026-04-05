@@ -336,6 +336,41 @@ input {
   gap: 8px;
 }
 
+.map-focus-banner {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.map-focus-banner > div,
+.map-alert-pill {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.72);
+  border-radius: 18px;
+  padding: 12px 14px;
+}
+
+.map-focus-banner strong,
+.map-alert-pill strong {
+  display: block;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.map-focus-banner span,
+.map-alert-pill span {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.map-alert-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .legend-dot {
   width: 10px;
   height: 10px;
