@@ -371,6 +371,32 @@ input {
   margin-bottom: 14px;
 }
 
+.map-v3-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.map-v3-card {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(15, 23, 42, 0.62));
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.map-v3-card strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.map-v3-card span {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
 .legend-dot {
   width: 10px;
   height: 10px;
