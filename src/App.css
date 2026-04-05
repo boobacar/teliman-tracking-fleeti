@@ -397,6 +397,31 @@ input {
   font-size: 13px;
 }
 
+.map-v3-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.map-v3-timeline-item {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.66);
+  border-radius: 18px;
+  padding: 12px 14px;
+}
+
+.map-v3-timeline-item strong {
+  display: block;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.map-v3-timeline-item span {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
 .legend-dot {
   width: 10px;
   height: 10px;
