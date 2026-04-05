@@ -321,6 +321,12 @@ input {
   width: 100%;
 }
 
+.map-filter-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .map-legend-row {
   display: flex;
   gap: 16px;
