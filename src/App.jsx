@@ -30,6 +30,27 @@ L.Icon.Default.mergeOptions({
 const scoreRisk = (tracker) => (tracker.eventCounts.speedup || 0) * 4 + (tracker.eventCounts.excessive_parking || 0) * 2 + ((tracker.state.battery_level || 100) < 20 ? 5 : 0)
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
 
+function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
+  for (const key of preferredKeys) {
+    const value = Number(mileageByDay?.[key]?.mileage)
+    if (Number.isFinite(value) && value > 0) return value
+  }
+
+  const datedEntries = Object.entries(mileageByDay)
+    .map(([key, row]) => ({
+      key,
+      mileage: Number(row?.mileage),
+      ts: Date.parse(`${key}T00:00:00Z`),
+    }))
+    .filter((entry) => Number.isFinite(entry.mileage))
+    .sort((a, b) => b.ts - a.ts)
+
+  const latestPositive = datedEntries.find((entry) => entry.mileage > 0)
+  if (latestPositive) return latestPositive.mileage
+
+  return datedEntries[0]?.mileage || 0
+}
+
 function App() {
   const [dataset, setDataset] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -74,6 +95,8 @@ function App() {
 
   const enrichedTrackers = useMemo(() => {
     const employees = Object.fromEntries((dataset?.employees ?? []).map((e) => [e.tracker_id, e]))
+    const preferredMileageKeys = [dataset?.dateKeys?.todayKey, dataset?.dateKeys?.yesterdayKey].filter(Boolean)
+
     return (dataset?.trackers ?? []).map((tracker) => {
       const state = dataset?.states?.[tracker.id] ?? {}
       const mileage = dataset?.mileage?.[tracker.id] ?? {}
@@ -86,7 +109,7 @@ function App() {
         mileage,
         employeeName: employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Non assigné',
         employeePhone: employee?.phone || 'N/A',
-        latestDayMileage: mileage['2026-04-02']?.mileage ?? mileage['2026-04-01']?.mileage ?? 0,
+        latestDayMileage: pickLatestMileage(mileage, preferredMileageKeys),
         events,
         eventCounts,
         statusColor: statusColor(state.connection_status),
