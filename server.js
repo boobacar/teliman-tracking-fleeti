@@ -145,6 +145,13 @@ function pickMileageValue(mileageByDay = {}, preferredKeys = []) {
   return datedEntries[0]?.mileage || 0
 }
 
+function getAlertSeverity(eventType) {
+  if (eventType === 'speedup') return 'Critique'
+  if (eventType === 'fuel_level_leap') return 'Surveillance'
+  if (eventType === 'excessive_parking') return 'Exploitation'
+  return 'Info'
+}
+
 function readDeliveryOrders() {
   try {
     return JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
@@ -324,7 +331,7 @@ function buildReportDataset(data, filters = {}) {
         immatriculation: trackerRow?.trackerLabel || event.label || event.extra?.tracker_label || `Tracker ${event.tracker_id}`,
         conducteur: trackerRow?.driverName || 'Non assigné',
         eventType: event.event || 'unknown',
-        severity: getAlertPriority(event.event),
+        severity: getAlertSeverity(event.event),
         message: event.message || 'Événement sans description',
         address: event.address || 'Adresse indisponible',
         time: event.time,
