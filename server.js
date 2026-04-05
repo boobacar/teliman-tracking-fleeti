@@ -59,14 +59,17 @@ function validateRequiredEnv() {
 }
 
 function buildCorsOptions() {
-  if (!ALLOWED_ORIGINS.length) {
-    return { origin: false }
-  }
+  const fallbackOrigins = [
+    'https://teliman-tracking-fleeti.vercel.app',
+    'https://www.telimanlogistique.com',
+    'https://telimanlogistique.com',
+  ]
+  const allowedOrigins = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : fallbackOrigins
 
   return {
     origin(origin, callback) {
       if (!origin) return callback(null, true)
-      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+      if (allowedOrigins.includes(origin)) return callback(null, true)
       return callback(new Error('Origin not allowed by CORS'))
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
