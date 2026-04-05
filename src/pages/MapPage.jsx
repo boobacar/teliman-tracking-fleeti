@@ -30,9 +30,11 @@ function getAlertPriority(eventType) {
 
 function createTrackerIcon(tracker, hasMission = false, isActive = false) {
   const state = getPinState(tracker)
-  const heading = tracker.state?.gps?.heading ?? 0
-  const movingArrow = tracker.state?.movement_status === 'moving'
-    ? `<div class="pin-heading-strong ${isActive ? 'active' : ''}" style="transform: translateX(-50%) rotate(${heading}deg)"><span>⬆</span></div>`
+  const heading = Number(tracker.state?.gps?.heading ?? tracker.state?.heading ?? 0)
+  const speed = Number(tracker.state?.gps?.speed ?? 0)
+  const isMoving = tracker.state?.movement_status === 'moving' || speed > 0
+  const movingArrow = isMoving
+    ? `<div class="pin-heading-strong ${isActive ? 'active' : ''}" style="transform: translateX(-50%) rotate(${heading}deg)"><span>➤</span></div>`
     : ''
 
   return L.divIcon({
