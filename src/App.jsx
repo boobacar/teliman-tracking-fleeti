@@ -129,7 +129,6 @@ function App() {
   }), [enrichedTrackers, search, filter])
   const isEmptySearch = !loading && !error && filteredTrackers.length === 0
 
-  const selectedTracker = filteredTrackers.find((t) => t.id === selectedTrackerId) || enrichedTrackers.find((t) => t.id === selectedTrackerId) || filteredTrackers[0] || enrichedTrackers[0]
   const importantEvents = useMemo(() => ((dataset?.history?.length ? dataset.history : fallbackEvents)
     .filter((event) => ['speedup', 'fuel_level_leap', 'excessive_parking'].includes(event.event))
     .sort((a, b) => new Date(b.time) - new Date(a.time))), [dataset])
@@ -158,11 +157,6 @@ function App() {
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
-  const priorityActions = [
-    { label: 'Vérifier offline', value: offlineTrackers[0]?.label || 'Aucune unité', route: offlineTrackers[0] ? `/tracker/${offlineTrackers[0].id}` : '/trackers' },
-    { label: 'Suivre top risque', value: riskRanking[0]?.label || 'Aucune unité', route: riskRanking[0] ? `/tracker/${riskRanking[0].id}` : '/analytics' },
-    { label: 'Traiter alerte', value: importantEvents[0]?.label || importantEvents[0]?.extra?.tracker_label || 'Aucune alerte', route: importantEvents[0] ? `/tracker/${importantEvents[0].tracker_id}` : '/alerts' },
-  ]
 
   return (
     <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} filter={filter} setFilter={setFilter} dataset={dataset}>
@@ -185,25 +179,6 @@ function App() {
         </Routes>
       </Suspense>
 
-      <section className="dashboard-grid premium-grid phase2-grid">
-        <div className="panel">
-          <div className="panel-header"><div><h3>Priorités du jour</h3><p>Raccourcis opérateur immédiats</p></div></div>
-          <div className="driver-ranking">{priorityActions.map((action) => <button key={action.label} className="driver-rank-row event-button" onClick={() => window.location.assign(action.route)}><strong>→</strong><div><span>{action.label}</span><small>{action.value}</small></div></button>)}</div>
-        </div>
-        <div className="panel">
-          <div className="panel-header"><div><h3>Workflow rapide</h3><p>Chemins métier les plus utilisés</p></div></div>
-          <div className="driver-ranking"><button className="driver-rank-row event-button" onClick={() => window.location.assign('/alerts')}><strong>1</strong><div><span>Contrôler alertes</span><small>centre critique</small></div></button><button className="driver-rank-row event-button" onClick={() => window.location.assign('/map')}><strong>2</strong><div><span>Ouvrir la carte</span><small>vision terrain</small></div></button><button className="driver-rank-row event-button" onClick={() => window.location.assign('/trackers')}><strong>3</strong><div><span>Consulter trackers</span><small>inventaire flotte</small></div></button></div>
-        </div>
-      </section>
-
-      <section className="command-center-grid">
-        <div className="panel command-center-panel">
-          <div className="panel-header"><div><h3>Centre de pilotage</h3><p>Unité prioritaire, action rapide et résumé opérationnel</p></div></div>
-          {selectedTracker ? <div className="command-center-card"><div className="command-center-top"><div><strong>{selectedTracker.label}</strong><p>{selectedTracker.employeeName}</p></div><span className="status-pill" style={{ background: `${selectedTracker.statusColor}22`, color: selectedTracker.statusColor }}>{selectedTracker.state?.connection_status || 'unknown'}</span></div><div className="command-center-metrics"><div><span>Km</span><strong>{selectedTracker.latestDayMileage}</strong></div><div><span>Risque</span><strong>{selectedTracker.riskScore}</strong></div><div><span>Vitesse</span><strong>{selectedTracker.state?.gps?.speed ?? 0}</strong></div><div><span>Events</span><strong>{selectedTracker.events.length}</strong></div></div><div className="command-center-actions"><button className="primary-btn small-btn" onClick={() => window.location.assign(`/tracker/${selectedTracker.id}`)}>Voir la fiche</button><button className="ghost-btn" onClick={() => window.location.assign('/map')}>Ouvrir la carte</button></div></div> : <p>Aucune unité sélectionnée.</p>}
-        </div>
-        <div className="panel signal-panel"><div className="panel-header"><div><h3>Signaux critiques</h3><p>Les 4 événements les plus importants</p></div></div><div className="signal-stack">{importantEvents.slice(0, 4).map((event) => <button key={`${event.tracker_id}-${event.time}`} className="signal-card" onClick={() => window.location.assign(`/tracker/${event.tracker_id}`)}><div className="signal-card-top"><strong>{event.label || event.extra?.tracker_label}</strong><span>{event.event}</span></div><p>{event.message}</p><small>{new Date(event.time).toLocaleString()}</small></button>)}</div></div>
-        <div className="panel action-panel"><div className="panel-header"><div><h3>Résumé actionnable</h3><p>Ce qu’un fleet manager doit voir vite</p></div></div><div className="action-list"><div className="action-row"><span>Trackers offline</span><strong>{stats.offline}</strong></div><div className="action-row"><span>Top risque</span><strong>{riskRanking[0]?.label || '-'}</strong></div><div className="action-row"><span>Top chauffeur</span><strong>{topDrivers[0]?.name || '-'}</strong></div><div className="action-row"><span>Alertes critiques</span><strong>{importantEvents.length}</strong></div></div></div>
-      </section>
     </Layout>
   )
 }
