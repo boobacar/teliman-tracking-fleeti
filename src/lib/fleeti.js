@@ -29,6 +29,14 @@ export const loadReportAlerts = (query = '') => getJson(`/api/reports/alerts${qu
 export const loadReportMissions = (query = '') => getJson(`/api/reports/missions${query ? `?${query}` : ''}`)
 export const loadReportPivot = (query = '') => getJson(`/api/reports/pivot${query ? `?${query}` : ''}`)
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
+export const loadMasterData = () => getJson('/api/master-data')
+export const addMasterDataItem = (listName, value) => postJson(`/api/master-data/${listName}`, { value })
+export const deleteMasterDataItem = async (listName, value) => {
+  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?value=${encodeURIComponent(value)}`, { method: 'DELETE' })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
 export const createDeliveryOrder = (payload) => postJson('/api/delivery-orders', payload)
 export const updateDeliveryOrder = async (id, payload) => {
   const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, {

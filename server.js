@@ -11,6 +11,7 @@ dotenv.config()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
+const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const API_BASE = process.env.FLEETI_API_BASE
@@ -162,6 +163,26 @@ function readDeliveryOrders() {
 
 function writeDeliveryOrders(rows) {
   fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(rows, null, 2))
+}
+
+function readMasterData() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8'))
+    return {
+      clients: Array.isArray(payload.clients) ? payload.clients : [],
+      goods: Array.isArray(payload.goods) ? payload.goods : [],
+    }
+  } catch {
+    return { clients: [], goods: [] }
+  }
+}
+
+function writeMasterData(data) {
+  const payload = {
+    clients: Array.from(new Set((data.clients || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    goods: Array.from(new Set((data.goods || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+  }
+  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
 }
 
 function ensureValidTrackerId(value) {
@@ -743,6 +764,36 @@ app.get('/api/fleeti/live', async (_req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
+})
+
+app.get('/api/master-data', (_req, res) => {
+  res.json(readMasterData())
+})
+
+app.post('/api/master-data/:listName', (req, res) => {
+  const listName = String(req.params.listName || '')
+  if (!['clients', 'goods'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+
+  const value = String(req.body?.value || '').trim()
+  if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
+
+  const data = readMasterData()
+  data[listName] = Array.from(new Set([...(data[listName] || []), value]))
+  writeMasterData(data)
+  res.status(201).json({ ok: true, data })
+})
+
+app.delete('/api/master-data/:listName', (req, res) => {
+  const listName = String(req.params.listName || '')
+  if (!['clients', 'goods'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+
+  const value = String(req.query.value || '').trim()
+  if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
+
+  const data = readMasterData()
+  data[listName] = (data[listName] || []).filter((item) => item !== value)
+  writeMasterData(data)
+  res.json({ ok: true, data })
 })
 
 app.get('/api/delivery-orders', (_req, res) => {

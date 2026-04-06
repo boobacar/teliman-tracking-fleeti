@@ -19,7 +19,7 @@ const initialForm = {
   active: true,
 }
 
-export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData }) {
+export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, masterData = { clients: [], goods: [] } }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -120,9 +120,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}
           </select>
           <input placeholder="Référence BL" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required />
-          <input placeholder="Client" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required />
+          <select value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required>
+            <option value="">Sélectionner un client</option>
+            {(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
+          </select>
           <input placeholder="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required />
-          <input placeholder="Marchandise" value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })} />
+          <select value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}>
+            <option value="">Sélectionner une marchandise</option>
+            {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
+          </select>
           <input placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             <option>Prévu</option>
