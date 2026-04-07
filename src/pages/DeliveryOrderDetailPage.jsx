@@ -1,15 +1,44 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
+import { deleteDeliveryOrder, loadDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
 
 export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const order = useMemo(() => deliveryOrders.find((item) => String(item.id) === String(id)), [deliveryOrders, id])
+  const listOrder = useMemo(() => deliveryOrders.find((item) => String(item.id) === String(id)), [deliveryOrders, id])
+  const [fallbackOrder, setFallbackOrder] = useState(null)
+  const order = listOrder || fallbackOrder
   const [saving, setSaving] = useState(false)
+  const [loadingOrder, setLoadingOrder] = useState(false)
   const [form, setForm] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function ensureOrder() {
+      if (listOrder) {
+        setFallbackOrder(null)
+        return
+      }
+
+      setLoadingOrder(true)
+      try {
+        const payload = await loadDeliveryOrder(id)
+        if (!cancelled) setFallbackOrder(payload)
+      } catch {
+        if (!cancelled) setFallbackOrder(null)
+      } finally {
+        if (!cancelled) setLoadingOrder(false)
+      }
+    }
+
+    ensureOrder()
+    return () => {
+      cancelled = true
+    }
+  }, [id, listOrder])
 
   useEffect(() => {
     if (order) {
@@ -28,6 +57,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     }
   }, [order])
 
+  if (!order && loadingOrder) {
+    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Chargement du bon...</p></div></div></section>
+  }
+
   if (!order) {
     return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div></section>
   }
@@ -37,6 +70,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     try {
       await updateDeliveryOrder(order.id, { [field]: value })
       await refreshData()
+      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
+      if (refreshed) setFallbackOrder(refreshed)
     } finally {
       setSaving(false)
     }
@@ -47,6 +82,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     try {
       await updateDeliveryOrder(order.id, payload)
       await refreshData()
+      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
+      if (refreshed) setFallbackOrder(refreshed)
     } finally {
       setSaving(false)
     }
@@ -69,6 +106,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         notes: form.notes,
       })
       await refreshData()
+      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
+      if (refreshed) setFallbackOrder(refreshed)
     } finally {
       setSaving(false)
     }
