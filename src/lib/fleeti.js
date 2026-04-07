@@ -64,7 +64,10 @@ export const deleteDeliveryOrder = async (id) => {
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
 }
-export const loadDeliveryOrder = (id) => getJson(`/api/delivery-order/${id}`)
+export const loadDeliveryOrder = async (id) => {
+  const data = await getJson(`/api/delivery-order/${id}`)
+  return data?.item || null
+}
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
 export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)
