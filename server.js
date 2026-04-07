@@ -279,6 +279,7 @@ function parseReportFilters(query = {}) {
     eventType: String(query.eventType || '').trim().toLowerCase(),
     client: String(query.client || '').trim().toLowerCase(),
     destination: String(query.destination || '').trim().toLowerCase(),
+    goods: String(query.goods || '').trim().toLowerCase(),
     pivotRows: String(query.pivotRows || 'tracker').trim().toLowerCase(),
     pivotCols: String(query.pivotCols || 'event').trim().toLowerCase(),
     metric: String(query.metric || 'count').trim().toLowerCase(),
@@ -381,6 +382,8 @@ function buildReportDataset(data, filters = {}) {
         status: item.status || 'Prévu',
         active: Boolean(item.active),
         date: item.date || null,
+        departureDateTime: item.departureDateTime || null,
+        arrivalDateTime: item.arrivalDateTime || null,
         completedAt: item.completedAt || null,
         proofStatus: item.proofStatus || 'En attente',
         proofNote: item.proofNote || '',
@@ -390,9 +393,169 @@ function buildReportDataset(data, filters = {}) {
     .filter((row) => !filters.driver || String(row.conducteur).toLowerCase().includes(filters.driver))
     .filter((row) => !filters.client || String(row.client).toLowerCase().includes(filters.client))
     .filter((row) => !filters.destination || String(row.destination).toLowerCase().includes(filters.destination))
+    .filter((row) => !filters.goods || String(row.goods).toLowerCase().includes(filters.goods))
     .filter((row) => !filters.status || String(row.status).toLowerCase() === filters.status)
 
   return { trackerRows: filteredTrackerRows, alertRows, missionRows, preferredKeys }
+}
+
+function toNumber(value) {
+  return Number(String(value ?? '0').replace(',', '.')) || 0
+}
+
+function formatDateKey(value) {
+  if (!value) return 'Sans date'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Sans date'
+  return date.toISOString().slice(0, 10)
+}
+
+function diffHours(start, end) {
+  if (!start || !end) return null
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null
+  return Number(((endDate.getTime() - startDate.getTime()) / 3600000).toFixed(2))
+}
+
+function buildBusinessReports(missionRows = [], fleetRows = []) {
+  const detailed = missionRows.map((row) => ({
+    reference: row.reference,
+    camion: row.immatriculation,
+    chauffeur: row.conducteur,
+    client: row.client,
+    destination: row.destination,
+    marchandise: row.goods,
+    quantite: row.quantity,
+    depart: row.departureDateTime || null,
+    arrivee: row.arrivalDateTime || null,
+    statut: row.status,
+    date: row.date,
+    actif: row.active,
+    preuve: row.proofStatus,
+  }))
+
+  const byClient = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.client || 'Non renseigné'
+    acc[key] ||= { client: key, bons: 0, quantite: 0, actifs: 0, livres: 0 }
+    acc[key].bons += 1
+    acc[key].quantite += toNumber(row.quantity)
+    acc[key].actifs += row.active ? 1 : 0
+    acc[key].livres += row.status === 'Livré' ? 1 : 0
+    return acc
+  }, {})).sort((a, b) => b.bons - a.bons)
+
+  const byGoods = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.goods || 'Non renseigné'
+    acc[key] ||= { marchandise: key, bons: 0, quantite: 0, clients: new Set(), destinations: new Set() }
+    acc[key].bons += 1
+    acc[key].quantite += toNumber(row.quantity)
+    if (row.client) acc[key].clients.add(row.client)
+    if (row.destination) acc[key].destinations.add(row.destination)
+    return acc
+  }, {})).map((row) => ({
+    ...row,
+    clients: row.clients.size,
+    destinations: row.destinations.size,
+  })).sort((a, b) => b.bons - a.bons)
+
+  const byTruck = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.immatriculation || 'Non renseigné'
+    acc[key] ||= { camion: key, chauffeur: row.conducteur || 'Non assigné', bons: 0, quantite: 0, actifs: 0, livres: 0, destinations: new Set() }
+    acc[key].bons += 1
+    acc[key].quantite += toNumber(row.quantity)
+    acc[key].actifs += row.active ? 1 : 0
+    acc[key].livres += row.status === 'Livré' ? 1 : 0
+    if (row.destination) acc[key].destinations.add(row.destination)
+    return acc
+  }, {})).map((row) => ({
+    ...row,
+    destinations: row.destinations.size,
+  })).sort((a, b) => b.bons - a.bons)
+
+  const byDestination = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.destination || 'Non renseigné'
+    acc[key] ||= { destination: key, bons: 0, quantite: 0, clients: new Set(), camions: new Set(), livres: 0 }
+    acc[key].bons += 1
+    acc[key].quantite += toNumber(row.quantity)
+    if (row.client) acc[key].clients.add(row.client)
+    if (row.immatriculation) acc[key].camions.add(row.immatriculation)
+    acc[key].livres += row.status === 'Livré' ? 1 : 0
+    return acc
+  }, {})).map((row) => ({
+    ...row,
+    clients: row.clients.size,
+    camions: row.camions.size,
+  })).sort((a, b) => b.quantite - a.quantite)
+
+  const performanceByDriver = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.conducteur || 'Non assigné'
+    const durationH = diffHours(row.departureDateTime, row.arrivalDateTime)
+    acc[key] ||= { chauffeur: key, rotations: 0, quantite: 0, livres: 0, camions: new Set(), clients: new Set(), dureeTotaleH: 0, dureeCount: 0 }
+    acc[key].rotations += 1
+    acc[key].quantite += toNumber(row.quantity)
+    acc[key].livres += row.status === 'Livré' ? 1 : 0
+    if (row.immatriculation) acc[key].camions.add(row.immatriculation)
+    if (row.client) acc[key].clients.add(row.client)
+    if (durationH !== null && durationH >= 0) {
+      acc[key].dureeTotaleH += durationH
+      acc[key].dureeCount += 1
+    }
+    return acc
+  }, {})).map((row) => ({
+    chauffeur: row.chauffeur,
+    rotations: row.rotations,
+    quantite: Number(row.quantite.toFixed(2)),
+    livres: row.livres,
+    camions: row.camions.size,
+    clients: row.clients.size,
+    dureeMoyenneH: row.dureeCount ? Number((row.dureeTotaleH / row.dureeCount).toFixed(2)) : null,
+  })).sort((a, b) => b.rotations - a.rotations)
+
+  const performanceByDay = Object.values(missionRows.reduce((acc, row) => {
+    const key = formatDateKey(row.departureDateTime || row.date || row.arrivalDateTime)
+    acc[key] ||= { date: key, rotations: 0, quantite: 0, livres: 0, clients: new Set(), destinations: new Set() }
+    acc[key].rotations += 1
+    acc[key].quantite += toNumber(row.quantity)
+    acc[key].livres += row.status === 'Livré' ? 1 : 0
+    if (row.client) acc[key].clients.add(row.client)
+    if (row.destination) acc[key].destinations.add(row.destination)
+    return acc
+  }, {})).map((row) => ({
+    date: row.date,
+    rotations: row.rotations,
+    quantite: Number(row.quantite.toFixed(2)),
+    livres: row.livres,
+    clients: row.clients.size,
+    destinations: row.destinations.size,
+  })).sort((a, b) => a.date.localeCompare(b.date))
+
+  const fuelSummary = (fleetRows || []).map((row) => ({
+    camion: row.immatriculation,
+    chauffeur: row.conducteur,
+    statut: row.status,
+    distanceKm: row.distanceKm,
+    trajets: row.trajets,
+    carburant: row.carburantL,
+  })).sort((a, b) => (b.distanceKm || 0) - (a.distanceKm || 0))
+
+  const batches = Object.values(missionRows.reduce((acc, row) => {
+    const key = row.goods || 'Non renseigné'
+    acc[key] ||= { produit: key, quantiteLivree: 0, rotations: 0, camions: new Set(), clients: new Set() }
+    acc[key].quantiteLivree += toNumber(row.quantity)
+    acc[key].rotations += 1
+    if (row.immatriculation) acc[key].camions.add(row.immatriculation)
+    if (row.client) acc[key].clients.add(row.client)
+    return acc
+  }, {})).map((row) => ({
+    produit: row.produit,
+    quantiteLivree: Number(row.quantiteLivree.toFixed(2)),
+    rotations: row.rotations,
+    camions: row.camions.size,
+    clients: row.clients.size,
+  })).sort((a, b) => b.quantiteLivree - a.quantiteLivree)
+
+  return { detailed, byClient, byGoods, byTruck, byDestination, performanceByDriver, performanceByDay, fuelSummary, batches }
 }
 
 function buildFleetSummary(rows = []) {
@@ -516,6 +679,7 @@ async function buildReportsPayload(filters = {}) {
     fleet: { summary: fleetSummary, rows: fleetRows },
     alerts: { summary: alertsSummary, rows: dataset.alertRows },
     missions: { summary: missionsSummary, rows: dataset.missionRows },
+    business: buildBusinessReports(dataset.missionRows, fleetRows),
     pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters),
   }
 }
@@ -998,6 +1162,96 @@ app.get('/api/reports/pivot', async (req, res) => {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
     const payload = await buildReportsPayload(filters)
     res.json({ pivot: payload.pivot, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/detailed-deliveries', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.detailed, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/by-client', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.byClient, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/by-goods', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.byGoods, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/by-truck', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.byTruck, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/by-destination', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.byDestination, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/performance-drivers', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.performanceByDriver, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/performance-days', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.performanceByDay, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/fuel-summary', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.fuelSummary, generatedAt: payload.generatedAt, filters: payload.filters })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/reports/batches', async (req, res) => {
+  try {
+    const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.batches, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
