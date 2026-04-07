@@ -209,6 +209,8 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     quantity: String(body.quantity ?? current?.quantity ?? '').trim(),
     status: String(body.status ?? current?.status ?? 'Prévu').trim(),
     date: body.date || current?.date || new Date().toISOString(),
+    departureDateTime: body.departureDateTime || current?.departureDateTime || null,
+    arrivalDateTime: body.arrivalDateTime || current?.arrivalDateTime || null,
     notes: String(body.notes ?? current?.notes ?? '').trim(),
     active: body.active ?? current?.active ?? true,
     completedAt: body.status === 'Livré' ? (body.completedAt || current?.completedAt || new Date().toISOString()) : (body.completedAt ?? current?.completedAt ?? null),

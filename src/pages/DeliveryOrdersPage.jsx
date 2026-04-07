@@ -16,6 +16,8 @@ const initialForm = {
   status: 'Prévu',
   date: '',
   notes: '',
+  departureDateTime: '',
+  arrivalDateTime: '',
   active: true,
 }
 
@@ -24,6 +26,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
   const [trackerFilter, setTrackerFilter] = useState('all')
+  const [clientFilter, setClientFilter] = useState('all')
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
@@ -71,7 +74,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const filteredOrders = deliveryOrders.filter((item) => {
     const statusOk = statusFilter === 'all' ? true : statusFilter === 'active' ? item.active : item.status === statusFilter
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
-    return statusOk && trackerOk
+    const clientOk = clientFilter === 'all' ? true : item.client === clientFilter
+    return statusOk && trackerOk && clientOk
   })
 
   const groupedByTracker = enrichedTrackers
@@ -130,6 +134,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
           </select>
           <input placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          <input type="datetime-local" value={form.departureDateTime} onChange={(e) => setForm({ ...form, departureDateTime: e.target.value })} placeholder="Date et heure départ" />
+          <input type="datetime-local" value={form.arrivalDateTime} onChange={(e) => setForm({ ...form, arrivalDateTime: e.target.value })} placeholder="Date et heure arrivée" />
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             <option>Prévu</option>
             <option>En chargement</option>
@@ -162,6 +168,10 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           <option value="all">Tous les camions</option>
           {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
         </select>
+        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+          <option value="all">Tous les clients</option>
+          {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
+        </select>
       </div>
       <div className="reports-table-wrap">
         <table className="reports-table">
@@ -175,6 +185,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               <th>Marchandise</th>
               <th>Quantité</th>
               <th>Statut</th>
+              <th>Départ</th>
+              <th>Arrivée</th>
               <th>Date</th>
               <th>Actions</th>
             </tr>
@@ -183,7 +195,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {filteredOrders.map((item) => {
               const statusLabel = item.active ? 'Actif' : item.status
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
-              return <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
+              return <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td><td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
             })}
           </tbody>
         </table>

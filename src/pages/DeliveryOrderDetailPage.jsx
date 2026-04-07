@@ -85,6 +85,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <input value={order.destination || ''} onChange={(e) => updateField('destination', e.target.value)} disabled={saving} placeholder="Destination" />
           <input value={order.goods || ''} onChange={(e) => updateField('goods', e.target.value)} disabled={saving} placeholder="Marchandise" />
           <input value={order.quantity || ''} onChange={(e) => updateField('quantity', e.target.value)} disabled={saving} placeholder="Quantité / tonnage" />
+          <input type="datetime-local" value={order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('departureDateTime', e.target.value)} disabled={saving} />
+          <input type="datetime-local" value={order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('arrivalDateTime', e.target.value)} disabled={saving} />
           <input type="datetime-local" value={order.date ? new Date(order.date).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('date', e.target.value)} disabled={saving} />
           <textarea className="delivery-notes-box" value={order.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={5} disabled={saving} placeholder="Notes mission" />
         </div>
@@ -95,9 +97,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <div className="panel-header"><div><h3>Timeline mission</h3><p>Lecture compacte des étapes</p></div></div>
       <div className="timeline-list">
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Création</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée</span></div></div>
-        <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Statut actuel</strong><p>{order.active ? 'Actif' : order.status}</p><span>{order.destination}</span></div></div>
-        <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofNote || 'Aucun commentaire'}</span></div></div>
-        {order.completedAt && <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
+        <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Départ mission</strong><p>{order.departureDateTime ? new Date(order.departureDateTime).toLocaleString() : '-'}</p><span>{order.loadingPoint || 'Départ non renseigné'}</span></div></div>
+        <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Arrivée mission</strong><p>{order.arrivalDateTime ? new Date(order.arrivalDateTime).toLocaleString() : '-'}</p><span>{order.destination}</span></div></div>
+        <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofNote || 'Aucun commentaire'}</span></div></div>
+        {order.completedAt && <div className="timeline-row"><div className="timeline-icon">5</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
       </div>
     </section>
   </div>
