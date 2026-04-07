@@ -13,6 +13,7 @@ import {
   loadReportPerformanceDays,
   loadReportPerformanceDrivers,
   loadReportPivot,
+  loadReportProjects,
   loadReportSummary,
 } from '../lib/fleeti'
 
@@ -31,6 +32,7 @@ const REPORT_TYPES = [
   { value: 'business-performance-days', label: 'Performance journalière' },
   { value: 'business-fuel', label: 'Carburant / flotte' },
   { value: 'business-batches', label: 'Batch / volumes' },
+  { value: 'business-projects', label: 'Projets / clients' },
 ]
 
 const PERIODS = [
@@ -152,6 +154,8 @@ export function ReportsPage() {
     client: '',
     destination: '',
     goods: '',
+    project: '',
+    targetQuantity: '',
     pivotRows: 'tracker',
     pivotCols: 'event',
     metric: 'count',
@@ -172,6 +176,7 @@ export function ReportsPage() {
   const [businessPerformanceDaysPayload, setBusinessPerformanceDaysPayload] = useState({ rows: [] })
   const [businessFuelPayload, setBusinessFuelPayload] = useState({ rows: [] })
   const [businessBatchesPayload, setBusinessBatchesPayload] = useState({ rows: [] })
+  const [businessProjectsPayload, setBusinessProjectsPayload] = useState({ rows: [] })
 
   const summaryQuery = useMemo(() => buildQuery({
     period: filters.period,
@@ -182,6 +187,8 @@ export function ReportsPage() {
     client: filters.client,
     destination: filters.destination,
     goods: filters.goods,
+    project: filters.project,
+    targetQuantity: filters.targetQuantity,
   }), [filters])
 
   const activeQuery = useMemo(() => buildQuery(filters), [filters])
@@ -255,6 +262,9 @@ export function ReportsPage() {
         } else if (reportType === 'business-batches') {
           const payload = await loadReportBatches(activeQuery)
           if (!cancelled) setBusinessBatchesPayload(payload)
+        } else if (reportType === 'business-projects') {
+          const payload = await loadReportProjects(activeQuery)
+          if (!cancelled) setBusinessProjectsPayload(payload)
         }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Erreur de chargement des rapports')
@@ -299,7 +309,8 @@ export function ReportsPage() {
     if (reportType === 'business-performance-drivers') return exportGeneric('rapport-performance-chauffeurs.csv', ['Chauffeur', 'Rotations', 'Quantité', 'Livrés', 'Camions', 'Clients', 'Durée moyenne (h)'], businessPerformanceDriversPayload.rows, (row) => [row.chauffeur, row.rotations, row.quantite, row.livres, row.camions, row.clients, row.dureeMoyenneH])
     if (reportType === 'business-performance-days') return exportGeneric('rapport-performance-jours.csv', ['Date', 'Rotations', 'Quantité', 'Livrés', 'Clients', 'Destinations'], businessPerformanceDaysPayload.rows, (row) => [row.date, row.rotations, row.quantite, row.livres, row.clients, row.destinations])
     if (reportType === 'business-fuel') return exportGeneric('rapport-carburant-flotte.csv', ['Camion', 'Chauffeur', 'Statut', 'Distance (km)', 'Trajets', 'Carburant'], businessFuelPayload.rows, (row) => [row.camion, row.chauffeur, row.statut, row.distanceKm, row.trajets, row.carburant])
-    return exportGeneric('rapport-batch-volumes.csv', ['Produit', 'Quantité livrée', 'Rotations', 'Camions', 'Clients'], businessBatchesPayload.rows, (row) => [row.produit, row.quantiteLivree, row.rotations, row.camions, row.clients])
+    if (reportType === 'business-batches') return exportGeneric('rapport-batch-volumes.csv', ['Produit', 'Quantité livrée', 'Objectif', 'Restant', 'Completion %', 'Rotations', 'Camions', 'Clients'], businessBatchesPayload.rows, (row) => [row.produit, row.quantiteLivree, row.objectif, row.restant, row.completion, row.rotations, row.camions, row.clients])
+    return exportGeneric('rapport-projets-clients.csv', ['Projet', 'Client', 'Destination', 'Bons', 'Quantité livrée', 'Camions', 'Chauffeurs', 'Marchandises'], businessProjectsPayload.rows, (row) => [row.projet, row.client, row.destination, row.bons, row.quantiteLivree, row.camions, row.chauffeurs, row.marchandises])
   }
 
   const isBusinessReport = reportType.startsWith('business-')
@@ -323,6 +334,10 @@ export function ReportsPage() {
         </select>
         <input placeholder="Produit / marchandise" value={filters.goods} onChange={(e) => setFilters((current) => ({ ...current, goods: e.target.value }))} />
       </div>
+      {isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+        <input placeholder="Projet / client" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))} />
+        <input placeholder="Objectif quantité (optionnel)" value={filters.targetQuantity} onChange={(e) => setFilters((current) => ({ ...current, targetQuantity: e.target.value }))} />
+      </div>}
       {!isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
         <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
       </div>}
@@ -455,9 +470,23 @@ export function ReportsPage() {
     {reportType === 'business-batches' && <GenericTable title="Batch / volumes" subtitle={`${businessBatchesPayload?.rows?.length ?? 0} produits`} rows={businessBatchesPayload.rows || []} rowKey={(row) => row.produit} columns={[
       { key: 'produit', label: 'Produit' },
       { key: 'quantiteLivree', label: 'Quantité livrée' },
+      { key: 'objectif', label: 'Objectif' },
+      { key: 'restant', label: 'Restant' },
+      { key: 'completion', label: 'Completion %' },
       { key: 'rotations', label: 'Rotations' },
       { key: 'camions', label: 'Camions' },
       { key: 'clients', label: 'Clients' },
+    ]} />}
+
+    {reportType === 'business-projects' && <GenericTable title="Projets / clients" subtitle={`${businessProjectsPayload?.rows?.length ?? 0} projets`} rows={businessProjectsPayload.rows || []} rowKey={(row) => row.projet} columns={[
+      { key: 'projet', label: 'Projet' },
+      { key: 'client', label: 'Client' },
+      { key: 'destination', label: 'Destination' },
+      { key: 'bons', label: 'Bons' },
+      { key: 'quantiteLivree', label: 'Quantité livrée' },
+      { key: 'camions', label: 'Camions' },
+      { key: 'chauffeurs', label: 'Chauffeurs' },
+      { key: 'marchandises', label: 'Marchandises' },
     ]} />}
   </div>
 }

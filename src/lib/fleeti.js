@@ -37,6 +37,7 @@ export const loadReportPerformanceDrivers = (query = '') => getJson(`/api/report
 export const loadReportPerformanceDays = (query = '') => getJson(`/api/reports/performance-days${query ? `?${query}` : ''}`)
 export const loadReportFuelSummary = (query = '') => getJson(`/api/reports/fuel-summary${query ? `?${query}` : ''}`)
 export const loadReportBatches = (query = '') => getJson(`/api/reports/batches${query ? `?${query}` : ''}`)
+export const loadReportProjects = (query = '') => getJson(`/api/reports/projects${query ? `?${query}` : ''}`)
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value) => postJson(`/api/master-data/${listName}`, { value })
