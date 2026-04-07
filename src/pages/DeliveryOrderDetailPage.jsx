@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
@@ -9,6 +9,24 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const navigate = useNavigate()
   const order = useMemo(() => deliveryOrders.find((item) => String(item.id) === String(id)), [deliveryOrders, id])
   const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState(null)
+
+  useEffect(() => {
+    if (order) {
+      setForm({
+        reference: order.reference || '',
+        client: order.client || '',
+        loadingPoint: order.loadingPoint || '',
+        destination: order.destination || '',
+        goods: order.goods || '',
+        quantity: order.quantity || '',
+        departureDateTime: order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : '',
+        arrivalDateTime: order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : '',
+        date: order.date ? new Date(order.date).toISOString().slice(0, 16) : '',
+        notes: order.notes || '',
+      })
+    }
+  }, [order])
 
   if (!order) {
     return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div></section>
@@ -28,6 +46,28 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     setSaving(true)
     try {
       await updateDeliveryOrder(order.id, payload)
+      await refreshData()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveForm = async () => {
+    if (!form) return
+    setSaving(true)
+    try {
+      await updateDeliveryOrder(order.id, {
+        reference: form.reference,
+        client: form.client,
+        loadingPoint: form.loadingPoint,
+        destination: form.destination,
+        goods: form.goods,
+        quantity: form.quantity,
+        departureDateTime: form.departureDateTime || null,
+        arrivalDateTime: form.arrivalDateTime || null,
+        date: form.date || null,
+        notes: form.notes,
+      })
       await refreshData()
     } finally {
       setSaving(false)
@@ -79,16 +119,19 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <section className="panel panel-large">
         <div className="panel-header"><div><h3>Informations mission</h3><p>Édition essentielle</p></div></div>
         <div className="delivery-form delivery-form-premium compact-detail-form">
-          <input value={order.reference || ''} onChange={(e) => updateField('reference', e.target.value)} disabled={saving} placeholder="Référence" />
-          <input value={order.client || ''} onChange={(e) => updateField('client', e.target.value)} disabled={saving} placeholder="Client" />
-          <input value={order.loadingPoint || ''} onChange={(e) => updateField('loadingPoint', e.target.value)} disabled={saving} placeholder="Point de chargement" />
-          <input value={order.destination || ''} onChange={(e) => updateField('destination', e.target.value)} disabled={saving} placeholder="Destination" />
-          <input value={order.goods || ''} onChange={(e) => updateField('goods', e.target.value)} disabled={saving} placeholder="Marchandise" />
-          <input value={order.quantity || ''} onChange={(e) => updateField('quantity', e.target.value)} disabled={saving} placeholder="Quantité / tonnage" />
-          <label className="field-stack"><span>Départ</span><input type="datetime-local" value={order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('departureDateTime', e.target.value)} disabled={saving} /></label>
-          <label className="field-stack"><span>Arrivée</span><input type="datetime-local" value={order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('arrivalDateTime', e.target.value)} disabled={saving} /></label>
-          <label className="field-stack"><span>Créé le</span><input type="datetime-local" value={order.date ? new Date(order.date).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('date', e.target.value)} disabled={saving} /></label>
-          <textarea className="delivery-notes-box" value={order.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={5} disabled={saving} placeholder="Notes mission" />
+          <input value={form?.reference || ''} onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))} disabled={saving} placeholder="Référence" />
+          <input value={form?.client || ''} onChange={(e) => setForm((current) => ({ ...current, client: e.target.value }))} disabled={saving} placeholder="Client" />
+          <input value={form?.loadingPoint || ''} onChange={(e) => setForm((current) => ({ ...current, loadingPoint: e.target.value }))} disabled={saving} placeholder="Point de chargement" />
+          <input value={form?.destination || ''} onChange={(e) => setForm((current) => ({ ...current, destination: e.target.value }))} disabled={saving} placeholder="Destination" />
+          <input value={form?.goods || ''} onChange={(e) => setForm((current) => ({ ...current, goods: e.target.value }))} disabled={saving} placeholder="Marchandise" />
+          <input value={form?.quantity || ''} onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))} disabled={saving} placeholder="Quantité / tonnage" />
+          <label className="field-stack"><span>Départ</span><input type="datetime-local" value={form?.departureDateTime || ''} onChange={(e) => setForm((current) => ({ ...current, departureDateTime: e.target.value }))} disabled={saving} /></label>
+          <label className="field-stack"><span>Arrivée</span><input type="datetime-local" value={form?.arrivalDateTime || ''} onChange={(e) => setForm((current) => ({ ...current, arrivalDateTime: e.target.value }))} disabled={saving} /></label>
+          <label className="field-stack"><span>Créé le</span><input type="datetime-local" value={form?.date || ''} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} disabled={saving} /></label>
+          <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="primary-btn" onClick={saveForm} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</button>
+          </div>
         </div>
       </section>
     </section>
