@@ -177,6 +177,14 @@ export function ReportsPage() {
   const [businessFuelPayload, setBusinessFuelPayload] = useState({ rows: [] })
   const [businessBatchesPayload, setBusinessBatchesPayload] = useState({ rows: [] })
   const [businessProjectsPayload, setBusinessProjectsPayload] = useState({ rows: [] })
+  const [filterOptionsPayload, setFilterOptionsPayload] = useState({
+    missions: { rows: [] },
+    clients: { rows: [] },
+    goods: { rows: [] },
+    destinations: { rows: [] },
+    projects: { rows: [] },
+    performanceDrivers: { rows: [] },
+  })
 
   const summaryQuery = useMemo(() => buildQuery({
     period: filters.period,
@@ -210,6 +218,43 @@ export function ReportsPage() {
       cancelled = true
     }
   }, [summaryQuery])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadFilterOptions() {
+      try {
+        const baseQuery = buildQuery({ period: filters.period })
+        const [missions, clients, goods, destinations, projects, performanceDrivers] = await Promise.all([
+          loadReportMissions(baseQuery),
+          loadReportByClient(baseQuery),
+          loadReportByGoods(baseQuery),
+          loadReportByDestination(baseQuery),
+          loadReportProjects(baseQuery),
+          loadReportPerformanceDrivers(baseQuery),
+        ])
+        if (!cancelled) {
+          setFilterOptionsPayload({ missions, clients, goods, destinations, projects, performanceDrivers })
+        }
+      } catch {
+        if (!cancelled) {
+          setFilterOptionsPayload({
+            missions: { rows: [] },
+            clients: { rows: [] },
+            goods: { rows: [] },
+            destinations: { rows: [] },
+            projects: { rows: [] },
+            performanceDrivers: { rows: [] },
+          })
+        }
+      }
+    }
+
+    loadFilterOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [filters.period])
 
   useEffect(() => {
     let cancelled = false
@@ -281,39 +326,35 @@ export function ReportsPage() {
 
   const driverOptions = useMemo(() => {
     const values = new Set()
+    ;(filterOptionsPayload?.missions?.rows || []).forEach((row) => row?.conducteur && values.add(row.conducteur))
+    ;(filterOptionsPayload?.performanceDrivers?.rows || []).forEach((row) => row?.chauffeur && values.add(row.chauffeur))
     ;(fleetPayload?.rows || []).forEach((row) => row?.conducteur && values.add(row.conducteur))
-    ;(missionsPayload?.rows || []).forEach((row) => row?.conducteur && values.add(row.conducteur))
-    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.chauffeur && values.add(row.chauffeur))
-    ;(businessPerformanceDriversPayload?.rows || []).forEach((row) => row?.chauffeur && values.add(row.chauffeur))
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [fleetPayload, missionsPayload, businessDetailedPayload, businessPerformanceDriversPayload])
+  }, [filterOptionsPayload, fleetPayload])
 
   const clientOptions = useMemo(() => {
     const values = new Set()
-    ;(missionsPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
-    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
-    ;(businessClientPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
-    ;(businessProjectsPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(filterOptionsPayload?.missions?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(filterOptionsPayload?.clients?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(filterOptionsPayload?.projects?.rows || []).forEach((row) => row?.client && values.add(row.client))
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [missionsPayload, businessDetailedPayload, businessClientPayload, businessProjectsPayload])
+  }, [filterOptionsPayload])
 
   const destinationOptions = useMemo(() => {
     const values = new Set()
-    ;(missionsPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
-    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
-    ;(businessDestinationPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
-    ;(businessProjectsPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(filterOptionsPayload?.missions?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(filterOptionsPayload?.destinations?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(filterOptionsPayload?.projects?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [missionsPayload, businessDetailedPayload, businessDestinationPayload, businessProjectsPayload])
+  }, [filterOptionsPayload])
 
   const goodsOptions = useMemo(() => {
     const values = new Set()
-    ;(missionsPayload?.rows || []).forEach((row) => row?.goods && values.add(row.goods))
-    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.marchandise && values.add(row.marchandise))
-    ;(businessGoodsPayload?.rows || []).forEach((row) => row?.marchandise && values.add(row.marchandise))
+    ;(filterOptionsPayload?.missions?.rows || []).forEach((row) => row?.goods && values.add(row.goods))
+    ;(filterOptionsPayload?.goods?.rows || []).forEach((row) => row?.marchandise && values.add(row.marchandise))
     ;(businessBatchesPayload?.rows || []).forEach((row) => row?.produit && values.add(row.produit))
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [missionsPayload, businessDetailedPayload, businessGoodsPayload, businessBatchesPayload])
+  }, [filterOptionsPayload, businessBatchesPayload])
 
   const overviewCards = [
     { label: 'Distance totale', value: `${summaryPayload?.summary?.distanceTotaleKm ?? 0} km`, helper: 'sur la période' },
