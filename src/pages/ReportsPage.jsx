@@ -139,6 +139,15 @@ function formatDateTime(value) {
   return date.toLocaleString('fr-FR')
 }
 
+function formatFrenchQuantity(value, digits = 3) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return value ?? '-'
+  return number.toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
 function GenericTable({ title, subtitle, columns, rows, rowKey }) {
   return <section className="panel panel-large"><div className="panel-header"><div><h3>{title}</h3><p>{subtitle}</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={rowKey ? rowKey(row, index) : index}>{columns.map((column) => <td key={column.key}>{column.render ? column.render(row[column.key], row) : (row[column.key] ?? '-')}</td>)}</tr>)}</tbody></table></div></section>
 }
@@ -379,15 +388,15 @@ export function ReportsPage() {
     if (reportType === 'missions') return exportMissions(missionsPayload.rows)
     if (reportType === 'pivot') return exportPivot(pivotPayload.pivot)
     if (reportType === 'business-detailed') return exportGeneric('rapport-livraisons-detaillees.csv', ['Référence', 'Camion', 'Chauffeur', 'Client', 'Destination', 'Marchandise', 'Quantité', 'Départ', 'Arrivée', 'Statut', 'Date', 'Actif', 'Preuve'], businessDetailedPayload.rows, (row) => [row.reference, row.camion, row.chauffeur, row.client, row.destination, row.marchandise, row.quantite, row.depart, row.arrivee, row.statut, row.date, row.actif ? 'Oui' : 'Non', row.preuve])
-    if (reportType === 'business-client') return exportGeneric('rapport-par-client.csv', ['Client', 'Bons', 'Quantité', 'Actifs', 'Livrés'], businessClientPayload.rows, (row) => [row.client, row.bons, row.quantite, row.actifs, row.livres])
-    if (reportType === 'business-goods') return exportGeneric('rapport-par-produit.csv', ['Produit', 'Bons', 'Quantité', 'Clients', 'Destinations'], businessGoodsPayload.rows, (row) => [row.marchandise, row.bons, row.quantite, row.clients, row.destinations])
-    if (reportType === 'business-truck') return exportGeneric('rapport-par-camion.csv', ['Camion', 'Chauffeur', 'Bons', 'Quantité', 'Actifs', 'Livrés', 'Destinations'], businessTruckPayload.rows, (row) => [row.camion, row.chauffeur, row.bons, row.quantite, row.actifs, row.livres, row.destinations])
-    if (reportType === 'business-destination') return exportGeneric('rapport-par-destination.csv', ['Destination', 'Bons', 'Quantité', 'Clients', 'Camions', 'Livrés'], businessDestinationPayload.rows, (row) => [row.destination, row.bons, row.quantite, row.clients, row.camions, row.livres])
-    if (reportType === 'business-performance-drivers') return exportGeneric('rapport-performance-chauffeurs.csv', ['Chauffeur', 'Rotations', 'Quantité', 'Livrés', 'Camions', 'Clients', 'Durée moyenne (h)'], businessPerformanceDriversPayload.rows, (row) => [row.chauffeur, row.rotations, row.quantite, row.livres, row.camions, row.clients, row.dureeMoyenneH])
-    if (reportType === 'business-performance-days') return exportGeneric('rapport-performance-jours.csv', ['Date', 'Rotations', 'Quantité', 'Livrés', 'Clients', 'Destinations'], businessPerformanceDaysPayload.rows, (row) => [row.date, row.rotations, row.quantite, row.livres, row.clients, row.destinations])
-    if (reportType === 'business-fuel') return exportGeneric('rapport-carburant-flotte.csv', ['Camion', 'Chauffeur', 'Statut', 'Distance (km)', 'Trajets', 'Carburant'], businessFuelPayload.rows, (row) => [row.camion, row.chauffeur, row.statut, row.distanceKm, row.trajets, row.carburant])
-    if (reportType === 'business-batches') return exportGeneric('rapport-batch-volumes.csv', ['Produit', 'Quantité livrée', 'Objectif', 'Restant', 'Completion %', 'Rotations', 'Camions', 'Clients'], businessBatchesPayload.rows, (row) => [row.produit, row.quantiteLivree, row.objectif, row.restant, row.completion, row.rotations, row.camions, row.clients])
-    return exportGeneric('rapport-projets-clients.csv', ['Projet', 'Client', 'Destination', 'Bons', 'Quantité livrée', 'Camions', 'Chauffeurs', 'Marchandises'], businessProjectsPayload.rows, (row) => [row.projet, row.client, row.destination, row.bons, row.quantiteLivree, row.camions, row.chauffeurs, row.marchandises])
+    if (reportType === 'business-client') return exportGeneric('rapport-par-client.csv', ['Client', 'Bons', 'Quantité', 'Actifs', 'Livrés'], businessClientPayload.rows, (row) => [row.client, row.bons, formatFrenchQuantity(row.quantite), row.actifs, row.livres])
+    if (reportType === 'business-goods') return exportGeneric('rapport-par-produit.csv', ['Produit', 'Bons', 'Quantité', 'Clients', 'Destinations'], businessGoodsPayload.rows, (row) => [row.marchandise, row.bons, formatFrenchQuantity(row.quantite), row.clients, row.destinations])
+    if (reportType === 'business-truck') return exportGeneric('rapport-par-camion.csv', ['Camion', 'Chauffeur', 'Bons', 'Quantité', 'Actifs', 'Livrés', 'Destinations'], businessTruckPayload.rows, (row) => [row.camion, row.chauffeur, row.bons, formatFrenchQuantity(row.quantite), row.actifs, row.livres, row.destinations])
+    if (reportType === 'business-destination') return exportGeneric('rapport-par-destination.csv', ['Destination', 'Bons', 'Quantité', 'Clients', 'Camions', 'Livrés'], businessDestinationPayload.rows, (row) => [row.destination, row.bons, formatFrenchQuantity(row.quantite), row.clients, row.camions, row.livres])
+    if (reportType === 'business-performance-drivers') return exportGeneric('rapport-performance-chauffeurs.csv', ['Chauffeur', 'Rotations', 'Quantité', 'Livrés', 'Camions', 'Clients', 'Durée moyenne (h)'], businessPerformanceDriversPayload.rows, (row) => [row.chauffeur, row.rotations, formatFrenchQuantity(row.quantite), row.livres, row.camions, row.clients, row.dureeMoyenneH])
+    if (reportType === 'business-performance-days') return exportGeneric('rapport-performance-jours.csv', ['Date', 'Rotations', 'Quantité', 'Livrés', 'Clients', 'Destinations'], businessPerformanceDaysPayload.rows, (row) => [row.date, row.rotations, formatFrenchQuantity(row.quantite), row.livres, row.clients, row.destinations])
+    if (reportType === 'business-fuel') return exportGeneric('rapport-carburant-flotte.csv', ['Camion', 'Chauffeur', 'Statut', 'Distance (km)', 'Trajets', 'Carburant'], businessFuelPayload.rows, (row) => [row.camion, row.chauffeur, row.statut, formatFrenchQuantity(row.distanceKm, 1), row.trajets, row.carburant])
+    if (reportType === 'business-batches') return exportGeneric('rapport-batch-volumes.csv', ['Produit', 'Quantité livrée', 'Objectif', 'Restant', 'Completion %', 'Rotations', 'Camions', 'Clients'], businessBatchesPayload.rows, (row) => [row.produit, formatFrenchQuantity(row.quantiteLivree), row.objectif ? formatFrenchQuantity(row.objectif) : '', row.restant !== null && row.restant !== undefined ? formatFrenchQuantity(row.restant) : '', row.completion ?? '', row.rotations, row.camions, row.clients])
+    return exportGeneric('rapport-projets-clients.csv', ['Projet', 'Client', 'Destination', 'Bons', 'Quantité livrée', 'Camions', 'Chauffeurs', 'Marchandises'], businessProjectsPayload.rows, (row) => [row.projet, row.client, row.destination, row.bons, formatFrenchQuantity(row.quantiteLivree), row.camions, row.chauffeurs, row.marchandises])
   }
 
   const isBusinessReport = reportType.startsWith('business-')
@@ -486,7 +495,7 @@ export function ReportsPage() {
       { key: 'client', label: 'Client' },
       { key: 'destination', label: 'Destination' },
       { key: 'marchandise', label: 'Produit' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'depart', label: 'Départ', render: (value) => formatDateTime(value) },
       { key: 'arrivee', label: 'Arrivée', render: (value) => formatDateTime(value) },
       { key: 'statut', label: 'Statut' },
@@ -496,7 +505,7 @@ export function ReportsPage() {
     {reportType === 'business-client' && <GenericTable title="Rapport par client" subtitle={`${businessClientPayload?.rows?.length ?? 0} clients`} rows={businessClientPayload.rows || []} rowKey={(row) => row.client} columns={[
       { key: 'client', label: 'Client' },
       { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'actifs', label: 'Actifs' },
       { key: 'livres', label: 'Livrés' },
     ]} />}
@@ -504,7 +513,7 @@ export function ReportsPage() {
     {reportType === 'business-goods' && <GenericTable title="Rapport par produit" subtitle={`${businessGoodsPayload?.rows?.length ?? 0} produits`} rows={businessGoodsPayload.rows || []} rowKey={(row) => row.marchandise} columns={[
       { key: 'marchandise', label: 'Produit' },
       { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'clients', label: 'Clients' },
       { key: 'destinations', label: 'Destinations' },
     ]} />}
@@ -513,7 +522,7 @@ export function ReportsPage() {
       { key: 'camion', label: 'Camion' },
       { key: 'chauffeur', label: 'Chauffeur' },
       { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'actifs', label: 'Actifs' },
       { key: 'livres', label: 'Livrés' },
       { key: 'destinations', label: 'Destinations' },
@@ -522,7 +531,7 @@ export function ReportsPage() {
     {reportType === 'business-destination' && <GenericTable title="Récap par destination" subtitle={`${businessDestinationPayload?.rows?.length ?? 0} destinations`} rows={businessDestinationPayload.rows || []} rowKey={(row) => row.destination} columns={[
       { key: 'destination', label: 'Destination' },
       { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'clients', label: 'Clients' },
       { key: 'camions', label: 'Camions' },
       { key: 'livres', label: 'Livrés' },
@@ -531,7 +540,7 @@ export function ReportsPage() {
     {reportType === 'business-performance-drivers' && <GenericTable title="Performance chauffeurs" subtitle={`${businessPerformanceDriversPayload?.rows?.length ?? 0} chauffeurs`} rows={businessPerformanceDriversPayload.rows || []} rowKey={(row) => row.chauffeur} columns={[
       { key: 'chauffeur', label: 'Chauffeur' },
       { key: 'rotations', label: 'Rotations' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'livres', label: 'Livrés' },
       { key: 'camions', label: 'Camions' },
       { key: 'clients', label: 'Clients' },
@@ -541,7 +550,7 @@ export function ReportsPage() {
     {reportType === 'business-performance-days' && <GenericTable title="Performance journalière" subtitle={`${businessPerformanceDaysPayload?.rows?.length ?? 0} jours`} rows={businessPerformanceDaysPayload.rows || []} rowKey={(row) => row.date} columns={[
       { key: 'date', label: 'Date' },
       { key: 'rotations', label: 'Rotations' },
-      { key: 'quantite', label: 'Quantité' },
+      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
       { key: 'livres', label: 'Livrés' },
       { key: 'clients', label: 'Clients' },
       { key: 'destinations', label: 'Destinations' },
@@ -558,9 +567,9 @@ export function ReportsPage() {
 
     {reportType === 'business-batches' && <GenericTable title="Batch / volumes" subtitle={`${businessBatchesPayload?.rows?.length ?? 0} produits`} rows={businessBatchesPayload.rows || []} rowKey={(row) => row.produit} columns={[
       { key: 'produit', label: 'Produit' },
-      { key: 'quantiteLivree', label: 'Quantité livrée' },
-      { key: 'objectif', label: 'Objectif' },
-      { key: 'restant', label: 'Restant' },
+      { key: 'quantiteLivree', label: 'Quantité livrée', render: (value) => formatFrenchQuantity(value) },
+      { key: 'objectif', label: 'Objectif', render: (value) => value ? formatFrenchQuantity(value) : '-' },
+      { key: 'restant', label: 'Restant', render: (value) => value !== null && value !== undefined ? formatFrenchQuantity(value) : '-' },
       { key: 'completion', label: 'Completion %' },
       { key: 'rotations', label: 'Rotations' },
       { key: 'camions', label: 'Camions' },
@@ -572,7 +581,7 @@ export function ReportsPage() {
       { key: 'client', label: 'Client' },
       { key: 'destination', label: 'Destination' },
       { key: 'bons', label: 'Bons' },
-      { key: 'quantiteLivree', label: 'Quantité livrée' },
+      { key: 'quantiteLivree', label: 'Quantité livrée', render: (value) => formatFrenchQuantity(value) },
       { key: 'camions', label: 'Camions' },
       { key: 'chauffeurs', label: 'Chauffeurs' },
       { key: 'marchandises', label: 'Marchandises' },
