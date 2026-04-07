@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 
+function formatFrenchQuantity(value, digits = 3) {
+  const normalized = Number(String(value ?? '').replace(',', '.'))
+  if (!Number.isFinite(normalized)) return value || '-'
+  return normalized.toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
 const initialForm = {
   trackerId: '',
   truckLabel: '',
@@ -262,7 +271,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {filteredOrders.map((item) => {
               const statusLabel = item.active ? 'Actif' : item.status
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
-              return <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{item.quantity}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td><td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
+              return <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{formatFrenchQuantity(item.quantity)}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td><td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
             })}
           </tbody>
         </table>

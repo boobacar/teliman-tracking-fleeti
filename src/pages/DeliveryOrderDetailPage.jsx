@@ -4,6 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, loadDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
 
+function formatFrenchQuantity(value, digits = 3) {
+  const normalized = Number(String(value ?? '').replace(',', '.'))
+  if (!Number.isFinite(normalized)) return value || '-'
+  return normalized.toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
 export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -127,7 +136,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
       <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
-      <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{order.quantity || '-'}</small></div></div>
+      <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{formatFrenchQuantity(order.quantity)}</small></div></div>
     </section>
 
     <section className="dashboard-grid premium-grid phase2-grid">

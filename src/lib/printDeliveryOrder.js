@@ -1,3 +1,12 @@
+function formatFrenchQuantity(value, digits = 3) {
+  const normalized = Number(String(value ?? '').replace(',', '.'))
+  if (!Number.isFinite(normalized)) return value || '-'
+  return normalized.toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}
+
 export function printDeliveryOrder(order) {
   const html = `
     <html>
@@ -23,7 +32,7 @@ export function printDeliveryOrder(order) {
           <div class="card"><span>Client</span><strong>${order.client || '-'}</strong></div>
           <div class="card"><span>Destination</span><strong>${order.destination || '-'}</strong></div>
           <div class="card"><span>Marchandise</span><strong>${order.goods || '-'}</strong></div>
-          <div class="card"><span>Quantité</span><strong>${order.quantity || '-'}</strong></div>
+          <div class="card"><span>Quantité</span><strong>${formatFrenchQuantity(order.quantity)}</strong></div>
           <div class="card"><span>Statut</span><strong>${order.active ? 'Actif' : order.status || '-'}</strong></div>
           <div class="card"><span>Date mission</span><strong>${order.date ? new Date(order.date).toLocaleString() : '-'}</strong></div>
         </div>
