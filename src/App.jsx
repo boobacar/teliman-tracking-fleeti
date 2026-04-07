@@ -6,7 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { fallbackEvents } from './data/mock'
-import { loadFleetData } from './lib/fleeti'
+import { loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
@@ -72,16 +72,8 @@ function App() {
       setDataset(fleet)
       try {
         const module = await import('./lib/fleeti')
-        const [reportsPayload, ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
-          module.loadReports(),
-          module.loadDeliveryOrders(),
-          module.loadDeliveryOrdersSummary(),
-          module.loadMasterData(),
-        ])
+        const reportsPayload = await module.loadReports()
         setReports(reportsPayload)
-        setDeliveryOrders(ordersPayload.items ?? [])
-        setDeliveryOrdersSummary(ordersSummaryPayload)
-        setMasterData(masterDataPayload)
       } catch {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
@@ -172,7 +164,7 @@ function App() {
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
-          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} masterData={masterData} />} />
+          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
           <Route path="/data" element={<DataPage />} />

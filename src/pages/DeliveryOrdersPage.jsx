@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
-import { createDeliveryOrder, deleteDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
+import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 
 const initialForm = {
   trackerId: '',
@@ -21,18 +21,46 @@ const initialForm = {
   active: true,
 }
 
-export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, masterData = { clients: [], goods: [] } }) {
+export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, setDeliveryOrders, setDeliveryOrdersSummary, masterData = { clients: [], goods: [] }, setMasterData }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
+  const [pageLoading, setPageLoading] = useState(false)
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
     label: tracker.label,
     driver: tracker.employeeName,
   })), [enrichedTrackers])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPageData() {
+      if (!setDeliveryOrders || !setDeliveryOrdersSummary || !setMasterData) return
+      setPageLoading(true)
+      try {
+        const [ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
+          loadDeliveryOrders(),
+          loadDeliveryOrdersSummary(),
+          loadMasterData(),
+        ])
+        if (cancelled) return
+        setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
+        setMasterData(masterDataPayload)
+      } finally {
+        if (!cancelled) setPageLoading(false)
+      }
+    }
+
+    loadPageData()
+    return () => {
+      cancelled = true
+    }
+  }, [setDeliveryOrders, setDeliveryOrdersSummary, setMasterData])
 
   const handleTrackerChange = (trackerId) => {
     const selected = trackerOptions.find((item) => String(item.id) === String(trackerId))
@@ -50,7 +78,18 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     try {
       await createDeliveryOrder(form)
       setForm(initialForm)
-      await refreshData()
+      if (setDeliveryOrders && setDeliveryOrdersSummary && setMasterData) {
+        const [ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
+          loadDeliveryOrders(),
+          loadDeliveryOrdersSummary(),
+          loadMasterData(),
+        ])
+        setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
+        setMasterData(masterDataPayload)
+      } else {
+        await refreshData()
+      }
     } finally {
       setSaving(false)
     }
@@ -58,17 +97,44 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
   const markDelivered = async (item) => {
     await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
-    await refreshData()
+    if (setDeliveryOrders && setDeliveryOrdersSummary) {
+      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+        loadDeliveryOrders(),
+        loadDeliveryOrdersSummary(),
+      ])
+      setDeliveryOrders(ordersPayload.items ?? [])
+      setDeliveryOrdersSummary(ordersSummaryPayload)
+    } else {
+      await refreshData()
+    }
   }
 
   const setActive = async (item) => {
     await updateDeliveryOrder(item.id, { active: true, status: item.status === 'Livré' ? 'En cours' : item.status })
-    await refreshData()
+    if (setDeliveryOrders && setDeliveryOrdersSummary) {
+      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+        loadDeliveryOrders(),
+        loadDeliveryOrdersSummary(),
+      ])
+      setDeliveryOrders(ordersPayload.items ?? [])
+      setDeliveryOrdersSummary(ordersSummaryPayload)
+    } else {
+      await refreshData()
+    }
   }
 
   const removeOrder = async (item) => {
     await deleteDeliveryOrder(item.id)
-    await refreshData()
+    if (setDeliveryOrders && setDeliveryOrdersSummary) {
+      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+        loadDeliveryOrders(),
+        loadDeliveryOrdersSummary(),
+      ])
+      setDeliveryOrders(ordersPayload.items ?? [])
+      setDeliveryOrdersSummary(ordersSummaryPayload)
+    } else {
+      await refreshData()
+    }
   }
 
   const filteredOrders = deliveryOrders.filter((item) => {
@@ -97,6 +163,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 3)
 
   return <div style={{ display: 'grid', gap: 20 }}>
+    {pageLoading && <div className="info-banner">Chargement des bons de livraison…</div>}
     <section className="panel panel-large delivery-hero-panel">
       <div className="panel-header"><div><h3>Centre de missions & bons de livraison</h3></div><div className="mission-hero-badge">BL Ops</div></div>
       <div className="mission-highlight-grid">
