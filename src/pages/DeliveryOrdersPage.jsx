@@ -134,8 +134,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
           </select>
           <input placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-          <input type="datetime-local" value={form.departureDateTime} onChange={(e) => setForm({ ...form, departureDateTime: e.target.value })} placeholder="Date et heure départ" />
-          <input type="datetime-local" value={form.arrivalDateTime} onChange={(e) => setForm({ ...form, arrivalDateTime: e.target.value })} placeholder="Date et heure arrivée" />
+          <label className="field-stack"><span>Heure de départ</span><input type="datetime-local" value={form.departureDateTime} onChange={(e) => setForm({ ...form, departureDateTime: e.target.value })} /></label>
+          <label className="field-stack"><span>Heure d’arrivée</span><input type="datetime-local" value={form.arrivalDateTime} onChange={(e) => setForm({ ...form, arrivalDateTime: e.target.value })} /></label>
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             <option>Prévu</option>
             <option>En chargement</option>

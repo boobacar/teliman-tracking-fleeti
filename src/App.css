@@ -1003,6 +1003,18 @@ input {
   padding-right: 40px;
 }
 
+.field-stack {
+  display: grid;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field-stack span {
+  padding-left: 2px;
+}
+
 .toggle-row {
   display: flex;
   align-items: center;
