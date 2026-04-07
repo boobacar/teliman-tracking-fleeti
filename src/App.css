@@ -342,6 +342,59 @@ input {
   font-weight: 700;
 }
 
+.map-shell {
+  position: relative;
+}
+
+.map-shell-fullscreen {
+  background: #020617;
+  width: 100vw;
+  height: 100vh;
+  padding: 16px;
+}
+
+.map-shell-fullscreen .leaflet-map {
+  height: calc(100vh - 32px);
+}
+
+.map-overlay-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.map-overlay-group {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
+}
+
+.map-overlay-group span {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.map-overlay-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.map-fullscreen-btn {
+  background: rgba(15, 23, 42, 0.88);
+}
+
 .map-legend-row {
   display: flex;
   gap: 16px;
