@@ -279,6 +279,42 @@ export function ReportsPage() {
     }
   }, [activeQuery, reportType])
 
+  const driverOptions = useMemo(() => {
+    const values = new Set()
+    ;(fleetPayload?.rows || []).forEach((row) => row?.conducteur && values.add(row.conducteur))
+    ;(missionsPayload?.rows || []).forEach((row) => row?.conducteur && values.add(row.conducteur))
+    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.chauffeur && values.add(row.chauffeur))
+    ;(businessPerformanceDriversPayload?.rows || []).forEach((row) => row?.chauffeur && values.add(row.chauffeur))
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [fleetPayload, missionsPayload, businessDetailedPayload, businessPerformanceDriversPayload])
+
+  const clientOptions = useMemo(() => {
+    const values = new Set()
+    ;(missionsPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(businessClientPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    ;(businessProjectsPayload?.rows || []).forEach((row) => row?.client && values.add(row.client))
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [missionsPayload, businessDetailedPayload, businessClientPayload, businessProjectsPayload])
+
+  const destinationOptions = useMemo(() => {
+    const values = new Set()
+    ;(missionsPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(businessDestinationPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    ;(businessProjectsPayload?.rows || []).forEach((row) => row?.destination && values.add(row.destination))
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [missionsPayload, businessDetailedPayload, businessDestinationPayload, businessProjectsPayload])
+
+  const goodsOptions = useMemo(() => {
+    const values = new Set()
+    ;(missionsPayload?.rows || []).forEach((row) => row?.goods && values.add(row.goods))
+    ;(businessDetailedPayload?.rows || []).forEach((row) => row?.marchandise && values.add(row.marchandise))
+    ;(businessGoodsPayload?.rows || []).forEach((row) => row?.marchandise && values.add(row.marchandise))
+    ;(businessBatchesPayload?.rows || []).forEach((row) => row?.produit && values.add(row.produit))
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [missionsPayload, businessDetailedPayload, businessGoodsPayload, businessBatchesPayload])
+
   const overviewCards = [
     { label: 'Distance totale', value: `${summaryPayload?.summary?.distanceTotaleKm ?? 0} km`, helper: 'sur la période' },
     { label: 'Trajets total', value: summaryPayload?.summary?.trajetsTotal ?? 0, helper: 'activité flotte' },
@@ -321,9 +357,18 @@ export function ReportsPage() {
       <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${reportType === item.value ? 'selected' : ''}`} onClick={() => setReportType(item.value)}>{item.label}</button>)}</div>
       <div className="reports-filter-grid">
         <select value={filters.period} onChange={(e) => setFilters((current) => ({ ...current, period: e.target.value }))}>{PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-        <input placeholder="Chauffeur" value={filters.driver} onChange={(e) => setFilters((current) => ({ ...current, driver: e.target.value }))} />
-        <input placeholder="Client" value={filters.client} onChange={(e) => setFilters((current) => ({ ...current, client: e.target.value }))} />
-        <input placeholder="Destination" value={filters.destination} onChange={(e) => setFilters((current) => ({ ...current, destination: e.target.value }))} />
+        <select value={filters.driver} onChange={(e) => setFilters((current) => ({ ...current, driver: e.target.value }))}>
+          <option value="">Tous chauffeurs</option>
+          {driverOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={filters.client} onChange={(e) => setFilters((current) => ({ ...current, client: e.target.value }))}>
+          <option value="">Tous clients</option>
+          {clientOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={filters.destination} onChange={(e) => setFilters((current) => ({ ...current, destination: e.target.value }))}>
+          <option value="">Toutes destinations</option>
+          {destinationOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
         <select value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
           <option value="">Tous statuts</option>
           <option value="active">Active</option>
@@ -332,7 +377,10 @@ export function ReportsPage() {
           <option value="En cours">Mission en cours</option>
           <option value="Prévu">Prévu</option>
         </select>
-        <input placeholder="Produit / marchandise" value={filters.goods} onChange={(e) => setFilters((current) => ({ ...current, goods: e.target.value }))} />
+        <select value={filters.goods} onChange={(e) => setFilters((current) => ({ ...current, goods: e.target.value }))}>
+          <option value="">Tous produits</option>
+          {goodsOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
       </div>
       {isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
         <input placeholder="Projet / client" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))} />
