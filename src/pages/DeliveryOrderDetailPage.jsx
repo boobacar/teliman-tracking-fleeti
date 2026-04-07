@@ -85,9 +85,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <input value={order.destination || ''} onChange={(e) => updateField('destination', e.target.value)} disabled={saving} placeholder="Destination" />
           <input value={order.goods || ''} onChange={(e) => updateField('goods', e.target.value)} disabled={saving} placeholder="Marchandise" />
           <input value={order.quantity || ''} onChange={(e) => updateField('quantity', e.target.value)} disabled={saving} placeholder="Quantité / tonnage" />
-          <input type="datetime-local" value={order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('departureDateTime', e.target.value)} disabled={saving} />
-          <input type="datetime-local" value={order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('arrivalDateTime', e.target.value)} disabled={saving} />
-          <input type="datetime-local" value={order.date ? new Date(order.date).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('date', e.target.value)} disabled={saving} />
+          <label className="field-stack"><span>Départ</span><input type="datetime-local" value={order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('departureDateTime', e.target.value)} disabled={saving} /></label>
+          <label className="field-stack"><span>Arrivée</span><input type="datetime-local" value={order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('arrivalDateTime', e.target.value)} disabled={saving} /></label>
+          <label className="field-stack"><span>Créé le</span><input type="datetime-local" value={order.date ? new Date(order.date).toISOString().slice(0, 16) : ''} onChange={(e) => updateField('date', e.target.value)} disabled={saving} /></label>
           <textarea className="delivery-notes-box" value={order.notes || ''} onChange={(e) => updateField('notes', e.target.value)} rows={5} disabled={saving} placeholder="Notes mission" />
         </div>
       </section>
