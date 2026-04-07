@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadReportAlerts, loadReportFleet, loadReportMissions, loadReportPivot, loadReportSummary } from '../lib/fleeti'
+import {
+  loadReportAlerts,
+  loadReportByClient,
+  loadReportByGoods,
+  loadReportByTruck,
+  loadReportDetailedDeliveries,
+  loadReportFleet,
+  loadReportMissions,
+  loadReportPivot,
+  loadReportSummary,
+} from '../lib/fleeti'
 
 const REPORT_TYPES = [
   { value: 'overview', label: 'Vue d’ensemble' },
@@ -7,6 +17,10 @@ const REPORT_TYPES = [
   { value: 'alerts', label: 'Alertes' },
   { value: 'missions', label: 'Missions' },
   { value: 'pivot', label: 'Tableau croisé' },
+  { value: 'business-detailed', label: 'Livraisons détaillées' },
+  { value: 'business-client', label: 'Par client' },
+  { value: 'business-goods', label: 'Par produit' },
+  { value: 'business-truck', label: 'Par camion' },
 ]
 
 const PERIODS = [
@@ -102,6 +116,45 @@ function exportPivot(pivot) {
   downloadCsv('rapport-pivot.csv', rows)
 }
 
+function exportBusinessDetailed(rows = []) {
+  const csvRows = [
+    ['Référence', 'Camion', 'Chauffeur', 'Client', 'Destination', 'Marchandise', 'Quantité', 'Départ', 'Arrivée', 'Statut', 'Date', 'Actif', 'Preuve'],
+    ...rows.map((row) => [row.reference, row.camion, row.chauffeur, row.client, row.destination, row.marchandise, row.quantite, row.depart, row.arrivee, row.statut, row.date, row.actif ? 'Oui' : 'Non', row.preuve]),
+  ]
+  downloadCsv('rapport-livraisons-detaillees.csv', csvRows)
+}
+
+function exportBusinessClient(rows = []) {
+  const csvRows = [
+    ['Client', 'Bons', 'Quantité', 'Actifs', 'Livrés'],
+    ...rows.map((row) => [row.client, row.bons, row.quantite, row.actifs, row.livres]),
+  ]
+  downloadCsv('rapport-par-client.csv', csvRows)
+}
+
+function exportBusinessGoods(rows = []) {
+  const csvRows = [
+    ['Produit', 'Bons', 'Quantité', 'Clients', 'Destinations'],
+    ...rows.map((row) => [row.marchandise, row.bons, row.quantite, row.clients, row.destinations]),
+  ]
+  downloadCsv('rapport-par-produit.csv', csvRows)
+}
+
+function exportBusinessTruck(rows = []) {
+  const csvRows = [
+    ['Camion', 'Chauffeur', 'Bons', 'Quantité', 'Actifs', 'Livrés', 'Destinations'],
+    ...rows.map((row) => [row.camion, row.chauffeur, row.bons, row.quantite, row.actifs, row.livres, row.destinations]),
+  ]
+  downloadCsv('rapport-par-camion.csv', csvRows)
+}
+
+function formatDateTime(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('fr-FR')
+}
+
 export function ReportsPage() {
   const [reportType, setReportType] = useState('overview')
   const [filters, setFilters] = useState({
@@ -112,6 +165,7 @@ export function ReportsPage() {
     eventType: '',
     client: '',
     destination: '',
+    goods: '',
     pivotRows: 'tracker',
     pivotCols: 'event',
     metric: 'count',
@@ -123,6 +177,10 @@ export function ReportsPage() {
   const [alertsPayload, setAlertsPayload] = useState({ summary: {}, rows: [] })
   const [missionsPayload, setMissionsPayload] = useState({ summary: {}, rows: [] })
   const [pivotPayload, setPivotPayload] = useState({ pivot: { columns: [], rows: [] } })
+  const [businessDetailedPayload, setBusinessDetailedPayload] = useState({ rows: [] })
+  const [businessClientPayload, setBusinessClientPayload] = useState({ rows: [] })
+  const [businessGoodsPayload, setBusinessGoodsPayload] = useState({ rows: [] })
+  const [businessTruckPayload, setBusinessTruckPayload] = useState({ rows: [] })
 
   const summaryQuery = useMemo(() => buildQuery({
     period: filters.period,
@@ -132,6 +190,7 @@ export function ReportsPage() {
     eventType: filters.eventType,
     client: filters.client,
     destination: filters.destination,
+    goods: filters.goods,
   }), [filters])
 
   const activeQuery = useMemo(() => buildQuery(filters), [filters])
@@ -178,6 +237,18 @@ export function ReportsPage() {
         } else if (reportType === 'pivot') {
           const payload = await loadReportPivot(activeQuery)
           if (!cancelled) setPivotPayload(payload)
+        } else if (reportType === 'business-detailed') {
+          const payload = await loadReportDetailedDeliveries(activeQuery)
+          if (!cancelled) setBusinessDetailedPayload(payload)
+        } else if (reportType === 'business-client') {
+          const payload = await loadReportByClient(activeQuery)
+          if (!cancelled) setBusinessClientPayload(payload)
+        } else if (reportType === 'business-goods') {
+          const payload = await loadReportByGoods(activeQuery)
+          if (!cancelled) setBusinessGoodsPayload(payload)
+        } else if (reportType === 'business-truck') {
+          const payload = await loadReportByTruck(activeQuery)
+          if (!cancelled) setBusinessTruckPayload(payload)
         }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Erreur de chargement des rapports')
@@ -201,17 +272,30 @@ export function ReportsPage() {
     { label: 'Vitesse moyenne', value: `${summaryPayload?.summary?.vitesseMoyenneFlotte ?? 0} km/h`, helper: 'instantané' },
   ]
 
+  const businessCards = [
+    { label: 'Bons', value: summaryPayload?.missions?.totalMissions ?? 0, helper: 'missions trouvées' },
+    { label: 'Clients', value: businessClientPayload?.rows?.length ?? 0, helper: 'dans le filtre' },
+    { label: 'Produits', value: businessGoodsPayload?.rows?.length ?? 0, helper: 'dans le filtre' },
+    { label: 'Camions', value: businessTruckPayload?.rows?.length ?? 0, helper: 'exploités' },
+  ]
+
   const handleExport = () => {
     if (reportType === 'overview') return exportOverview(summaryPayload)
     if (reportType === 'fleet') return exportFleet(fleetPayload.rows)
     if (reportType === 'alerts') return exportAlerts(alertsPayload.rows)
     if (reportType === 'missions') return exportMissions(missionsPayload.rows)
-    return exportPivot(pivotPayload.pivot)
+    if (reportType === 'pivot') return exportPivot(pivotPayload.pivot)
+    if (reportType === 'business-detailed') return exportBusinessDetailed(businessDetailedPayload.rows)
+    if (reportType === 'business-client') return exportBusinessClient(businessClientPayload.rows)
+    if (reportType === 'business-goods') return exportBusinessGoods(businessGoodsPayload.rows)
+    return exportBusinessTruck(businessTruckPayload.rows)
   }
+
+  const isBusinessReport = reportType.startsWith('business-')
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large reports-v2-hero">
-      <div className="panel-header"><div><h3>Centre de rapports V2</h3><p>Analyse flotte, alertes, missions et tableaux croisés</p></div><button className="primary-btn" onClick={handleExport}>Exporter CSV</button></div>
+      <div className="panel-header"><div><h3>Centre de rapports</h3><p>Fleeti + rapports métier de type Excel</p></div><button className="primary-btn" onClick={handleExport}>Exporter CSV</button></div>
       <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${reportType === item.value ? 'selected' : ''}`} onClick={() => setReportType(item.value)}>{item.label}</button>)}</div>
       <div className="reports-filter-grid">
         <select value={filters.period} onChange={(e) => setFilters((current) => ({ ...current, period: e.target.value }))}>{PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
@@ -224,16 +308,20 @@ export function ReportsPage() {
           <option value="offline">Offline</option>
           <option value="Livré">Mission livrée</option>
           <option value="En cours">Mission en cours</option>
+          <option value="Prévu">Prévu</option>
         </select>
-        <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
+        <input placeholder="Produit / marchandise" value={filters.goods} onChange={(e) => setFilters((current) => ({ ...current, goods: e.target.value }))} />
       </div>
+      {!isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+        <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
+      </div>}
       {reportType === 'pivot' && <div className="reports-filter-grid reports-pivot-grid"><select value={filters.pivotRows} onChange={(e) => setFilters((current) => ({ ...current, pivotRows: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} lignes</option>)}</select><select value={filters.pivotCols} onChange={(e) => setFilters((current) => ({ ...current, pivotCols: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} colonnes</option>)}</select><select value={filters.metric} onChange={(e) => setFilters((current) => ({ ...current, metric: e.target.value }))}>{PIVOT_METRICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>}
       {loading && reportType !== 'overview' && <div className="info-banner">Chargement du rapport {REPORT_TYPES.find((item) => item.value === reportType)?.label?.toLowerCase()}…</div>}
       {error && <div className="error-banner">{error}</div>}
     </section>
 
     <section className="reports-summary-grid reports-v2-kpis">
-      {overviewCards.map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
+      {(isBusinessReport ? businessCards : overviewCards).map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
     </section>
 
     {reportType === 'overview' && <section className="dashboard-grid premium-grid phase2-grid"><div className="panel"><div className="panel-header"><div><h3>Vue d’ensemble flotte</h3></div></div><div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.totalVehicles ?? 0}</strong><div><span>Véhicules</span><small>dans le périmètre</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.activeVehicles ?? 0}</strong><div><span>Actifs</span><small>connectés</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.movingVehicles ?? 0}</strong><div><span>En mouvement</span><small>terrain</small></div></div></div></div><div className="panel"><div className="panel-header"><div><h3>Vue alertes & missions</h3></div></div><div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{summaryPayload?.alerts?.totalAlerts ?? 0}</strong><div><span>Alertes</span><small>toutes catégories</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.missions?.totalMissions ?? 0}</strong><div><span>Missions</span><small>bons enregistrés</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.missions?.pendingProofs ?? 0}</strong><div><span>Preuves en attente</span><small>à compléter</small></div></div></div></div></section>}
@@ -245,5 +333,13 @@ export function ReportsPage() {
     {reportType === 'missions' && <section className="panel panel-large"><div className="panel-header"><div><h3>Rapport missions</h3><p>{missionsPayload?.rows?.length ?? 0} bons</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Référence</th><th>Camion</th><th>Conducteur</th><th>Client</th><th>Destination</th><th>Statut</th><th>Actif</th><th>Date</th><th>Preuve</th></tr></thead><tbody>{(missionsPayload?.rows || []).map((row) => <tr key={row.id}><td>{row.reference}</td><td>{row.immatriculation}</td><td>{row.conducteur}</td><td>{row.client}</td><td>{row.destination}</td><td>{row.status}</td><td>{row.active ? 'Oui' : 'Non'}</td><td>{row.date ? new Date(row.date).toLocaleString() : '-'}</td><td>{row.proofStatus}</td></tr>)}</tbody></table></div></section>}
 
     {reportType === 'pivot' && <section className="panel panel-large"><div className="panel-header"><div><h3>Tableau croisé</h3><p>{pivotPayload?.pivot?.rowsKey} × {pivotPayload?.pivot?.colsKey}</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Ligne</th>{(pivotPayload?.pivot?.columns || []).map((column) => <th key={column}>{column}</th>)}<th>Total</th></tr></thead><tbody>{(pivotPayload?.pivot?.rows || []).map((row) => <tr key={row.label}><td>{row.label}</td>{(pivotPayload?.pivot?.columns || []).map((column) => <td key={`${row.label}-${column}`}>{row.values?.[column] ?? 0}</td>)}<td>{row.total}</td></tr>)}</tbody></table></div></section>}
+
+    {reportType === 'business-detailed' && <section className="panel panel-large"><div className="panel-header"><div><h3>Livraisons détaillées</h3><p>{businessDetailedPayload?.rows?.length ?? 0} lignes</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Référence</th><th>Camion</th><th>Chauffeur</th><th>Client</th><th>Destination</th><th>Produit</th><th>Quantité</th><th>Départ</th><th>Arrivée</th><th>Statut</th><th>Preuve</th></tr></thead><tbody>{(businessDetailedPayload?.rows || []).map((row) => <tr key={`${row.reference}-${row.camion}-${row.date || ''}`}><td>{row.reference || '-'}</td><td>{row.camion || '-'}</td><td>{row.chauffeur || '-'}</td><td>{row.client || '-'}</td><td>{row.destination || '-'}</td><td>{row.marchandise || '-'}</td><td>{row.quantite || '-'}</td><td>{formatDateTime(row.depart)}</td><td>{formatDateTime(row.arrivee)}</td><td>{row.statut || '-'}</td><td>{row.preuve || '-'}</td></tr>)}</tbody></table></div></section>}
+
+    {reportType === 'business-client' && <section className="panel panel-large"><div className="panel-header"><div><h3>Rapport par client</h3><p>{businessClientPayload?.rows?.length ?? 0} clients</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Client</th><th>Bons</th><th>Quantité</th><th>Actifs</th><th>Livrés</th></tr></thead><tbody>{(businessClientPayload?.rows || []).map((row) => <tr key={row.client}><td>{row.client}</td><td>{row.bons}</td><td>{row.quantite}</td><td>{row.actifs}</td><td>{row.livres}</td></tr>)}</tbody></table></div></section>}
+
+    {reportType === 'business-goods' && <section className="panel panel-large"><div className="panel-header"><div><h3>Rapport par produit</h3><p>{businessGoodsPayload?.rows?.length ?? 0} produits</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Produit</th><th>Bons</th><th>Quantité</th><th>Clients</th><th>Destinations</th></tr></thead><tbody>{(businessGoodsPayload?.rows || []).map((row) => <tr key={row.marchandise}><td>{row.marchandise}</td><td>{row.bons}</td><td>{row.quantite}</td><td>{row.clients}</td><td>{row.destinations}</td></tr>)}</tbody></table></div></section>}
+
+    {reportType === 'business-truck' && <section className="panel panel-large"><div className="panel-header"><div><h3>Rapport par camion</h3><p>{businessTruckPayload?.rows?.length ?? 0} camions</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Camion</th><th>Chauffeur</th><th>Bons</th><th>Quantité</th><th>Actifs</th><th>Livrés</th><th>Destinations</th></tr></thead><tbody>{(businessTruckPayload?.rows || []).map((row) => <tr key={row.camion}><td>{row.camion}</td><td>{row.chauffeur}</td><td>{row.bons}</td><td>{row.quantite}</td><td>{row.actifs}</td><td>{row.livres}</td><td>{row.destinations}</td></tr>)}</tbody></table></div></section>}
   </div>
 }
