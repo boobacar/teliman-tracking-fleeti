@@ -790,6 +790,10 @@ input {
   gap: 10px;
 }
 
+.dashboard-mileage-filters {
+  margin-bottom: 14px;
+}
+
 .view-link {
   display: flex;
   align-items: center;

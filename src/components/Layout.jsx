@@ -14,7 +14,7 @@ const views = [
   { id: '/data', label: 'Données', icon: Database },
 ]
 
-export function Layout({ children, loading, refreshData, search, setSearch, filter, setFilter, dataset }) {
+export function Layout({ children, loading, refreshData, search, setSearch, dataset }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
@@ -27,7 +27,6 @@ export function Layout({ children, loading, refreshData, search, setSearch, filt
         <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
         <div className="search-box"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Chercher tracker ou chauffeur" /></div>
         <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
-        <div className="filters">{['all', 'active', 'idle', 'offline'].map((value) => <button key={value} className={`chip ${filter === value ? 'selected' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div>
       </aside>
 
       <main className="main-content premium-main">
