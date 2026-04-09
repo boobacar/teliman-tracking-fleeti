@@ -67,11 +67,25 @@ function buildCorsOptions() {
   ]
   const allowedOrigins = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : fallbackOrigins
 
+  function isAllowedOrigin(origin) {
+    if (allowedOrigins.includes(origin)) return true
+    try {
+      const url = new URL(origin)
+      const host = url.hostname.toLowerCase()
+      if (host === 'teliman-tracking-fleeti.vercel.app') return true
+      if (host.endsWith('.vercel.app') && host.includes('teliman-tracking-fleeti')) return true
+      if (host === 'telimanlogistique.com' || host === 'www.telimanlogistique.com') return true
+      return false
+    } catch {
+      return false
+    }
+  }
+
   return {
     origin(origin, callback) {
       if (!origin) return callback(null, true)
-      if (allowedOrigins.includes(origin)) return callback(null, true)
-      return callback(new Error('Origin not allowed by CORS'))
+      if (isAllowedOrigin(origin)) return callback(null, true)
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`))
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'X-API-Key'],
@@ -171,9 +185,10 @@ function readMasterData() {
     return {
       clients: Array.isArray(payload.clients) ? payload.clients : [],
       goods: Array.isArray(payload.goods) ? payload.goods : [],
+      destinations: Array.isArray(payload.destinations) ? payload.destinations : [],
     }
   } catch {
-    return { clients: [], goods: [] }
+    return { clients: [], goods: [], destinations: [] }
   }
 }
 
@@ -181,6 +196,7 @@ function writeMasterData(data) {
   const payload = {
     clients: Array.from(new Set((data.clients || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     goods: Array.from(new Set((data.goods || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    destinations: Array.from(new Set((data.destinations || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
   }
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
 }
@@ -961,7 +977,7 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const value = String(req.body?.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
@@ -974,7 +990,7 @@ app.post('/api/master-data/:listName', (req, res) => {
 
 app.delete('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const value = String(req.query.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })

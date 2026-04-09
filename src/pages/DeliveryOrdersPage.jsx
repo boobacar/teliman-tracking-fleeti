@@ -30,7 +30,7 @@ const initialForm = {
   active: true,
 }
 
-export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, setDeliveryOrders, setDeliveryOrdersSummary, masterData = { clients: [], goods: [] }, setMasterData }) {
+export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, setDeliveryOrders, setDeliveryOrdersSummary, masterData = { clients: [], goods: [], destinations: [] }, setMasterData }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -204,7 +204,10 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             <option value="">Sélectionner un client</option>
             {(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
           </select>
-          <input placeholder="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required />
+          <select value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required>
+            <option value="">Sélectionner une destination</option>
+            {(masterData.destinations || []).map((destination) => <option key={destination} value={destination}>{destination}</option>)}
+          </select>
           <select value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}>
             <option value="">Sélectionner une marchandise</option>
             {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}

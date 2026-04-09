@@ -1,11 +1,32 @@
-import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { MapPin, Package2, Trash2, Users } from 'lucide-react'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
 
+function DataCard({ title, description, icon, items, value, setValue, addLabel, placeholder, listName, onAdd, onRemove }) {
+  return <section className="panel panel-large data-card-panel">
+    <div className="panel-header">
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+      <div className="stat-icon">{icon}</div>
+    </div>
+    <div className="delivery-form delivery-form-premium data-card-form">
+      <input placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
+      <button className="primary-btn" onClick={() => onAdd(listName, value, setValue)}>{addLabel}</button>
+    </div>
+    <div className="data-list-grid">
+      {items.length === 0 && <div className="empty-banner">Aucune donnée enregistrée pour le moment.</div>}
+      {items.map((item) => <div key={item} className="driver-rank-row static-row data-row-card"><div><span>{item}</span><small>{title} disponible</small></div><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer"><Trash2 size={16} /></button></div>)}
+    </div>
+  </section>
+}
+
 export function DataPage() {
-  const [data, setData] = useState({ clients: [], goods: [] })
+  const [data, setData] = useState({ clients: [], goods: [], destinations: [] })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
+  const [destinationValue, setDestinationValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -35,28 +56,65 @@ export function DataPage() {
     await refresh()
   }
 
+  const summaryCards = useMemo(() => ([
+    { label: 'Clients', value: data.clients?.length || 0, helper: 'listes déroulantes BL' },
+    { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
+    { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
+  ]), [data])
+
   return <div style={{ display: 'grid', gap: 20 }}>
     {loading && <div className="info-banner">Chargement des données…</div>}
     {error && <div className="error-banner">{error}</div>}
 
-    <section className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Données clients</h3><p>Valeurs utilisées dans les listes déroulantes</p></div></div>
-        <div className="delivery-form delivery-form-premium">
-          <input placeholder="Ajouter un client" value={clientValue} onChange={(e) => setClientValue(e.target.value)} />
-          <button className="primary-btn" onClick={() => addItem('clients', clientValue, setClientValue)}>Ajouter client</button>
-        </div>
-        <div className="driver-ranking">{(data.clients || []).map((item) => <div key={item} className="driver-rank-row static-row"><div><span>{item}</span><small>Client disponible</small></div><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('clients', item)} aria-label="Supprimer"><Trash2 size={16} /></button></div>)}</div>
+    <section className="panel panel-large reports-v2-hero">
+      <div className="panel-header"><div><h3>Centre de données de référence</h3><p>Clients, destinations et marchandises utilisés dans les formulaires métier</p></div></div>
+      <section className="reports-summary-grid reports-v2-kpis">
+        {summaryCards.map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
       </section>
+    </section>
 
-      <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Données marchandises</h3><p>Valeurs utilisées dans les listes déroulantes</p></div></div>
-        <div className="delivery-form delivery-form-premium">
-          <input placeholder="Ajouter une marchandise" value={goodsValue} onChange={(e) => setGoodsValue(e.target.value)} />
-          <button className="primary-btn" onClick={() => addItem('goods', goodsValue, setGoodsValue)}>Ajouter marchandise</button>
-        </div>
-        <div className="driver-ranking">{(data.goods || []).map((item) => <div key={item} className="driver-rank-row static-row"><div><span>{item}</span><small>Marchandise disponible</small></div><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('goods', item)} aria-label="Supprimer"><Trash2 size={16} /></button></div>)}</div>
-      </section>
+    <section className="dashboard-grid premium-grid phase2-grid data-page-grid">
+      <DataCard
+        title="Données clients"
+        description="Valeurs utilisées dans les listes déroulantes"
+        icon={<Users size={18} />}
+        items={data.clients || []}
+        value={clientValue}
+        setValue={setClientValue}
+        addLabel="Ajouter client"
+        placeholder="Ajouter un client"
+        listName="clients"
+        onAdd={addItem}
+        onRemove={removeItem}
+      />
+
+      <DataCard
+        title="Données destinations"
+        description="Destinations disponibles pour les bons de livraison"
+        icon={<MapPin size={18} />}
+        items={data.destinations || []}
+        value={destinationValue}
+        setValue={setDestinationValue}
+        addLabel="Ajouter destination"
+        placeholder="Ajouter une destination"
+        listName="destinations"
+        onAdd={addItem}
+        onRemove={removeItem}
+      />
+
+      <DataCard
+        title="Données marchandises"
+        description="Valeurs utilisées dans les listes déroulantes"
+        icon={<Package2 size={18} />}
+        items={data.goods || []}
+        value={goodsValue}
+        setValue={setGoodsValue}
+        addLabel="Ajouter marchandise"
+        placeholder="Ajouter une marchandise"
+        listName="goods"
+        onAdd={addItem}
+        onRemove={removeItem}
+      />
     </section>
   </div>
 }

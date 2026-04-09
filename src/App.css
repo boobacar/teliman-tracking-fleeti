@@ -794,6 +794,28 @@ input {
   margin-bottom: 14px;
 }
 
+.data-page-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.data-card-panel {
+  min-height: 520px;
+}
+
+.data-card-form {
+  margin-bottom: 18px;
+}
+
+.data-list-grid {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.data-row-card {
+  grid-template-columns: 1fr auto;
+}
+
 .view-link {
   display: flex;
   align-items: center;
