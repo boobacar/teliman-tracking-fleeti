@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Package2, Trash2, Users } from 'lucide-react'
+import { MapPin, Package2, Truck, Trash2, Users } from 'lucide-react'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
 
 function DataCard({ title, description, icon, items, value, setValue, addLabel, placeholder, listName, onAdd, onRemove }) {
@@ -23,10 +23,11 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
 }
 
 export function DataPage() {
-  const [data, setData] = useState({ clients: [], goods: [], destinations: [] })
+  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [] })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
   const [destinationValue, setDestinationValue] = useState('')
+  const [supplierValue, setSupplierValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -60,6 +61,7 @@ export function DataPage() {
     { label: 'Clients', value: data.clients?.length || 0, helper: 'listes déroulantes BL' },
     { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
     { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
+    { label: 'Fournisseurs', value: data.suppliers?.length || 0, helper: 'bons carburant' },
   ]), [data])
 
   return <div style={{ display: 'grid', gap: 20 }}>
@@ -112,6 +114,20 @@ export function DataPage() {
         addLabel="Ajouter marchandise"
         placeholder="Ajouter une marchandise"
         listName="goods"
+        onAdd={addItem}
+        onRemove={removeItem}
+      />
+
+      <DataCard
+        title="Données fournisseurs"
+        description="Fournisseurs disponibles pour les bons de carburant"
+        icon={<Truck size={18} />}
+        items={data.suppliers || []}
+        value={supplierValue}
+        setValue={setSupplierValue}
+        addLabel="Ajouter fournisseur"
+        placeholder="Ajouter un fournisseur"
+        listName="suppliers"
         onAdd={addItem}
         onRemove={removeItem}
       />

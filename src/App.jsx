@@ -62,7 +62,7 @@ function App() {
   const [reports, setReports] = useState({ summary: {}, rows: [] })
   const [deliveryOrders, setDeliveryOrders] = useState([])
   const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
-  const [masterData, setMasterData] = useState({ clients: [], goods: [] })
+  const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [] })
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -78,7 +78,7 @@ function App() {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
         setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData({ clients: [], goods: [] })
+        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [] })
       }
     } catch (err) {
       setError(err.message)

@@ -3,13 +3,14 @@ import DatePicker from 'react-datepicker'
 import { fr } from 'date-fns/locale'
 import { Camera, Pencil, Trash2 } from 'lucide-react'
 import 'react-datepicker/dist/react-datepicker.css'
-import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, updateFuelVoucher } from '../lib/fleeti'
+import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
   trackerId: '',
   truckLabel: '',
   driver: '',
   voucherNumber: '',
+  supplier: '',
   dateTime: '',
   quantityLiters: '',
   unitPrice: '',
@@ -56,6 +57,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [items, setItems] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(false)
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
@@ -72,8 +74,14 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     async function loadData() {
       setLoading(true)
       try {
-        const payload = await loadFuelVouchers()
-        if (!cancelled) setItems(payload.items ?? [])
+        const [payload, masterData] = await Promise.all([
+          loadFuelVouchers(),
+          loadMasterData(),
+        ])
+        if (!cancelled) {
+          setItems(payload.items ?? [])
+          setSuppliers(masterData?.suppliers || [])
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -150,10 +158,6 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-form-panel">
         <div className="panel-header"><div><h3>Nouveau bon de carburant</h3></div></div>
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
-            <option value="">Sélection Camion</option>
-            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
           <input value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
           <label className="field-stack">
             <span>Date et heure</span>
@@ -170,6 +174,14 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
               required
             />
           </label>
+          <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
+            <option value="">Sélection Camion</option>
+            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+          </select>
+          <select value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
+            <option value="">Fournisseur</option>
+            {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
+          </select>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>

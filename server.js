@@ -199,9 +199,10 @@ function readMasterData() {
       clients: Array.isArray(payload.clients) ? payload.clients : [],
       goods: Array.isArray(payload.goods) ? payload.goods : [],
       destinations: Array.isArray(payload.destinations) ? payload.destinations : [],
+      suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
     }
   } catch {
-    return { clients: [], goods: [], destinations: [] }
+    return { clients: [], goods: [], destinations: [], suppliers: [] }
   }
 }
 
@@ -210,6 +211,7 @@ function writeMasterData(data) {
     clients: Array.from(new Set((data.clients || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     goods: Array.from(new Set((data.goods || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     destinations: Array.from(new Set((data.destinations || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    suppliers: Array.from(new Set((data.suppliers || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
   }
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
 }
@@ -246,6 +248,7 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
     driver: String(body.driver ?? current?.driver ?? '').trim(),
     client: String(body.client ?? current?.client ?? '').trim(),
     voucherNumber: String(body.voucherNumber ?? current?.voucherNumber ?? '').trim(),
+    supplier: String(body.supplier ?? current?.supplier ?? '').trim(),
     dateTime: body.dateTime || current?.dateTime || new Date().toISOString(),
     quantityLiters,
     unitPrice,
@@ -1037,7 +1040,7 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const value = String(req.body?.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
@@ -1050,7 +1053,7 @@ app.post('/api/master-data/:listName', (req, res) => {
 
 app.delete('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const value = String(req.query.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
