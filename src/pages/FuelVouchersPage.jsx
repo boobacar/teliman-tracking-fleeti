@@ -10,7 +10,6 @@ const initialForm = {
   truckLabel: '',
   driver: '',
   voucherNumber: '',
-  client: '',
   dateTime: '',
   quantityLiters: '',
   unitPrice: '',
@@ -31,10 +30,9 @@ function fileToDataUrl(file) {
 }
 
 function exportCsv(rows) {
-  const headers = ['Camion', 'Client', 'Numéro bon', 'Date', 'Quantité (L)', 'Prix/L', 'Montant', 'Photo']
+  const headers = ['Camion', 'Numéro bon', 'Date', 'Quantité (L)', 'Prix/L', 'Montant', 'Photo']
   const csvRows = rows.map((item) => [
     item.truckLabel || '',
-    item.client || '',
     item.voucherNumber || '',
     item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR') : '',
     item.quantityLiters || 0,
@@ -60,7 +58,6 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [trackerFilter, setTrackerFilter] = useState('all')
-  const [clientFilter, setClientFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
 
   const amount = useMemo(() => Number((toNumber(form.quantityLiters) * toNumber(form.unitPrice)).toFixed(2)), [form.quantityLiters, form.unitPrice])
@@ -87,11 +84,10 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
 
   const filtered = useMemo(() => items.filter((item) => {
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
-    const clientOk = clientFilter === 'all' ? true : String(item.client || '') === clientFilter
     const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
     const dateOk = !selectedDateKey ? true : String(item.dateTime || '').slice(0, 10) === selectedDateKey
-    return trackerOk && clientOk && dateOk
-  }), [items, trackerFilter, clientFilter, dateFilter])
+    return trackerOk && dateOk
+  }), [items, trackerFilter, dateFilter])
 
   const onTruckChange = (value) => {
     const tracker = enrichedTrackers.find((item) => String(item.id) === String(value))
@@ -159,7 +155,6 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
           <input value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
-          <input value={form.client} onChange={(e) => setForm((c) => ({ ...c, client: e.target.value }))} placeholder="Client" />
           <label className="field-stack"><span>Date et heure</span><input type="datetime-local" value={form.dateTime} onChange={(e) => setForm((c) => ({ ...c, dateTime: e.target.value }))} required /></label>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
@@ -174,10 +169,6 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
             <option value="all">Tous les camions</option>
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
-          <select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-            <option value="all">Tous les clients</option>
-            {[...new Set(items.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
           </select>
           <DatePicker
             selected={dateFilter}
@@ -194,14 +185,13 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
         {loading ? <div className="info-banner">Chargement…</div> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
-              <thead><tr><th>Camion</th><th>Client</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Prix/L</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Prix/L</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map((item) => {
                   const pickerId = `fuel-photo-${item.id}`
                   return (
                     <tr key={item.id}>
                       <td>{item.truckLabel || '-'}</td>
-                      <td>{item.client || '-'}</td>
                       <td>{item.voucherNumber || '-'}</td>
                       <td>{item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                       <td>{Number(item.quantityLiters || 0).toLocaleString('fr-FR')}</td>
@@ -221,7 +211,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                     </tr>
                   )
                 })}
-                {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun bon carburant enregistré.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun bon carburant enregistré.</td></tr>}
               </tbody>
             </table>
           </div>
