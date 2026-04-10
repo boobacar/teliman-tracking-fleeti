@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Printer } from 'lucide-react'
+import DatePicker from 'react-datepicker'
+import { fr } from 'date-fns/locale'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, loadDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
+import 'react-datepicker/dist/react-datepicker.css'
 
 function formatFrenchQuantity(value, digits = 3) {
   const normalized = Number(String(value ?? '').replace(',', '.'))
@@ -58,9 +61,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         destination: order.destination || '',
         goods: order.goods || '',
         quantity: order.quantity || '',
-        departureDateTime: order.departureDateTime ? new Date(order.departureDateTime).toISOString().slice(0, 16) : '',
-        arrivalDateTime: order.arrivalDateTime ? new Date(order.arrivalDateTime).toISOString().slice(0, 16) : '',
-        date: order.date ? new Date(order.date).toISOString().slice(0, 16) : '',
+        departureDateTime: order.departureDateTime || '',
+        arrivalDateTime: order.arrivalDateTime || '',
+        date: order.date || '',
         notes: order.notes || '',
       })
     }
@@ -186,9 +189,54 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <input value={form?.destination || ''} onChange={(e) => setForm((current) => ({ ...current, destination: e.target.value }))} disabled={saving} placeholder="Destination" />
           <input value={form?.goods || ''} onChange={(e) => setForm((current) => ({ ...current, goods: e.target.value }))} disabled={saving} placeholder="Marchandise" />
           <input value={form?.quantity || ''} onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))} disabled={saving} placeholder="Quantité / tonnage" />
-          <label className="field-stack"><span>Départ</span><input type="datetime-local" value={form?.departureDateTime || ''} onChange={(e) => setForm((current) => ({ ...current, departureDateTime: e.target.value }))} disabled={saving} /></label>
-          <label className="field-stack"><span>Arrivée</span><input type="datetime-local" value={form?.arrivalDateTime || ''} onChange={(e) => setForm((current) => ({ ...current, arrivalDateTime: e.target.value }))} disabled={saving} /></label>
-          <label className="field-stack"><span>Créé le</span><input type="datetime-local" value={form?.date || ''} onChange={(e) => setForm((current) => ({ ...current, date: e.target.value }))} disabled={saving} /></label>
+          <label className="field-stack">
+            <span>Départ</span>
+            <DatePicker
+              selected={form?.departureDateTime ? new Date(form.departureDateTime) : null}
+              onChange={(value) => setForm((current) => ({ ...current, departureDateTime: value ? value.toISOString() : '' }))}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+              disabled={saving}
+            />
+          </label>
+          <label className="field-stack">
+            <span>Arrivée</span>
+            <DatePicker
+              selected={form?.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
+              onChange={(value) => setForm((current) => ({ ...current, arrivalDateTime: value ? value.toISOString() : '' }))}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+              disabled={saving}
+            />
+          </label>
+          <label className="field-stack">
+            <span>Créé le</span>
+            <DatePicker
+              selected={form?.date ? new Date(form.date) : null}
+              onChange={(value) => setForm((current) => ({ ...current, date: value ? value.toISOString() : '' }))}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+              disabled={saving}
+            />
+          </label>
           <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="primary-btn" onClick={saveForm} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</button>
