@@ -127,20 +127,6 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     }
   }
 
-  const setActive = async (item) => {
-    await updateDeliveryOrder(item.id, { active: true, status: item.status === 'Livré' ? 'En cours' : item.status })
-    if (setDeliveryOrders && setDeliveryOrdersSummary) {
-      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
-        loadDeliveryOrders(),
-        loadDeliveryOrdersSummary(),
-      ])
-      setDeliveryOrders(ordersPayload.items ?? [])
-      setDeliveryOrdersSummary(ordersSummaryPayload)
-    } else {
-      await refreshData()
-    }
-  }
-
   const removeOrder = async (item) => {
     await deleteDeliveryOrder(item.id)
     if (setDeliveryOrders && setDeliveryOrdersSummary) {
@@ -322,11 +308,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                   <td>{item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td>
                     <div className="table-actions">
-                      <button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button>
-                      <button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button>
-                      <label className="ghost-btn small-btn icon-btn" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <button className="ghost-btn small-btn icon-btn" title="Marquer livré" aria-label="Marquer livré" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>
+                        ✅
+                      </button>
+                      <label className="ghost-btn small-btn icon-btn" title="Ajouter une photo" aria-label="Ajouter une photo" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
                         <Camera size={15} />
-                        Photo
                         <input
                           type="file"
                           accept="image/*"
