@@ -1776,6 +1776,18 @@ input {
     width: 100%;
   }
 
+  .delivery-form,
+  .delivery-form * {
+    min-width: 0;
+  }
+
+  .delivery-form input[type="datetime-local"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: block;
+  }
+
   .panel-header h3 {
     font-size: 18px;
   }
