@@ -1768,4 +1768,18 @@ input {
     display: grid;
     gap: 10px;
   }
+
+  .delivery-form-premium {
+    grid-template-columns: 1fr !important;
+  }
+
+  .delivery-form input,
+  .delivery-form select,
+  .delivery-form textarea,
+  .filter-control,
+  .modern-date-input,
+  .ghost-btn,
+  .primary-btn {
+    font-size: 16px !important;
+  }
 }
