@@ -1126,7 +1126,9 @@ input {
 .table-actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
 }
 
 .tracker-history-card {

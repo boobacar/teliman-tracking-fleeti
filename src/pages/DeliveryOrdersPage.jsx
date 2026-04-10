@@ -293,6 +293,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {filteredOrders.map((item) => {
               const statusLabel = item.active ? 'Actif' : item.status
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
+              const pickerId = `proof-photo-${item.id}`
               return (
                 <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}>
                   <td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td>
@@ -311,22 +312,32 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                       <button className="ghost-btn small-btn icon-btn" title="Marquer livré" aria-label="Marquer livré" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>
                         ✅
                       </button>
-                      <label className="ghost-btn small-btn icon-btn" title="Ajouter une photo" aria-label="Ajouter une photo" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <button
+                        className="ghost-btn small-btn icon-btn"
+                        title="Ajouter une photo"
+                        aria-label="Ajouter une photo"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const input = document.getElementById(pickerId)
+                          input?.click()
+                        }}
+                      >
                         <Camera size={15} />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          style={{ display: 'none' }}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={async (e) => {
-                            e.stopPropagation()
-                            const file = e.target.files?.[0]
-                            await uploadProofPhoto(item, file)
-                            e.target.value = ''
-                          }}
-                        />
-                      </label>
+                      </button>
+                      <input
+                        id={pickerId}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        style={{ display: 'none' }}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={async (e) => {
+                          e.stopPropagation()
+                          const file = e.target.files?.[0]
+                          await uploadProofPhoto(item, file)
+                          e.target.value = ''
+                        }}
+                      />
                       <button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button>
                     </div>
                   </td>
