@@ -269,8 +269,36 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
           </select>
           <input placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-          <label className="field-stack"><span>Départ</span><input type="datetime-local" value={form.departureDateTime} onChange={(e) => setForm({ ...form, departureDateTime: e.target.value })} /></label>
-          <label className="field-stack"><span>Arrivée</span><input type="datetime-local" value={form.arrivalDateTime} onChange={(e) => setForm({ ...form, arrivalDateTime: e.target.value })} /></label>
+          <label className="field-stack">
+            <span>Départ</span>
+            <DatePicker
+              selected={form.departureDateTime ? new Date(form.departureDateTime) : null}
+              onChange={(value) => setForm({ ...form, departureDateTime: value ? value.toISOString() : '' })}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure de départ"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
+          <label className="field-stack">
+            <span>Arrivée</span>
+            <DatePicker
+              selected={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
+              onChange={(value) => setForm({ ...form, arrivalDateTime: value ? value.toISOString() : '' })}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure d'arrivée"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             <option>Prévu</option>
             <option>En chargement</option>

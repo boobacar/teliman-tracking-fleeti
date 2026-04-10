@@ -155,7 +155,21 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
           <input value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
-          <label className="field-stack"><span>Date et heure</span><input type="datetime-local" value={form.dateTime} onChange={(e) => setForm((c) => ({ ...c, dateTime: e.target.value }))} required /></label>
+          <label className="field-stack">
+            <span>Date et heure</span>
+            <DatePicker
+              selected={form.dateTime ? new Date(form.dateTime) : null}
+              onChange={(value) => setForm((c) => ({ ...c, dateTime: value ? value.toISOString() : '' }))}
+              showTimeSelect
+              timeIntervals={5}
+              dateFormat="dd/MM/yyyy HH:mm"
+              locale={fr}
+              placeholderText="Choisir date et heure"
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+              required
+            />
+          </label>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
