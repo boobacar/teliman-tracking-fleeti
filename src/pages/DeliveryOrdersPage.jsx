@@ -317,9 +317,9 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                   <td>{item.goods}</td>
                   <td>{formatFrenchQuantity(item.quantity)}</td>
                   <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td>
-                  <td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td>
-                  <td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td>
-                  <td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td>
+                  <td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
+                  <td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
+                  <td>{item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td>
                     <div className="table-actions">
                       <button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button>
