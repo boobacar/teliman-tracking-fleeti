@@ -33,7 +33,7 @@ let dashboardCache = { data: null, ts: 0 }
 
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
-app.use(express.json({ limit: '250kb' }))
+app.use(express.json({ limit: '10mb' }))
 app.use(requestLogger)
 app.use(protectApi)
 
