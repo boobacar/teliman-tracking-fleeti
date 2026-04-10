@@ -69,5 +69,7 @@ export const loadDeliveryOrder = async (id) => {
   return data?.item || null
 }
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
+export const loadFuelVouchers = () => getJson('/api/fuel-vouchers')
+export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', payload)
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
 export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)

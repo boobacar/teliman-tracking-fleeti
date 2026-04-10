@@ -11,6 +11,7 @@ dotenv.config()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
+const FUEL_VOUCHERS_FILE = path.join(__dirname, 'fuel-vouchers.json')
 const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
 
 const PORT = Number(process.env.PORT || 8787)
@@ -179,6 +180,18 @@ function writeDeliveryOrders(rows) {
   fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(rows, null, 2))
 }
 
+function readFuelVouchers() {
+  try {
+    return JSON.parse(fs.readFileSync(FUEL_VOUCHERS_FILE, 'utf8'))
+  } catch {
+    return []
+  }
+}
+
+function writeFuelVouchers(rows) {
+  fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
+}
+
 function readMasterData() {
   try {
     const payload = JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8'))
@@ -204,6 +217,31 @@ function writeMasterData(data) {
 function ensureValidTrackerId(value) {
   const trackerId = Number(value)
   return Number.isInteger(trackerId) && trackerId > 0 ? trackerId : null
+}
+
+function sanitizeFuelVoucherPayload(body = {}, current = null) {
+  const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
+  if (!trackerId) throw new Error('trackerId invalide')
+
+  const quantityLiters = Number(String(body.quantityLiters ?? current?.quantityLiters ?? '').replace(',', '.'))
+  const unitPrice = Number(String(body.unitPrice ?? current?.unitPrice ?? '').replace(',', '.'))
+  if (!Number.isFinite(quantityLiters) || quantityLiters <= 0) throw new Error('Quantité invalide')
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('Prix unitaire invalide')
+
+  const amount = Number((quantityLiters * unitPrice).toFixed(2))
+
+  return {
+    id: current?.id || Date.now(),
+    trackerId,
+    truckLabel: String(body.truckLabel ?? current?.truckLabel ?? '').trim(),
+    driver: String(body.driver ?? current?.driver ?? '').trim(),
+    voucherNumber: String(body.voucherNumber ?? current?.voucherNumber ?? '').trim(),
+    dateTime: body.dateTime || current?.dateTime || new Date().toISOString(),
+    quantityLiters,
+    unitPrice,
+    amount,
+    createdAt: current?.createdAt || new Date().toISOString(),
+  }
 }
 
 function sanitizeProofPhotoDataUrl(value, fallback = '') {
@@ -1091,6 +1129,22 @@ app.delete('/api/delivery-orders/:id', (req, res) => {
   const filtered = items.filter((item) => Number(item.id) !== id)
   writeDeliveryOrders(filtered)
   res.json({ ok: true })
+})
+
+app.get('/api/fuel-vouchers', (_req, res) => {
+  res.json({ items: readFuelVouchers() })
+})
+
+app.post('/api/fuel-vouchers', (req, res) => {
+  try {
+    const items = readFuelVouchers()
+    const payload = sanitizeFuelVoucherPayload(req.body)
+    items.unshift(payload)
+    writeFuelVouchers(items)
+    res.status(201).json({ ok: true, item: payload })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
 })
 
 async function readTrackBundle(hash, trackerId, from, to) {
