@@ -1788,6 +1788,20 @@ input {
     display: block;
   }
 
+  .compact-detail-form .field-stack {
+    min-width: 0;
+  }
+
+  .compact-detail-form input[type="datetime-local"] {
+    text-align: left;
+    padding-left: 12px;
+    padding-right: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px !important;
+  }
+
   .panel-header h3 {
     font-size: 18px;
   }
