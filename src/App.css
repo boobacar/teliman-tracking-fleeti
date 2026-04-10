@@ -1166,6 +1166,23 @@ input {
   gap: 10px;
 }
 
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.86);
+  display: grid;
+  place-items: center;
+  z-index: 99999;
+  padding: 16px;
+}
+
+.photo-lightbox-image {
+  max-width: min(96vw, 1100px);
+  max-height: 90vh;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
 .delivery-form {
   display: grid;
   gap: 12px;

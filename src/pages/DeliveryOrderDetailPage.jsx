@@ -25,6 +25,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const [saving, setSaving] = useState(false)
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [form, setForm] = useState(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -136,6 +137,19 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     }
   }
 
+  const removePhoto = async () => {
+    setSaving(true)
+    try {
+      await updateDeliveryOrder(order.id, { proofPhotoDataUrl: '', proofStatus: 'En attente' })
+      await refreshData()
+      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
+      if (refreshed) setFallbackOrder(refreshed)
+    } finally {
+      setSaving(false)
+      setLightboxOpen(false)
+    }
+  }
+
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
       <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
@@ -145,13 +159,24 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     <section className="panel panel-large">
       <div className="panel-header"><div><h3>Photo du bon de livraison</h3><p>Preuve rattachée à cette mission</p></div></div>
       {order.proofPhotoDataUrl ? (
-        <a href={order.proofPhotoDataUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block' }}>
-          <img
-            src={order.proofPhotoDataUrl}
-            alt={`Preuve ${order.reference}`}
-            style={{ width: '100%', maxWidth: 560, borderRadius: 14, border: '1px solid rgba(148,163,184,.35)' }}
-          />
-        </a>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <button
+            className="ghost-btn"
+            style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }}
+            onClick={() => setLightboxOpen(true)}
+            aria-label="Agrandir la photo"
+          >
+            <img
+              src={order.proofPhotoDataUrl}
+              alt={`Preuve ${order.reference}`}
+              style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }}
+            />
+          </button>
+          <div className="table-actions">
+            <button className="ghost-btn small-btn" onClick={() => setLightboxOpen(true)}>Voir en grand</button>
+            <button className="ghost-btn small-btn danger-btn" onClick={removePhoto} disabled={saving}>Supprimer photo</button>
+          </div>
+        </div>
       ) : (
         <p style={{ color: '#94a3b8' }}>Aucune photo uploadée pour ce bon.</p>
       )}
@@ -257,5 +282,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         {order.completedAt && <div className="timeline-row"><div className="timeline-icon">5</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
       </div>
     </section>
+
+    {lightboxOpen && order.proofPhotoDataUrl && (
+      <div className="photo-lightbox" onClick={() => setLightboxOpen(false)}>
+        <img src={order.proofPhotoDataUrl} alt={`Photo ${order.reference}`} className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />
+      </div>
+    )}
   </div>
 }
