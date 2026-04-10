@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { ArrowLeft, Printer, Trash2 } from 'lucide-react'
 import DatePicker from 'react-datepicker'
 import { fr } from 'date-fns/locale'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -171,7 +171,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="proof-photos-grid">
           {proofPhotos.map((photo, index) => (
             <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
-              <button className="proof-photo-delete" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo">🗑️</button>
+              <button className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
               <button className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(photo)}>
                 <img src={photo} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
               </button>

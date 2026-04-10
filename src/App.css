@@ -1193,18 +1193,11 @@ input {
   position: relative;
 }
 
-.proof-photo-delete {
+.proof-photo-delete-btn {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 2;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  background: rgba(15, 23, 42, 0.82);
-  color: #fca5a5;
-  cursor: pointer;
 }
 
 .delivery-form {
