@@ -206,6 +206,16 @@ function ensureValidTrackerId(value) {
   return Number.isInteger(trackerId) && trackerId > 0 ? trackerId : null
 }
 
+function sanitizeProofPhotoDataUrl(value, fallback = '') {
+  const raw = String(value ?? fallback ?? '').trim()
+  if (!raw) return ''
+  const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
+  if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
+  // ~5MB max encoded payload
+  if (raw.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
+  return raw
+}
+
 function sanitizeDeliveryOrderPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) {
@@ -232,6 +242,7 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     completedAt: body.status === 'Livré' ? (body.completedAt || current?.completedAt || new Date().toISOString()) : (body.completedAt ?? current?.completedAt ?? null),
     proofNote: String(body.proofNote ?? current?.proofNote ?? '').trim(),
     proofStatus: String(body.proofStatus ?? current?.proofStatus ?? 'En attente').trim(),
+    proofPhotoDataUrl: sanitizeProofPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl),
   }
 }
 

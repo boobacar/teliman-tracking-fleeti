@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Trash2 } from 'lucide-react'
+import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 
 function formatFrenchQuantity(value, digits = 3) {
@@ -9,6 +9,15 @@ function formatFrenchQuantity(value, digits = 3) {
   return normalized.toLocaleString('fr-FR', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
+  })
+}
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error("Impossible de lire l'image"))
+    reader.readAsDataURL(file)
   })
 }
 
@@ -146,6 +155,30 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     }
   }
 
+  const uploadProofPhoto = async (item, file) => {
+    if (!file) return
+    setSaving(true)
+    try {
+      const proofPhotoDataUrl = await fileToDataUrl(file)
+      await updateDeliveryOrder(item.id, {
+        proofPhotoDataUrl,
+        proofStatus: item.proofStatus === 'En attente' ? 'Reçue' : (item.proofStatus || 'Reçue'),
+      })
+      if (setDeliveryOrders && setDeliveryOrdersSummary) {
+        const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+          loadDeliveryOrders(),
+          loadDeliveryOrdersSummary(),
+        ])
+        setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
+      } else {
+        await refreshData()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const filteredOrders = deliveryOrders.filter((item) => {
     const statusOk = statusFilter === 'all' ? true : statusFilter === 'active' ? item.active : item.status === statusFilter
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
@@ -274,7 +307,45 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             {filteredOrders.map((item) => {
               const statusLabel = item.active ? 'Actif' : item.status
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
-              return <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}><td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td><td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td><td>{item.driver}</td><td>{item.client}</td><td>{item.destination}</td><td>{item.goods}</td><td>{formatFrenchQuantity(item.quantity)}</td><td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td><td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td><td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td><td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td><td><div className="table-actions"><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button><button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button><button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button></div></td></tr>
+              return (
+                <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => window.location.assign(`/delivery-order/${item.id}`)}>
+                  <td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td>
+                  <td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td>
+                  <td>{item.driver}</td>
+                  <td>{item.client}</td>
+                  <td>{item.destination}</td>
+                  <td>{item.goods}</td>
+                  <td>{formatFrenchQuantity(item.quantity)}</td>
+                  <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td>
+                  <td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString() : '-'}</td>
+                  <td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString() : '-'}</td>
+                  <td>{item.date ? new Date(item.date).toLocaleString() : '-'}</td>
+                  <td>
+                    <div className="table-actions">
+                      <button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); setActive(item) }}>Activer</button>
+                      <button className="ghost-btn small-btn" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>Livré</button>
+                      <label className="ghost-btn small-btn icon-btn" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <Camera size={15} />
+                        Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          style={{ display: 'none' }}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={async (e) => {
+                            e.stopPropagation()
+                            const file = e.target.files?.[0]
+                            await uploadProofPhoto(item, file)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      <button className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              )
             })}
           </tbody>
         </table>

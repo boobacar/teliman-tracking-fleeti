@@ -139,6 +139,19 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{formatFrenchQuantity(order.quantity)}</small></div></div>
     </section>
 
+    {order.proofPhotoDataUrl && (
+      <section className="panel panel-large">
+        <div className="panel-header"><div><h3>Photo du bon de livraison</h3><p>Preuve rattachée à cette mission</p></div></div>
+        <a href={order.proofPhotoDataUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block' }}>
+          <img
+            src={order.proofPhotoDataUrl}
+            alt={`Preuve ${order.reference}`}
+            style={{ width: '100%', maxWidth: 560, borderRadius: 14, border: '1px solid rgba(148,163,184,.35)' }}
+          />
+        </a>
+      </section>
+    )}
+
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel compact-side-panel">
         <div className="panel-header"><div><h3>Pilotage mission</h3><p>Statut, activité, POD</p></div></div>
@@ -190,7 +203,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Création</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Départ mission</strong><p>{order.departureDateTime ? new Date(order.departureDateTime).toLocaleString() : '-'}</p><span>{order.loadingPoint || 'Départ non renseigné'}</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Arrivée mission</strong><p>{order.arrivalDateTime ? new Date(order.arrivalDateTime).toLocaleString() : '-'}</p><span>{order.destination}</span></div></div>
-        <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofNote || 'Aucun commentaire'}</span></div></div>
+        <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofPhotoDataUrl ? 'Photo disponible (voir plus haut)' : (order.proofNote || 'Aucun commentaire')}</span></div></div>
         {order.completedAt && <div className="timeline-row"><div className="timeline-icon">5</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
       </div>
     </section>
