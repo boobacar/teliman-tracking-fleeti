@@ -244,6 +244,7 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
     trackerId,
     truckLabel: String(body.truckLabel ?? current?.truckLabel ?? '').trim(),
     driver: String(body.driver ?? current?.driver ?? '').trim(),
+    client: String(body.client ?? current?.client ?? '').trim(),
     voucherNumber: String(body.voucherNumber ?? current?.voucherNumber ?? '').trim(),
     dateTime: body.dateTime || current?.dateTime || new Date().toISOString(),
     quantityLiters,
