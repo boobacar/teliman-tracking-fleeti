@@ -11,8 +11,7 @@ import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
 const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
-const TrackersPage = lazy(() => import('./pages/TrackersPage').then((module) => ({ default: module.TrackersPage })))
-const DriversPage = lazy(() => import('./pages/DriversPage').then((module) => ({ default: module.DriversPage })))
+const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
@@ -160,8 +159,9 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
-          <Route path="/trackers" element={<TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-          <Route path="/drivers" element={<DriversPage filteredTrackers={filteredTrackers} />} />
+          <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+          <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+          <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />

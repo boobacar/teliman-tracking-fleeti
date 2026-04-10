@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { AlertTriangle, BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, Map, Menu, ReceiptText, RefreshCw, ShieldAlert, Siren, Users, X, Car } from 'lucide-react'
+import { AlertTriangle, BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, Map, Menu, ReceiptText, RefreshCw, ShieldAlert, Siren, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
   { id: '/map', label: 'Live Map', icon: Map },
-  { id: '/trackers', label: 'Trackers', icon: Car },
-  { id: '/drivers', label: 'Chauffeurs', icon: Users },
+  { id: '/fleet', label: 'Flotte', icon: Car },
   { id: '/alerts', label: 'Alertes', icon: Siren },
   { id: '/analytics', label: 'Analytics', icon: BarChart3 },
   { id: '/reports', label: 'Rapports', icon: FileSpreadsheet },
