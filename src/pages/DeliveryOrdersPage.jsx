@@ -304,6 +304,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
         </select>
         <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+        <button className="ghost-btn small-btn" onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter('') }}>Réinitialiser filtres</button>
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
       <div className="reports-table-wrap">

@@ -167,6 +167,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
           <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+          <button className="ghost-btn small-btn" onClick={() => { setTrackerFilter('all'); setDateFilter('') }}>Réinitialiser filtres</button>
           <button className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
         {loading ? <div className="info-banner">Chargement…</div> : (
