@@ -268,6 +268,14 @@ function sanitizeProofPhotoDataUrl(value, fallback = '') {
   return raw
 }
 
+function sanitizeProofPhotoList(value, fallback = []) {
+  const input = Array.isArray(value) ? value : (Array.isArray(fallback) ? fallback : [])
+  return input
+    .map((item) => sanitizeProofPhotoDataUrl(item, ''))
+    .filter(Boolean)
+    .slice(0, 10)
+}
+
 function sanitizeDeliveryOrderPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) {
@@ -295,6 +303,7 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     proofNote: String(body.proofNote ?? current?.proofNote ?? '').trim(),
     proofStatus: String(body.proofStatus ?? current?.proofStatus ?? 'En attente').trim(),
     proofPhotoDataUrl: sanitizeProofPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl),
+    proofPhotoDataUrls: sanitizeProofPhotoList(body.proofPhotoDataUrls, current?.proofPhotoDataUrls),
   }
 }
 

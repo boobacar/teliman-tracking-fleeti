@@ -202,8 +202,12 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     setSaving(true)
     try {
       const proofPhotoDataUrl = await fileToDataUrl(file)
+      const currentPhotos = Array.isArray(item.proofPhotoDataUrls)
+        ? item.proofPhotoDataUrls
+        : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
       await updateDeliveryOrder(item.id, {
         proofPhotoDataUrl,
+        proofPhotoDataUrls: [...currentPhotos, proofPhotoDataUrl].slice(0, 10),
         proofStatus: item.proofStatus === 'En attente' ? 'Reçue' : (item.proofStatus || 'Reçue'),
       })
       if (setDeliveryOrders && setDeliveryOrdersSummary) {
@@ -432,12 +436,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                         id={pickerId}
                         type="file"
                         accept="image/*"
+                        multiple
                         style={{ display: 'none' }}
                         onClick={(e) => e.stopPropagation()}
                         onChange={async (e) => {
                           e.stopPropagation()
-                          const file = e.target.files?.[0]
-                          await uploadProofPhoto(item, file)
+                          const files = Array.from(e.target.files || [])
+                          for (const file of files) {
+                            await uploadProofPhoto(item, file)
+                          }
                           e.target.value = ''
                         }}
                       />
@@ -468,7 +475,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               <div className="table-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="ghost-btn small-btn icon-btn" onClick={() => markDelivered(item)} title="Marquer livré">✅</button>
                 <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo"><Camera size={15} /></button>
-                <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadProofPhoto(item, file); e.target.value = '' }} />
+                <input id={pickerId} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const files = Array.from(e.target.files || []); for (const file of files) { await uploadProofPhoto(item, file) } e.target.value = '' }} />
                 <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer"><Trash2 size={15} /></button>
               </div>
             </article>

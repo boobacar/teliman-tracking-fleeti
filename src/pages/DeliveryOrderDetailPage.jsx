@@ -25,7 +25,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const [saving, setSaving] = useState(false)
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [form, setForm] = useState(null)
-  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -77,6 +77,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   if (!order) {
     return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div></section>
   }
+
+  const proofPhotos = Array.isArray(order.proofPhotoDataUrls)
+    ? order.proofPhotoDataUrls
+    : (order.proofPhotoDataUrl ? [order.proofPhotoDataUrl] : [])
 
   const updateField = async (field, value) => {
     setSaving(true)
@@ -137,16 +141,21 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     }
   }
 
-  const removePhoto = async () => {
+  const removePhotoAt = async (index) => {
     setSaving(true)
     try {
-      await updateDeliveryOrder(order.id, { proofPhotoDataUrl: '', proofStatus: 'En attente' })
+      const nextPhotos = proofPhotos.filter((_, i) => i !== index)
+      await updateDeliveryOrder(order.id, {
+        proofPhotoDataUrls: nextPhotos,
+        proofPhotoDataUrl: nextPhotos[0] || '',
+        proofStatus: nextPhotos.length ? (order.proofStatus || 'Reçue') : 'En attente',
+      })
       await refreshData()
       const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
       if (refreshed) setFallbackOrder(refreshed)
     } finally {
       setSaving(false)
-      setLightboxOpen(false)
+      setLightboxOpen('')
     }
   }
 
@@ -157,25 +166,17 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     </section>
 
     <section className="panel panel-large">
-      <div className="panel-header"><div><h3>Photo du bon de livraison</h3><p>Preuve rattachée à cette mission</p></div></div>
-      {order.proofPhotoDataUrl ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <button
-            className="ghost-btn"
-            style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }}
-            onClick={() => setLightboxOpen(true)}
-            aria-label="Agrandir la photo"
-          >
-            <img
-              src={order.proofPhotoDataUrl}
-              alt={`Preuve ${order.reference}`}
-              style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }}
-            />
-          </button>
-          <div className="table-actions">
-            <button className="ghost-btn small-btn" onClick={() => setLightboxOpen(true)}>Voir en grand</button>
-            <button className="ghost-btn small-btn danger-btn" onClick={removePhoto} disabled={saving}>Supprimer photo</button>
-          </div>
+      <div className="panel-header"><div><h3>Photos du bon de livraison</h3><p>Preuves rattachées à cette mission</p></div></div>
+      {proofPhotos.length > 0 ? (
+        <div className="proof-photos-grid">
+          {proofPhotos.map((photo, index) => (
+            <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
+              <button className="proof-photo-delete" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo">🗑️</button>
+              <button className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(photo)}>
+                <img src={photo} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
+              </button>
+            </div>
+          ))}
         </div>
       ) : (
         <p style={{ color: '#94a3b8' }}>Aucune photo uploadée pour ce bon.</p>
@@ -278,14 +279,14 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Création</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Départ mission</strong><p>{order.departureDateTime ? new Date(order.departureDateTime).toLocaleString() : '-'}</p><span>{order.loadingPoint || 'Départ non renseigné'}</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Arrivée mission</strong><p>{order.arrivalDateTime ? new Date(order.arrivalDateTime).toLocaleString() : '-'}</p><span>{order.destination}</span></div></div>
-        <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{order.proofPhotoDataUrl ? 'Photo disponible (voir plus haut)' : (order.proofNote || 'Aucun commentaire')}</span></div></div>
+        <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{proofPhotos.length ? `${proofPhotos.length} photo(s) disponible(s)` : (order.proofNote || 'Aucun commentaire')}</span></div></div>
         {order.completedAt && <div className="timeline-row"><div className="timeline-icon">5</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
       </div>
     </section>
 
-    {lightboxOpen && order.proofPhotoDataUrl && (
-      <div className="photo-lightbox" onClick={() => setLightboxOpen(false)}>
-        <img src={order.proofPhotoDataUrl} alt={`Photo ${order.reference}`} className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />
+    {lightboxOpen && (
+      <div className="photo-lightbox" onClick={() => setLightboxOpen('')}>
+        <img src={lightboxOpen} alt={`Photo ${order.reference}`} className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />
       </div>
     )}
   </div>
