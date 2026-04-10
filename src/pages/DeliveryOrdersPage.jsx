@@ -317,7 +317,6 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           className="filter-control modern-date-input"
           popperClassName="modern-date-popper"
         />
-        <button className="ghost-btn small-btn" onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter(null) }}>Réinitialiser filtres</button>
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
       <div className="reports-table-wrap">

@@ -180,7 +180,6 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             className="filter-control modern-date-input"
             popperClassName="modern-date-popper"
           />
-          <button className="ghost-btn small-btn" onClick={() => { setTrackerFilter('all'); setDateFilter(null) }}>Réinitialiser filtres</button>
           <button className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
         {loading ? <div className="info-banner">Chargement…</div> : (
