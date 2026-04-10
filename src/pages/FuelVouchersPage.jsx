@@ -204,7 +204,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                         <div className="table-actions">
                           <button className="ghost-btn small-btn icon-btn" onClick={() => edit(item)} title="Modifier" aria-label="Modifier"><Pencil size={15} /></button>
                           <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
-                          <input id={pickerId} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
+                          <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
                           <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
                         </div>
                       </td>
@@ -216,6 +216,30 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             </table>
           </div>
         )}
+
+        <div className="mobile-voucher-list">
+          {filtered.map((item) => {
+            const pickerId = `fuel-photo-mobile-${item.id}`
+            return (
+              <article key={`mobile-fuel-${item.id}`} className="mobile-voucher-card">
+                <div className="mobile-voucher-head">
+                  <strong>{item.voucherNumber || '-'}</strong>
+                  <span>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+                <p><b>Camion:</b> {item.truckLabel || '-'}</p>
+                <p><b>Date:</b> {item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
+                <p><b>Quantité:</b> {Number(item.quantityLiters || 0).toLocaleString('fr-FR')} L</p>
+                <p><b>Prix/L:</b> {Number(item.unitPrice || 0).toLocaleString('fr-FR')}</p>
+                <div className="table-actions">
+                  <button className="ghost-btn small-btn icon-btn" onClick={() => edit(item)} title="Modifier" aria-label="Modifier"><Pencil size={15} /></button>
+                  <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
+                  <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
+                  <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
       </section>
     </div>
   )

@@ -376,7 +376,6 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                         id={pickerId}
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         style={{ display: 'none' }}
                         onClick={(e) => e.stopPropagation()}
                         onChange={async (e) => {
@@ -394,6 +393,31 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="mobile-voucher-list">
+        {filteredOrders.map((item) => {
+          const statusLabel = item.active ? 'Actif' : item.status
+          const pickerId = `proof-photo-mobile-${item.id}`
+          return (
+            <article key={`mobile-${item.id}`} className="mobile-voucher-card" onClick={() => window.location.assign(`/delivery-order/${item.id}`)}>
+              <div className="mobile-voucher-head">
+                <strong>{item.reference}</strong>
+                <span>{statusLabel}</span>
+              </div>
+              <p><b>Camion:</b> {item.truckLabel}</p>
+              <p><b>Client:</b> {item.client}</p>
+              <p><b>Destination:</b> {item.destination}</p>
+              <p><b>Date:</b> {item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
+              <div className="table-actions" onClick={(e) => e.stopPropagation()}>
+                <button className="ghost-btn small-btn icon-btn" onClick={() => markDelivered(item)} title="Marquer livré">✅</button>
+                <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo"><Camera size={15} /></button>
+                <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadProofPhoto(item, file); e.target.value = '' }} />
+                <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer"><Trash2 size={15} /></button>
+              </div>
+            </article>
+          )
+        })}
       </div>
     </section>
 

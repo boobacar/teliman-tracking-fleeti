@@ -1145,6 +1145,26 @@ input {
   overflow-x: auto;
 }
 
+.mobile-voucher-list {
+  display: none;
+}
+
+.mobile-voucher-card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.72);
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.mobile-voucher-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
 .delivery-form {
   display: grid;
   gap: 12px;
@@ -1735,5 +1755,16 @@ input {
 
   .hero-panel h2 {
     font-size: 28px;
+  }
+}
+
+@media (max-width: 900px) {
+  .delivery-table-panel .reports-table-wrap {
+    display: none;
+  }
+
+  .mobile-voucher-list {
+    display: grid;
+    gap: 10px;
   }
 }
