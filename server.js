@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename)
 const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
 const FUEL_VOUCHERS_FILE = path.join(__dirname, 'fuel-vouchers.json')
 const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
+const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
 
 const PORT = Number(process.env.PORT || 8787)
 const API_BASE = process.env.FLEETI_API_BASE
@@ -34,6 +35,7 @@ let dashboardCache = { data: null, ts: 0 }
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
 app.use(express.json({ limit: '10mb' }))
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 app.use(requestLogger)
 app.use(protectApi)
 
@@ -219,6 +221,49 @@ function writeMasterData(data) {
 function ensureValidTrackerId(value) {
   const trackerId = Number(value)
   return Number.isInteger(trackerId) && trackerId > 0 ? trackerId : null
+}
+
+function ensureUploadsDir() {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+}
+
+function persistDeliveryProofPhoto(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('/uploads/')) return raw
+  const match = raw.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i)
+  if (!match) return raw
+
+  ensureUploadsDir()
+  const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()
+  const base64Payload = match[2]
+  const fileName = `proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+  const filePath = path.join(UPLOADS_DIR, fileName)
+  fs.writeFileSync(filePath, Buffer.from(base64Payload, 'base64'))
+  return `/uploads/delivery-proofs/${fileName}`
+}
+
+function preprocessDeliveryProofPhotos(body = {}, current = null) {
+  const normalized = { ...(body || {}) }
+  const currentList = Array.isArray(current?.proofPhotoDataUrls)
+    ? current.proofPhotoDataUrls
+    : (current?.proofPhotoDataUrl ? [current.proofPhotoDataUrl] : [])
+
+  if (Array.isArray(normalized.proofPhotoDataUrls)) {
+    normalized.proofPhotoDataUrls = normalized.proofPhotoDataUrls.map((item) => persistDeliveryProofPhoto(item)).filter(Boolean)
+  } else if (currentList.length) {
+    normalized.proofPhotoDataUrls = currentList
+  }
+
+  if (typeof normalized.proofPhotoDataUrl === 'string' && normalized.proofPhotoDataUrl.trim()) {
+    normalized.proofPhotoDataUrl = persistDeliveryProofPhoto(normalized.proofPhotoDataUrl)
+  } else if (normalized.proofPhotoDataUrls?.length) {
+    normalized.proofPhotoDataUrl = normalized.proofPhotoDataUrls[0]
+  } else if (current?.proofPhotoDataUrl) {
+    normalized.proofPhotoDataUrl = current.proofPhotoDataUrl
+  }
+
+  return normalized
 }
 
 function sanitizeFuelPhotoDataUrl(value, fallback = '') {
@@ -1108,7 +1153,8 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
 app.post('/api/delivery-orders', (req, res) => {
   try {
     const items = readDeliveryOrders()
-    const payload = sanitizeDeliveryOrderPayload(req.body)
+    const preparedBody = preprocessDeliveryProofPhotos(req.body)
+    const payload = sanitizeDeliveryOrderPayload(preparedBody)
     const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
     normalized.unshift(payload)
     writeDeliveryOrders(normalized)
@@ -1127,7 +1173,8 @@ app.patch('/api/delivery-orders/:id', (req, res) => {
     const current = items.find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
 
-    const updatedItem = sanitizeDeliveryOrderPayload(req.body, current)
+    const preparedBody = preprocessDeliveryProofPhotos(req.body, current)
+    const updatedItem = sanitizeDeliveryOrderPayload(preparedBody, current)
     const updatedItems = items.map((item) => {
       if (Number(item.id) !== id) {
         if (updatedItem.active && Number(item.trackerId) === Number(current.trackerId)) {
