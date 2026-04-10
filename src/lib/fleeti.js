@@ -71,5 +71,21 @@ export const loadDeliveryOrder = async (id) => {
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
 export const loadFuelVouchers = () => getJson('/api/fuel-vouchers')
 export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', payload)
+export const updateFuelVoucher = async (id, payload) => {
+  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
+export const deleteFuelVoucher = async (id) => {
+  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE' })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
 export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)

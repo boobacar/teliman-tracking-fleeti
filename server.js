@@ -219,6 +219,15 @@ function ensureValidTrackerId(value) {
   return Number.isInteger(trackerId) && trackerId > 0 ? trackerId : null
 }
 
+function sanitizeFuelPhotoDataUrl(value, fallback = '') {
+  const raw = String(value ?? fallback ?? '').trim()
+  if (!raw) return ''
+  const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
+  if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
+  if (raw.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
+  return raw
+}
+
 function sanitizeFuelVoucherPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) throw new Error('trackerId invalide')
@@ -241,6 +250,7 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
     unitPrice,
     amount,
     createdAt: current?.createdAt || new Date().toISOString(),
+    proofPhotoDataUrl: sanitizeFuelPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl),
   }
 }
 
@@ -1145,6 +1155,33 @@ app.post('/api/fuel-vouchers', (req, res) => {
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
+})
+
+app.patch('/api/fuel-vouchers/:id', (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+
+    const items = readFuelVouchers()
+    const current = items.find((item) => Number(item.id) === id)
+    if (!current) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
+
+    const updated = sanitizeFuelVoucherPayload(req.body, current)
+    const next = items.map((item) => Number(item.id) === id ? updated : item)
+    writeFuelVouchers(next)
+    res.json({ ok: true, item: updated })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/fuel-vouchers/:id', (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+  const items = readFuelVouchers()
+  const filtered = items.filter((item) => Number(item.id) !== id)
+  writeFuelVouchers(filtered)
+  res.json({ ok: true })
 })
 
 async function readTrackBundle(hash, trackerId, from, to) {
