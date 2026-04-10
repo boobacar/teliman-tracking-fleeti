@@ -21,6 +21,36 @@ async function fileToDataUrl(file) {
   })
 }
 
+function exportDeliveryOrdersCsv(rows = []) {
+  const headers = ['Référence', 'Camion', 'Chauffeur', 'Client', 'Destination', 'Marchandise', 'Quantité', 'Statut', 'Départ', 'Arrivée', 'Date', 'Photo']
+  const csvRows = rows.map((item) => [
+    item.reference || '',
+    item.truckLabel || '',
+    item.driver || '',
+    item.client || '',
+    item.destination || '',
+    item.goods || '',
+    item.quantity || '',
+    item.active ? 'Actif' : (item.status || ''),
+    item.departureDateTime ? new Date(item.departureDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+    item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+    item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+    item.proofPhotoDataUrl ? 'Oui' : 'Non',
+  ])
+
+  const csv = [headers, ...csvRows]
+    .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(';'))
+    .join('\n')
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `bons-livraison-${new Date().toISOString().slice(0, 10)}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const initialForm = {
   trackerId: '',
   truckLabel: '',
@@ -45,6 +75,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [statusFilter, setStatusFilter] = useState('all')
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('')
   const [pageLoading, setPageLoading] = useState(false)
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
@@ -169,7 +200,9 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     const statusOk = statusFilter === 'all' ? true : statusFilter === 'active' ? item.active : item.status === statusFilter
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
     const clientOk = clientFilter === 'all' ? true : item.client === clientFilter
-    return statusOk && trackerOk && clientOk
+    const itemDate = String(item.date || '').slice(0, 10)
+    const dateOk = !dateFilter ? true : itemDate === dateFilter
+    return statusOk && trackerOk && clientOk && dateOk
   })
 
   const groupedByTracker = enrichedTrackers
@@ -270,6 +303,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           <option value="all">Tous les clients</option>
           {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
         </select>
+        <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+        <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
       <div className="reports-table-wrap">
         <table className="reports-table">
