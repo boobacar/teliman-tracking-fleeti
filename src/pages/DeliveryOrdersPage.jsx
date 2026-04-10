@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import DatePicker from 'react-datepicker'
+import { fr } from 'date-fns/locale'
 import { Camera, Trash2 } from 'lucide-react'
+import 'react-datepicker/dist/react-datepicker.css'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 
 function formatFrenchQuantity(value, digits = 3) {
@@ -75,7 +78,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [statusFilter, setStatusFilter] = useState('all')
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState(null)
   const [pageLoading, setPageLoading] = useState(false)
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
@@ -201,7 +204,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
     const clientOk = clientFilter === 'all' ? true : item.client === clientFilter
     const itemDate = String(item.date || '').slice(0, 10)
-    const dateOk = !dateFilter ? true : itemDate === dateFilter
+    const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
+    const dateOk = !selectedDateKey ? true : itemDate === selectedDateKey
     return statusOk && trackerOk && clientOk && dateOk
   })
 
@@ -295,16 +299,25 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <button className={`chip ${statusFilter === 'Livré' ? 'selected' : ''}`} onClick={() => setStatusFilter('Livré')}>Livré</button>
       </div>
       <div className="filters filter-row">
-        <select value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
+        <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
           <option value="all">Tous les camions</option>
           {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
         </select>
-        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+        <select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
           <option value="all">Tous les clients</option>
           {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
         </select>
-        <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
-        <button className="ghost-btn small-btn" onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter('') }}>Réinitialiser filtres</button>
+        <DatePicker
+          selected={dateFilter}
+          onChange={(value) => setDateFilter(value)}
+          dateFormat="dd/MM/yyyy"
+          locale={fr}
+          placeholderText="Filtrer par date"
+          isClearable
+          className="filter-control modern-date-input"
+          popperClassName="modern-date-popper"
+        />
+        <button className="ghost-btn small-btn" onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter(null) }}>Réinitialiser filtres</button>
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
       <div className="reports-table-wrap">

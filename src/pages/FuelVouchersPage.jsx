@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import DatePicker from 'react-datepicker'
+import { fr } from 'date-fns/locale'
 import { Camera, Pencil, Trash2 } from 'lucide-react'
+import 'react-datepicker/dist/react-datepicker.css'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
@@ -55,7 +58,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [trackerFilter, setTrackerFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState(null)
 
   const amount = useMemo(() => Number((toNumber(form.quantityLiters) * toNumber(form.unitPrice)).toFixed(2)), [form.quantityLiters, form.unitPrice])
 
@@ -81,7 +84,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
 
   const filtered = useMemo(() => items.filter((item) => {
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
-    const dateOk = !dateFilter ? true : String(item.dateTime || '').slice(0, 10) === dateFilter
+    const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
+    const dateOk = !selectedDateKey ? true : String(item.dateTime || '').slice(0, 10) === selectedDateKey
     return trackerOk && dateOk
   }), [items, trackerFilter, dateFilter])
 
@@ -162,12 +166,21 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-table-panel">
         <div className="panel-header"><div><h3>Historique bons carburant</h3></div></div>
         <div className="filters filter-row" style={{ marginBottom: 12 }}>
-          <select value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
+          <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
             <option value="all">Tous les camions</option>
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
-          <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
-          <button className="ghost-btn small-btn" onClick={() => { setTrackerFilter('all'); setDateFilter('') }}>Réinitialiser filtres</button>
+          <DatePicker
+            selected={dateFilter}
+            onChange={(value) => setDateFilter(value)}
+            dateFormat="dd/MM/yyyy"
+            locale={fr}
+            placeholderText="Filtrer par date"
+            isClearable
+            className="filter-control modern-date-input"
+            popperClassName="modern-date-popper"
+          />
+          <button className="ghost-btn small-btn" onClick={() => { setTrackerFilter('all'); setDateFilter(null) }}>Réinitialiser filtres</button>
           <button className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
         {loading ? <div className="info-banner">Chargement…</div> : (
