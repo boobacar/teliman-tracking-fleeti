@@ -16,12 +16,33 @@ function formatFrenchQuantity(value, digits = 3) {
 }
 
 async function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
+  const rawDataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result || ''))
     reader.onerror = () => reject(new Error("Impossible de lire l'image"))
     reader.readAsDataURL(file)
   })
+
+  // Compression pour uploads mobile (évite dépassement backend)
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Image invalide'))
+    image.src = rawDataUrl
+  })
+
+  const maxSize = 1600
+  const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
+  const width = Math.max(1, Math.round(img.width * ratio))
+  const height = Math.max(1, Math.round(img.height * ratio))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(img, 0, 0, width, height)
+
+  return canvas.toDataURL('image/jpeg', 0.78)
 }
 
 function exportDeliveryOrdersCsv(rows = []) {
@@ -80,6 +101,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [clientFilter, setClientFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
   const [pageLoading, setPageLoading] = useState(false)
+  const [photoUploadNotice, setPhotoUploadNotice] = useState('')
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
@@ -194,6 +216,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       } else {
         await refreshData()
       }
+      setPhotoUploadNotice('✅ Photo uploadée avec succès')
+      setTimeout(() => setPhotoUploadNotice(''), 2600)
+    } catch (error) {
+      setPhotoUploadNotice(`❌ Upload photo échoué: ${error.message}`)
+      setTimeout(() => setPhotoUploadNotice(''), 3500)
     } finally {
       setSaving(false)
     }
@@ -347,6 +374,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         />
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
+      {photoUploadNotice && <div className="info-banner">{photoUploadNotice}</div>}
       <div className="reports-table-wrap">
         <table className="reports-table">
           <thead>

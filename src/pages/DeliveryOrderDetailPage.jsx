@@ -142,9 +142,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{formatFrenchQuantity(order.quantity)}</small></div></div>
     </section>
 
-    {order.proofPhotoDataUrl && (
-      <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Photo du bon de livraison</h3><p>Preuve rattachée à cette mission</p></div></div>
+    <section className="panel panel-large">
+      <div className="panel-header"><div><h3>Photo du bon de livraison</h3><p>Preuve rattachée à cette mission</p></div></div>
+      {order.proofPhotoDataUrl ? (
         <a href={order.proofPhotoDataUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block' }}>
           <img
             src={order.proofPhotoDataUrl}
@@ -152,8 +152,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
             style={{ width: '100%', maxWidth: 560, borderRadius: 14, border: '1px solid rgba(148,163,184,.35)' }}
           />
         </a>
-      </section>
-    )}
+      ) : (
+        <p style={{ color: '#94a3b8' }}>Aucune photo uploadée pour ce bon.</p>
+      )}
+    </section>
 
     <section className="dashboard-grid premium-grid phase2-grid">
       <section className="panel compact-side-panel">
