@@ -1609,10 +1609,14 @@ input {
     z-index: 40;
     border-right: 1px solid rgba(148, 163, 184, 0.12);
     border-bottom: none;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .sidebar.mobile-open {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .mobile-sidebar-header {
@@ -1635,6 +1639,9 @@ input {
 
   .main-content {
     padding: 14px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
   }
 
   .mobile-cards-grid {
@@ -1750,6 +1757,25 @@ input {
     min-height: 42px;
   }
 
+  .panel {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .filters {
+    width: 100%;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .filter-row > .filter-control,
+  .filter-row > .modern-date-input,
+  .filter-row > .ghost-btn {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
   .panel-header h3 {
     font-size: 18px;
   }
@@ -1760,6 +1786,11 @@ input {
 }
 
 @media (max-width: 900px) {
+  .delivery-subnav .filters {
+    flex-wrap: wrap !important;
+    overflow: visible;
+  }
+
   .delivery-table-panel .reports-table-wrap {
     display: none;
   }
