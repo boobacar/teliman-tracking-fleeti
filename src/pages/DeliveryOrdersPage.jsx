@@ -17,6 +17,21 @@ function formatFrenchQuantity(value, digits = 3) {
 
 async function fileToDataUrl(file) {
   const objectUrl = URL.createObjectURL(file)
+
+  const canvasToBlob = (canvas, quality) => new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return reject(new Error('Conversion image impossible'))
+      resolve(blob)
+    }, 'image/jpeg', quality)
+  })
+
+  const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Lecture image impossible'))
+    reader.readAsDataURL(blob)
+  })
+
   try {
     const img = await new Promise((resolve, reject) => {
       const image = new Image()
@@ -25,7 +40,8 @@ async function fileToDataUrl(file) {
       image.src = objectUrl
     })
 
-    const maxSize = 1600
+    // Compression orientée mobile/réseau : max 1280px puis dégradation progressive
+    const maxSize = 1280
     const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
     const width = Math.max(1, Math.round(img.width * ratio))
     const height = Math.max(1, Math.round(img.height * ratio))
@@ -36,8 +52,19 @@ async function fileToDataUrl(file) {
     const ctx = canvas.getContext('2d')
     ctx.drawImage(img, 0, 0, width, height)
 
-    // Conversion forcée en JPEG
-    return canvas.toDataURL('image/jpeg', 0.8)
+    // Cible conservative pour éviter erreurs proxy réseau mobile
+    const maxBytes = 220 * 1024
+    const qualities = [0.78, 0.68, 0.58, 0.5, 0.42, 0.35]
+
+    let chosenBlob = null
+    for (const q of qualities) {
+      const blob = await canvasToBlob(canvas, q)
+      chosenBlob = blob
+      if (blob.size <= maxBytes) break
+    }
+
+    if (!chosenBlob) throw new Error('Compression image échouée')
+    return await blobToDataUrl(chosenBlob)
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
