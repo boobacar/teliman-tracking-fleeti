@@ -229,8 +229,7 @@ export function ReportsPage() {
               isClearable
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
-              popperPlacement="bottom-start"
-              popperProps={{ strategy: 'fixed' }}
+              withPortal
             />
           </label>
           <label className="field-stack">
@@ -244,8 +243,7 @@ export function ReportsPage() {
               isClearable
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
-              popperPlacement="bottom-start"
-              popperProps={{ strategy: 'fixed' }}
+              withPortal
             />
           </label>
         </div>
