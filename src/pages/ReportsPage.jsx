@@ -20,25 +20,10 @@ import {
 } from '../lib/fleeti'
 
 const REPORT_TYPES = [
-  { value: 'overview', label: 'Vue d’ensemble' },
-  { value: 'fleet', label: 'Flotte' },
-  { value: 'alerts', label: 'Alertes' },
-  { value: 'missions', label: 'Missions' },
-  { value: 'pivot', label: 'Tableau croisé' },
-  { value: 'business-detailed', label: 'Livraisons détaillées' },
-  { value: 'business-client', label: 'Par client' },
-  { value: 'business-goods', label: 'Par produit' },
-  { value: 'business-truck', label: 'Par camion' },
-  { value: 'business-destination', label: 'Par destination' },
-  { value: 'business-performance-drivers', label: 'Performance chauffeurs' },
-  { value: 'business-performance-days', label: 'Performance journalière' },
-  { value: 'business-fuel', label: 'Carburant / flotte' },
-  { value: 'business-batches', label: 'Batch / volumes' },
-  { value: 'business-projects', label: 'Projets / clients' },
   { value: 'custom-high-level-k1', label: 'HIGH LEVEL K1' },
   { value: 'custom-high-level-caderac', label: 'HIGH LEVEL CADERAC' },
   { value: 'custom-reconciliation-k1', label: 'ETAT RECONCILIATION K1' },
-  { value: 'custom-fuel-by-supplier', label: 'SUIVI BON CARBURANT' },
+  { value: 'custom-fuel-by-supplier', label: 'SUIVI BON DE CARBURANT' },
 ]
 
 const PERIODS = [
@@ -165,7 +150,7 @@ function GenericTable({ title, subtitle, columns, rows, rowKey }) {
 }
 
 export function ReportsPage() {
-  const [reportType, setReportType] = useState('overview')
+  const [reportType, setReportType] = useState('custom-high-level-k1')
   const [filters, setFilters] = useState({
     period: '48h',
     trackerId: '',
@@ -521,186 +506,24 @@ export function ReportsPage() {
     return exportGeneric('rapport-projets-clients.csv', ['Projet', 'Client', 'Destination', 'Bons', 'Quantité livrée', 'Camions', 'Chauffeurs', 'Marchandises'], businessProjectsPayload.rows, (row) => [row.projet, row.client, row.destination, row.bons, formatFrenchQuantity(row.quantiteLivree), row.camions, row.chauffeurs, row.marchandises])
   }
 
-  const isBusinessReport = reportType.startsWith('business-')
-
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large reports-v2-hero">
-      <div className="panel-header"><div><h3>Centre de rapports</h3><p>Fleeti + rapports métier de type Excel</p></div><button className="primary-btn" onClick={handleExport}>Exporter CSV</button></div>
+      <div className="panel-header"><div><h3>Centre de rapports métier</h3><p>Rapports TLM alignés sur ton fichier de suivi</p></div><button className="primary-btn" onClick={handleExport}>Exporter CSV (période)</button></div>
       <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${reportType === item.value ? 'selected' : ''}`} onClick={() => setReportType(item.value)}>{item.label}</button>)}</div>
-      <div className="reports-filter-grid">
-        <select value={filters.period} onChange={(e) => setFilters((current) => ({ ...current, period: e.target.value }))}>{PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-        <select value={filters.driver} onChange={(e) => setFilters((current) => ({ ...current, driver: e.target.value }))}>
-          <option value="">Tous chauffeurs</option>
-          {driverOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <select value={filters.client} onChange={(e) => setFilters((current) => ({ ...current, client: e.target.value }))}>
-          <option value="">Tous clients</option>
-          {clientOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <select value={filters.destination} onChange={(e) => setFilters((current) => ({ ...current, destination: e.target.value }))}>
-          <option value="">Toutes destinations</option>
-          {destinationOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <select value={filters.status} onChange={(e) => setFilters((current) => ({ ...current, status: e.target.value }))}>
-          <option value="">Tous statuts</option>
-          <option value="active">Active</option>
-          <option value="offline">Offline</option>
-          <option value="Livré">Mission livrée</option>
-          <option value="En cours">Mission en cours</option>
-          <option value="Prévu">Prévu</option>
-        </select>
-        <select value={filters.goods} onChange={(e) => setFilters((current) => ({ ...current, goods: e.target.value }))}>
-          <option value="">Tous produits</option>
-          {goodsOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </div>
-      {isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
-        <input placeholder="Projet / client" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))} />
-        <input placeholder="Objectif quantité (optionnel)" value={filters.targetQuantity} onChange={(e) => setFilters((current) => ({ ...current, targetQuantity: e.target.value }))} />
-      </div>}
-      {(reportType.startsWith('custom-')) && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+      <div className="reports-filter-grid" style={{ marginTop: 12 }}>
         <label className="field-stack"><span>Du</span><input type="date" value={filters.dateFrom} onChange={(e) => setFilters((current) => ({ ...current, dateFrom: e.target.value }))} /></label>
         <label className="field-stack"><span>Au</span><input type="date" value={filters.dateTo} onChange={(e) => setFilters((current) => ({ ...current, dateTo: e.target.value }))} /></label>
-      </div>}
-      {!isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
-        <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
-      </div>}
-      {reportType === 'pivot' && <div className="reports-filter-grid reports-pivot-grid"><select value={filters.pivotRows} onChange={(e) => setFilters((current) => ({ ...current, pivotRows: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} lignes</option>)}</select><select value={filters.pivotCols} onChange={(e) => setFilters((current) => ({ ...current, pivotCols: e.target.value }))}>{PIVOT_DIMENSIONS.map((item) => <option key={item.value} value={item.value}>{item.label} colonnes</option>)}</select><select value={filters.metric} onChange={(e) => setFilters((current) => ({ ...current, metric: e.target.value }))}>{PIVOT_METRICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>}
-      {loading && reportType !== 'overview' && <div className="info-banner">Chargement du rapport {REPORT_TYPES.find((item) => item.value === reportType)?.label?.toLowerCase()}…</div>}
+      </div>
+      {loading && <div className="info-banner">Chargement du rapport…</div>}
       {error && <div className="error-banner">{error}</div>}
     </section>
 
     <section className="reports-summary-grid reports-v2-kpis">
-      {(isBusinessReport ? businessCards : overviewCards).map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
+      <div className="overview-card"><span>Période</span><strong>{filters.dateFrom || '...'} → {filters.dateTo || '...'}</strong><small>filtre appliqué</small></div>
+      {reportType === 'custom-high-level-k1' && <div className="overview-card"><span>Bons K1</span><strong>{k1Rows.length}</strong><small>dans la période</small></div>}
+      {reportType === 'custom-high-level-caderac' && <div className="overview-card"><span>Bons CADERAC</span><strong>{caderacRows.length}</strong><small>dans la période</small></div>}
+      {reportType === 'custom-fuel-by-supplier' && <div className="overview-card"><span>Montant total carburant</span><strong>{formatFrenchQuantity(fuelBySupplierTotal)}</strong><small>FCFA</small></div>}
     </section>
-
-    {reportType === 'overview' && <section className="dashboard-grid premium-grid phase2-grid"><div className="panel"><div className="panel-header"><div><h3>Vue d’ensemble flotte</h3></div></div><div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.totalVehicles ?? 0}</strong><div><span>Véhicules</span><small>dans le périmètre</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.activeVehicles ?? 0}</strong><div><span>Actifs</span><small>connectés</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.fleet?.movingVehicles ?? 0}</strong><div><span>En mouvement</span><small>terrain</small></div></div></div></div><div className="panel"><div className="panel-header"><div><h3>Vue alertes & missions</h3></div></div><div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{summaryPayload?.alerts?.totalAlerts ?? 0}</strong><div><span>Alertes</span><small>toutes catégories</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.missions?.totalMissions ?? 0}</strong><div><span>Missions</span><small>bons enregistrés</small></div></div><div className="driver-rank-row static-row"><strong>{summaryPayload?.missions?.pendingProofs ?? 0}</strong><div><span>Preuves en attente</span><small>à compléter</small></div></div></div></div></section>}
-
-    {reportType === 'fleet' && <GenericTable title="Rapport flotte détaillé" subtitle={`${fleetPayload?.rows?.length ?? 0} lignes`} rows={fleetPayload.rows || []} rowKey={(row) => row.trackerId} columns={[
-      { key: 'immatriculation', label: 'Camion' },
-      { key: 'conducteur', label: 'Conducteur' },
-      { key: 'status', label: 'Statut' },
-      { key: 'movementStatus', label: 'Mouvement' },
-      { key: 'distanceKm', label: 'Distance', render: (value) => `${value} km` },
-      { key: 'trajets', label: 'Trajets' },
-      { key: 'alertCount', label: 'Alertes' },
-      { key: 'vitesseMoy', label: 'Vit. moy', render: (value) => `${value} km/h` },
-      { key: 'vitesseMax', label: 'Vit. max', render: (value) => `${value} km/h` },
-      { key: 'inactiviteH', label: 'Inactivité', render: (value) => `${value} h` },
-      { key: 'carburantL', label: 'Carburant' },
-    ]} />}
-
-    {reportType === 'alerts' && <GenericTable title="Rapport alertes" subtitle={`${alertsPayload?.rows?.length ?? 0} événements`} rows={alertsPayload.rows || []} rowKey={(row) => row.id} columns={[
-      { key: 'time', label: 'Date', render: (value) => value ? new Date(value).toLocaleString() : '-' },
-      { key: 'immatriculation', label: 'Camion' },
-      { key: 'conducteur', label: 'Conducteur' },
-      { key: 'eventType', label: 'Type' },
-      { key: 'severity', label: 'Gravité' },
-      { key: 'address', label: 'Adresse' },
-      { key: 'message', label: 'Message' },
-    ]} />}
-
-    {reportType === 'missions' && <GenericTable title="Rapport missions" subtitle={`${missionsPayload?.rows?.length ?? 0} bons`} rows={missionsPayload.rows || []} rowKey={(row) => row.id} columns={[
-      { key: 'reference', label: 'Référence' },
-      { key: 'immatriculation', label: 'Camion' },
-      { key: 'conducteur', label: 'Conducteur' },
-      { key: 'client', label: 'Client' },
-      { key: 'destination', label: 'Destination' },
-      { key: 'status', label: 'Statut' },
-      { key: 'active', label: 'Actif', render: (value) => value ? 'Oui' : 'Non' },
-      { key: 'date', label: 'Date', render: (value) => value ? new Date(value).toLocaleString() : '-' },
-      { key: 'proofStatus', label: 'Preuve' },
-    ]} />}
-
-    {reportType === 'pivot' && <section className="panel panel-large"><div className="panel-header"><div><h3>Tableau croisé</h3><p>{pivotPayload?.pivot?.rowsKey} × {pivotPayload?.pivot?.colsKey}</p></div></div><div className="reports-table-wrap"><table className="reports-table"><thead><tr><th>Ligne</th>{(pivotPayload?.pivot?.columns || []).map((column) => <th key={column}>{column}</th>)}<th>Total</th></tr></thead><tbody>{(pivotPayload?.pivot?.rows || []).map((row) => <tr key={row.label}><td>{row.label}</td>{(pivotPayload?.pivot?.columns || []).map((column) => <td key={`${row.label}-${column}`}>{row.values?.[column] ?? 0}</td>)}<td>{row.total}</td></tr>)}</tbody></table></div></section>}
-
-    {reportType === 'business-detailed' && <GenericTable title="Livraisons détaillées" subtitle={`${businessDetailedPayload?.rows?.length ?? 0} lignes`} rows={businessDetailedPayload.rows || []} rowKey={(row, index) => `${row.reference}-${row.camion}-${index}`} columns={[
-      { key: 'reference', label: 'Référence' },
-      { key: 'camion', label: 'Camion' },
-      { key: 'chauffeur', label: 'Chauffeur' },
-      { key: 'client', label: 'Client' },
-      { key: 'destination', label: 'Destination' },
-      { key: 'marchandise', label: 'Produit' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'depart', label: 'Départ', render: (value) => formatDateTime(value) },
-      { key: 'arrivee', label: 'Arrivée', render: (value) => formatDateTime(value) },
-      { key: 'statut', label: 'Statut' },
-      { key: 'preuve', label: 'Preuve' },
-    ]} />}
-
-    {reportType === 'business-client' && <GenericTable title="Rapport par client" subtitle={`${businessClientPayload?.rows?.length ?? 0} clients`} rows={businessClientPayload.rows || []} rowKey={(row) => row.client} columns={[
-      { key: 'client', label: 'Client' },
-      { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'actifs', label: 'Actifs' },
-      { key: 'livres', label: 'Livrés' },
-    ]} />}
-
-    {reportType === 'business-goods' && <GenericTable title="Rapport par produit" subtitle={`${businessGoodsPayload?.rows?.length ?? 0} produits`} rows={businessGoodsPayload.rows || []} rowKey={(row) => row.marchandise} columns={[
-      { key: 'marchandise', label: 'Produit' },
-      { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'clients', label: 'Clients' },
-      { key: 'destinations', label: 'Destinations' },
-    ]} />}
-
-    {reportType === 'business-truck' && <GenericTable title="Rapport par camion" subtitle={`${businessTruckPayload?.rows?.length ?? 0} camions`} rows={businessTruckPayload.rows || []} rowKey={(row) => row.camion} columns={[
-      { key: 'camion', label: 'Camion' },
-      { key: 'chauffeur', label: 'Chauffeur' },
-      { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'actifs', label: 'Actifs' },
-      { key: 'livres', label: 'Livrés' },
-      { key: 'destinations', label: 'Destinations' },
-    ]} />}
-
-    {reportType === 'business-destination' && <GenericTable title="Récap par destination" subtitle={`${businessDestinationPayload?.rows?.length ?? 0} destinations`} rows={businessDestinationPayload.rows || []} rowKey={(row) => row.destination} columns={[
-      { key: 'destination', label: 'Destination' },
-      { key: 'bons', label: 'Bons' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'clients', label: 'Clients' },
-      { key: 'camions', label: 'Camions' },
-      { key: 'livres', label: 'Livrés' },
-    ]} />}
-
-    {reportType === 'business-performance-drivers' && <GenericTable title="Performance chauffeurs" subtitle={`${businessPerformanceDriversPayload?.rows?.length ?? 0} chauffeurs`} rows={businessPerformanceDriversPayload.rows || []} rowKey={(row) => row.chauffeur} columns={[
-      { key: 'chauffeur', label: 'Chauffeur' },
-      { key: 'rotations', label: 'Rotations' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'livres', label: 'Livrés' },
-      { key: 'camions', label: 'Camions' },
-      { key: 'clients', label: 'Clients' },
-      { key: 'dureeMoyenneH', label: 'Durée moy. (h)' },
-    ]} />}
-
-    {reportType === 'business-performance-days' && <GenericTable title="Performance journalière" subtitle={`${businessPerformanceDaysPayload?.rows?.length ?? 0} jours`} rows={businessPerformanceDaysPayload.rows || []} rowKey={(row) => row.date} columns={[
-      { key: 'date', label: 'Date' },
-      { key: 'rotations', label: 'Rotations' },
-      { key: 'quantite', label: 'Quantité', render: (value) => formatFrenchQuantity(value) },
-      { key: 'livres', label: 'Livrés' },
-      { key: 'clients', label: 'Clients' },
-      { key: 'destinations', label: 'Destinations' },
-    ]} />}
-
-    {reportType === 'business-fuel' && <GenericTable title="Carburant / flotte" subtitle={`${businessFuelPayload?.rows?.length ?? 0} lignes`} rows={businessFuelPayload.rows || []} rowKey={(row) => row.camion} columns={[
-      { key: 'camion', label: 'Camion' },
-      { key: 'chauffeur', label: 'Chauffeur' },
-      { key: 'statut', label: 'Statut' },
-      { key: 'distanceKm', label: 'Distance (km)' },
-      { key: 'trajets', label: 'Trajets' },
-      { key: 'carburant', label: 'Carburant' },
-    ]} />}
-
-    {reportType === 'business-batches' && <GenericTable title="Batch / volumes" subtitle={`${businessBatchesPayload?.rows?.length ?? 0} produits`} rows={businessBatchesPayload.rows || []} rowKey={(row) => row.produit} columns={[
-      { key: 'produit', label: 'Produit' },
-      { key: 'quantiteLivree', label: 'Quantité livrée', render: (value) => formatFrenchQuantity(value) },
-      { key: 'objectif', label: 'Objectif', render: (value) => value ? formatFrenchQuantity(value) : '-' },
-      { key: 'restant', label: 'Restant', render: (value) => value !== null && value !== undefined ? formatFrenchQuantity(value) : '-' },
-      { key: 'completion', label: 'Completion %' },
-      { key: 'rotations', label: 'Rotations' },
-      { key: 'camions', label: 'Camions' },
-      { key: 'clients', label: 'Clients' },
-    ]} />}
 
     {reportType === 'business-projects' && <GenericTable title="Projets / clients" subtitle={`${businessProjectsPayload?.rows?.length ?? 0} projets`} rows={businessProjectsPayload.rows || []} rowKey={(row) => row.projet} columns={[
       { key: 'projet', label: 'Projet' },
