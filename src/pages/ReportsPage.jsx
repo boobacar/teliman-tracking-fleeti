@@ -18,10 +18,16 @@ function formatDateTime(value) {
   return d ? d.toLocaleString('fr-FR') : '-'
 }
 
+function toQtyNumber(value) {
+  if (value === null || value === undefined || value === '') return 0
+  const normalized = typeof value === 'string' ? value.replace(',', '.').replace(/\s+/g, '') : value
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : 0
+}
+
 function formatQty(value, digits = 2) {
   if (value === null || value === undefined || value === '') return '-'
-  const normalized = typeof value === 'string' ? value.replace(',', '.') : value
-  const n = Number(normalized)
+  const n = toQtyNumber(value)
   if (!Number.isFinite(n)) return String(value)
   return n.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
@@ -140,12 +146,12 @@ export function ReportsPage() {
     const map = new Map()
     caderacRows.forEach((r) => {
       const key = r.destination || 'Non renseignée'
-      map.set(key, (map.get(key) || 0) + (Number(r.quantity) || 0))
+      map.set(key, (map.get(key) || 0) + toQtyNumber(r.quantity))
     })
     return Array.from(map.entries()).map(([destination, quantity]) => ({ destination, quantity }))
   }, [caderacRows])
   const fuelRows = useMemo(() => fuel.filter((r) => inRange(r.dateTime, from, to)), [fuel, from, to])
-  const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + (Number(r.amount) || 0), 0), [fuelRows])
+  const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
 
   const exportCurrent = () => {
     if (type === 'k1') {
@@ -170,7 +176,7 @@ export function ReportsPage() {
         ['DESTINATION', 'QTE'],
         ...caderacByDestination.map((r) => [r.destination, formatQty(r.quantity)]),
         [],
-        ['QUANTITE TOTALE', formatQty(caderacRows.reduce((a, r) => a + (Number(r.quantity) || 0), 0))],
+        ['QUANTITE TOTALE', formatQty(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0))],
       ])
     }
 
@@ -204,14 +210,14 @@ export function ReportsPage() {
 
       {type === 'k1' && (
         <>
-          <Table title="HIGH LEVEL K1 – Tableau produit 0/5" subtitle={`${k1_05.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_05} footerRows={[[`TOTAL`, '', formatQty(k1_05.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '']]} columns={[
+          <Table title="HIGH LEVEL K1 – Tableau produit 0/5" subtitle={`${k1_05.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_05} footerRows={[[`TOTAL`, '', formatQty(k1_05.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
             { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
           ]} />
-          <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_1014} footerRows={[[`TOTAL`, '', formatQty(k1_1014.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '']]} columns={[
+          <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_1014} footerRows={[[`TOTAL`, '', formatQty(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -223,7 +229,7 @@ export function ReportsPage() {
 
       {type === 'caderac' && (
         <>
-          <Table title="HIGH LEVEL CADERAC – Détail" subtitle={`${caderacRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={caderacRows} footerRows={[[`TOTAL`, '', formatQty(caderacRows.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '', '']]} columns={[
+          <Table title="HIGH LEVEL CADERAC – Détail" subtitle={`${caderacRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={caderacRows} footerRows={[[`TOTAL`, '', formatQty(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -235,12 +241,12 @@ export function ReportsPage() {
             { key: 'destination', label: 'DESTINATION' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
           ]} />
-          <section className="panel panel-large"><div className="panel-header"><div><h3>Quantité totale</h3></div></div><div className="mini-kpi"><strong>{formatQty(caderacRows.reduce((a, r) => a + (Number(r.quantity) || 0), 0))}</strong></div></section>
+          <section className="panel panel-large"><div className="panel-header"><div><h3>Quantité totale</h3></div></div><div className="mini-kpi"><strong>{formatQty(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0))}</strong></div></section>
         </>
       )}
 
       {type === 'reco-k1' && (
-        <Table title="ETAT DE RECONCILIATION K1" subtitle={`${k1Rows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1Rows} footerRows={[[`TOTAL`, '', formatQty(k1Rows.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '', '']]} columns={[
+        <Table title="ETAT DE RECONCILIATION K1" subtitle={`${k1Rows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1Rows} footerRows={[[`TOTAL`, '', formatQty(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]} columns={[
           { key: 'reference', label: 'NUMERO BL' },
           { key: 'goods', label: 'TYPE DE PRODUIT' },
           { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
