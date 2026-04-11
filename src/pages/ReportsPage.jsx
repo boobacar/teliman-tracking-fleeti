@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import DatePicker from 'react-datepicker'
+import { fr } from 'date-fns/locale'
 import { loadDeliveryOrders, loadFuelVouchers } from '../lib/fleeti'
+import 'react-datepicker/dist/react-datepicker.css'
 
 const REPORT_TYPES = [
   { value: 'k1', label: 'HIGH LEVEL K1' },
@@ -30,6 +33,20 @@ function formatQty(value, digits = 2) {
   const n = toQtyNumber(value)
   if (!Number.isFinite(n)) return String(value)
   return n.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+}
+
+function ymdToDate(value) {
+  if (!value) return null
+  const d = new Date(`${value}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function dateToYmd(date) {
+  if (!date) return ''
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
 
 function formatPeriodLabel(from, to) {
@@ -201,8 +218,32 @@ export function ReportsPage() {
         <div className="panel-header"><div><h3>RAPPORTS TLM</h3><p>Version métier 1:1 — {formatPeriodLabel(from, to)}</p></div><button className="primary-btn" onClick={exportCurrent}>Télécharger la période</button></div>
         <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
-          <label className="field-stack"><span>Du</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label className="field-stack"><span>Au</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+          <label className="field-stack">
+            <span>Du</span>
+            <DatePicker
+              selected={ymdToDate(from)}
+              onChange={(value) => setFrom(dateToYmd(value))}
+              dateFormat="dd/MM/yyyy"
+              locale={fr}
+              placeholderText="Date début"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
+          <label className="field-stack">
+            <span>Au</span>
+            <DatePicker
+              selected={ymdToDate(to)}
+              onChange={(value) => setTo(dateToYmd(value))}
+              dateFormat="dd/MM/yyyy"
+              locale={fr}
+              placeholderText="Date fin"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
         </div>
         {loading && <div className="info-banner">Chargement des données…</div>}
         {error && <div className="error-banner">{error}</div>}
