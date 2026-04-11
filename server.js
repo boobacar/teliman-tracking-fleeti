@@ -306,6 +306,8 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
 function sanitizeProofPhotoDataUrl(value, fallback = '') {
   const raw = String(value ?? fallback ?? '').trim()
   if (!raw) return ''
+  if (raw.startsWith('/uploads/')) return raw
+  if (/^https?:\/\//i.test(raw)) return raw
   const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
   if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
   // ~5MB max encoded payload

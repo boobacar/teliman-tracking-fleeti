@@ -387,7 +387,6 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         />
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
-      {photoUploadNotice && <div className="info-banner">{photoUploadNotice}</div>}
       {photoUploadProgress > 0 && (
         <div className="upload-progress-wrap" aria-label="Progression upload photo">
           <div className="upload-progress-bar" style={{ width: `${photoUploadProgress}%` }} />
@@ -513,5 +512,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       <div className="panel-header"><div><h3>Historique par camion</h3></div></div>
       <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
     </section>
+
+    {photoUploadNotice && (
+      <div className={`upload-toast ${photoUploadNotice.startsWith('❌') ? 'error' : 'success'}`}>
+        {photoUploadNotice}
+      </div>
+    )}
   </div>
 }
