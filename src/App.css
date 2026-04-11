@@ -251,18 +251,21 @@ input {
   padding: 10px 14px !important;
   min-height: 0 !important;
   height: auto !important;
-  gap: 10px;
-  align-items: flex-start;
+  display: block !important;
 }
 
 .hero-quickstats {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  margin: 0;
 }
 
-.main-content > .hero-panel {
+.main-content > .hero-panel,
+.main-content > .hero-panel.compact-hero {
   margin: 0;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
 }
 
 .eyebrow {
