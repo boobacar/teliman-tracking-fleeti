@@ -310,7 +310,6 @@ export function ReportsPage() {
             { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatQty(v, 0) },
             { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v, 0) },
           ]} />
-          <section className="panel panel-large"><div className="panel-header"><div><h3>Montant TOTAL</h3></div></div><div className="mini-kpi"><strong>{formatQty(fuelTotal)}</strong></div></section>
         </>
       )}
     </div>
