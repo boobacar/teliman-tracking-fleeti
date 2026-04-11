@@ -147,6 +147,18 @@ input {
   overflow: visible !important;
 }
 
+.reports-excel .reports-v2-hero {
+  position: relative;
+  z-index: 1200;
+}
+
+.reports-excel .reports-summary-grid,
+.reports-excel .reports-table-wrap,
+.reports-excel .panel.panel-large:not(.reports-v2-hero) {
+  position: relative;
+  z-index: 1;
+}
+
 .modern-date-popper .react-datepicker {
   border: 1px solid rgba(96, 165, 250, 0.26);
   border-radius: 14px;
