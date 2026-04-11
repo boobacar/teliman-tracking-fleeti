@@ -137,8 +137,9 @@ input {
   min-width: 170px;
 }
 
-.modern-date-popper {
-  z-index: 99999 !important;
+.modern-date-popper,
+.react-datepicker-popper {
+  z-index: 2147483647 !important;
 }
 
 .reports-excel .panel,
@@ -1149,6 +1150,8 @@ input {
 
 .reports-table-wrap {
   overflow-x: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .mobile-voucher-list {

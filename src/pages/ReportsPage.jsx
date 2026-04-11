@@ -229,7 +229,6 @@ export function ReportsPage() {
               isClearable
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
-              withPortal
             />
           </label>
           <label className="field-stack">
@@ -243,7 +242,6 @@ export function ReportsPage() {
               isClearable
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
-              withPortal
             />
           </label>
         </div>
