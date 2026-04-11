@@ -1159,6 +1159,22 @@ input {
   gap: 6px;
 }
 
+.upload-progress-wrap {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.upload-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  transition: width 0.18s ease;
+}
+
 .mobile-voucher-head {
   display: flex;
   justify-content: space-between;

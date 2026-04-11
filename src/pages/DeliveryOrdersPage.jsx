@@ -16,33 +16,31 @@ function formatFrenchQuantity(value, digits = 3) {
 }
 
 async function fileToDataUrl(file) {
-  const rawDataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error("Impossible de lire l'image"))
-    reader.readAsDataURL(file)
-  })
+  const objectUrl = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () => reject(new Error('Format image non supporté'))
+      image.src = objectUrl
+    })
 
-  // Compression pour uploads mobile (évite dépassement backend)
-  const img = await new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('Image invalide'))
-    image.src = rawDataUrl
-  })
+    const maxSize = 1600
+    const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
+    const width = Math.max(1, Math.round(img.width * ratio))
+    const height = Math.max(1, Math.round(img.height * ratio))
 
-  const maxSize = 1600
-  const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
-  const width = Math.max(1, Math.round(img.width * ratio))
-  const height = Math.max(1, Math.round(img.height * ratio))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0, width, height)
 
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  ctx.drawImage(img, 0, 0, width, height)
-
-  return canvas.toDataURL('image/jpeg', 0.78)
+    // Conversion forcée en JPEG
+    return canvas.toDataURL('image/jpeg', 0.8)
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
 }
 
 function exportDeliveryOrdersCsv(rows = []) {
@@ -102,6 +100,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [dateFilter, setDateFilter] = useState(null)
   const [pageLoading, setPageLoading] = useState(false)
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
@@ -200,6 +199,10 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const uploadProofPhoto = async (item, file) => {
     if (!file) return
     setSaving(true)
+    setPhotoUploadProgress(8)
+    const progressTimer = setInterval(() => {
+      setPhotoUploadProgress((prev) => (prev >= 90 ? prev : prev + 7))
+    }, 180)
     try {
       const proofPhotoDataUrl = await fileToDataUrl(file)
       const currentPhotos = Array.isArray(item.proofPhotoDataUrls)
@@ -220,12 +223,18 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       } else {
         await refreshData()
       }
+      setPhotoUploadProgress(100)
       setPhotoUploadNotice('✅ Photo uploadée avec succès')
-      setTimeout(() => setPhotoUploadNotice(''), 2600)
+      setTimeout(() => {
+        setPhotoUploadNotice('')
+        setPhotoUploadProgress(0)
+      }, 1400)
     } catch (error) {
       setPhotoUploadNotice(`❌ Upload photo échoué: ${error.message}`)
+      setPhotoUploadProgress(0)
       setTimeout(() => setPhotoUploadNotice(''), 3500)
     } finally {
+      clearInterval(progressTimer)
       setSaving(false)
     }
   }
@@ -379,6 +388,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <button className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
       {photoUploadNotice && <div className="info-banner">{photoUploadNotice}</div>}
+      {photoUploadProgress > 0 && (
+        <div className="upload-progress-wrap" aria-label="Progression upload photo">
+          <div className="upload-progress-bar" style={{ width: `${photoUploadProgress}%` }} />
+        </div>
+      )}
       <div className="reports-table-wrap">
         <table className="reports-table">
           <thead>
