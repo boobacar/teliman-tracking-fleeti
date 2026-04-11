@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { AlertTriangle, BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, Map, Menu, ReceiptText, RefreshCw, ShieldAlert, Siren, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, Map, Menu, ReceiptText, RefreshCw, Siren, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,12 +29,6 @@ export function Layout({ children, loading, refreshData, search, setSearch, data
       </aside>
 
       <main className="main-content premium-main">
-        <section className="hero-panel premium-hero premium-hero-phase2 compact-hero">
-          <div className="hero-quickstats">
-            <div className="meta-box"><ShieldAlert size={18} /><span>{dataset?.rules?.length ?? 0} règles actives</span></div>
-            <div className="meta-box"><AlertTriangle size={18} /><span>{dataset?.unreadCount ?? 0} alertes non lues</span></div>
-          </div>
-        </section>
         {children}
       </main>
     </div>
