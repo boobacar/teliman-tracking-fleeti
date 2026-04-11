@@ -169,6 +169,7 @@ export function ReportsPage() {
   }, [caderacRows])
   const fuelRows = useMemo(() => fuel.filter((r) => inRange(r.dateTime, from, to)), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
+  const fuelQtyTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.quantityLiters), 0), [fuelRows])
 
   const exportCurrent = () => {
     if (type === 'k1') {
@@ -206,9 +207,10 @@ export function ReportsPage() {
 
     return downloadCsv('SUIVI_BON_CARBURANT.csv', [
       ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
-      ...fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice), formatQty(r.amount)]),
+      ...fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
       [],
-      ['MONTANT TOTAL', '', '', '', '', '', formatQty(fuelTotal)],
+      ['QUANTITE TOTALE', '', '', '', formatQty(fuelQtyTotal), '', ''],
+      ['MONTANT TOTAL', '', '', '', '', '', formatQty(fuelTotal, 0)],
     ])
   }
 
@@ -299,14 +301,14 @@ export function ReportsPage() {
 
       {type === 'fuel' && (
         <>
-          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`MONTANT TOTAL`, '', '', '', '', '', formatQty(fuelTotal)]]} columns={[
+          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`QUANTITE TOTALE`, '', '', '', formatQty(fuelQtyTotal), '', ''], [`MONTANT TOTAL`, '', '', '', '', '', formatQty(fuelTotal, 0)]]} columns={[
             { key: 'supplier', label: 'FOURNISSEUR' },
             { key: 'voucherNumber', label: 'NUMERO BL/BON' },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
             { key: 'dateTime', label: 'DATE ET HEURE DE PRISE', render: (v) => formatDateTime(v) },
             { key: 'quantityLiters', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'unitPrice', label: 'PRIX UNITAIRE' },
-            { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v) },
+            { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatQty(v, 0) },
+            { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v, 0) },
           ]} />
           <section className="panel panel-large"><div className="panel-header"><div><h3>Montant TOTAL</h3></div></div><div className="mini-kpi"><strong>{formatQty(fuelTotal)}</strong></div></section>
         </>
