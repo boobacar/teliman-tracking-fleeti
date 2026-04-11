@@ -179,7 +179,7 @@ export function ReportsPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
         <div className="panel-header"><div><h3>Rapports TLM</h3><p>Version métier 1:1 (inspirée de ton Excel)</p></div><button className="primary-btn" onClick={exportCurrent}>Télécharger la période</button></div>
         <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
