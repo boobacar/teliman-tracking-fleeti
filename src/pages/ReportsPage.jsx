@@ -15,6 +15,8 @@ import {
   loadReportPivot,
   loadReportProjects,
   loadReportSummary,
+  loadDeliveryOrders,
+  loadFuelVouchers,
 } from '../lib/fleeti'
 
 const REPORT_TYPES = [
@@ -33,6 +35,10 @@ const REPORT_TYPES = [
   { value: 'business-fuel', label: 'Carburant / flotte' },
   { value: 'business-batches', label: 'Batch / volumes' },
   { value: 'business-projects', label: 'Projets / clients' },
+  { value: 'custom-high-level-k1', label: 'HIGH LEVEL K1' },
+  { value: 'custom-high-level-caderac', label: 'HIGH LEVEL CADERAC' },
+  { value: 'custom-reconciliation-k1', label: 'ETAT RECONCILIATION K1' },
+  { value: 'custom-fuel-by-supplier', label: 'SUIVI BON CARBURANT' },
 ]
 
 const PERIODS = [
@@ -66,7 +72,13 @@ function buildQuery(params) {
 }
 
 function downloadCsv(filename, rows) {
-  const csv = rows.map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(';')).join('\n')
+  const exportAt = new Date().toLocaleString('fr-FR')
+  const finalRows = [
+    ['Date export', exportAt],
+    [],
+    ...rows,
+  ]
+  const csv = finalRows.map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(';')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -168,6 +180,8 @@ export function ReportsPage() {
     pivotRows: 'tracker',
     pivotCols: 'event',
     metric: 'count',
+    dateFrom: '',
+    dateTo: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -194,6 +208,8 @@ export function ReportsPage() {
     projects: { rows: [] },
     performanceDrivers: { rows: [] },
   })
+  const [rawDeliveryOrders, setRawDeliveryOrders] = useState([])
+  const [rawFuelVouchers, setRawFuelVouchers] = useState([])
 
   const summaryQuery = useMemo(() => buildQuery({
     period: filters.period,
@@ -230,6 +246,26 @@ export function ReportsPage() {
 
   useEffect(() => {
     let cancelled = false
+
+    async function loadBaseOrders() {
+      try {
+        const [deliveries, fuel] = await Promise.all([
+          loadDeliveryOrders(),
+          loadFuelVouchers(),
+        ])
+        if (!cancelled) {
+          setRawDeliveryOrders(deliveries?.items || [])
+          setRawFuelVouchers(fuel?.items || [])
+        }
+      } catch {
+        if (!cancelled) {
+          setRawDeliveryOrders([])
+          setRawFuelVouchers([])
+        }
+      }
+    }
+
+    loadBaseOrders()
 
     async function loadFilterOptions() {
       try {
@@ -381,6 +417,54 @@ export function ReportsPage() {
     { label: 'Camions', value: businessTruckPayload?.rows?.length ?? 0, helper: 'exploités' },
   ]
 
+  const inDateRange = (value) => {
+    if (!value) return true
+    const current = new Date(value)
+    if (Number.isNaN(current.getTime())) return false
+    if (filters.dateFrom) {
+      const from = new Date(`${filters.dateFrom}T00:00:00`)
+      if (current < from) return false
+    }
+    if (filters.dateTo) {
+      const to = new Date(`${filters.dateTo}T23:59:59`)
+      if (current > to) return false
+    }
+    return true
+  }
+
+  const normalizedDeliveries = useMemo(() => rawDeliveryOrders.map((row) => ({
+    reference: row.reference,
+    produit: row.goods,
+    quantite: Number(row.quantity) || 0,
+    dechargement: row.arrivalDateTime || row.date,
+    immatriculation: row.truckLabel,
+    client: row.client,
+    destination: row.destination,
+    chauffeur: row.driver,
+  })), [rawDeliveryOrders])
+
+  const k1Rows = useMemo(() => normalizedDeliveries.filter((row) => String(row.client || '').toUpperCase().includes('K1') && inDateRange(row.dechargement)), [normalizedDeliveries, filters.dateFrom, filters.dateTo])
+  const caderacRows = useMemo(() => normalizedDeliveries.filter((row) => String(row.client || '').toUpperCase().includes('CADERAC') && inDateRange(row.dechargement)), [normalizedDeliveries, filters.dateFrom, filters.dateTo])
+
+  const k1Batch05Rows = useMemo(() => k1Rows.filter((row) => /0\/?5/i.test(String(row.produit || ''))), [k1Rows])
+  const k1Batch1014Rows = useMemo(() => k1Rows.filter((row) => /10\/?14/i.test(String(row.produit || ''))), [k1Rows])
+
+  const caderacByDestination = useMemo(() => {
+    const map = new Map()
+    caderacRows.forEach((row) => {
+      const key = row.destination || 'Non renseignée'
+      map.set(key, (map.get(key) || 0) + (Number(row.quantite) || 0))
+    })
+    return Array.from(map.entries()).map(([destination, quantite]) => ({ destination, quantite }))
+  }, [caderacRows])
+
+  const fuelBySupplierRows = useMemo(() => {
+    const filtered = rawFuelVouchers.filter((row) => inDateRange(row.dateTime))
+    return filtered
+  }, [rawFuelVouchers, filters.dateFrom, filters.dateTo])
+
+  const fuelBySupplierTotal = useMemo(() => fuelBySupplierRows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0), [fuelBySupplierRows])
+
   const handleExport = () => {
     if (reportType === 'overview') return exportOverview(summaryPayload)
     if (reportType === 'fleet') return exportFleet(fleetPayload.rows)
@@ -396,6 +480,44 @@ export function ReportsPage() {
     if (reportType === 'business-performance-days') return exportGeneric('rapport-performance-jours.csv', ['Date', 'Rotations', 'Quantité', 'Livrés', 'Clients', 'Destinations'], businessPerformanceDaysPayload.rows, (row) => [row.date, row.rotations, formatFrenchQuantity(row.quantite), row.livres, row.clients, row.destinations])
     if (reportType === 'business-fuel') return exportGeneric('rapport-carburant-flotte.csv', ['Camion', 'Chauffeur', 'Statut', 'Distance (km)', 'Trajets', 'Carburant'], businessFuelPayload.rows, (row) => [row.camion, row.chauffeur, row.statut, formatFrenchQuantity(row.distanceKm, 1), row.trajets, row.carburant])
     if (reportType === 'business-batches') return exportGeneric('rapport-batch-volumes.csv', ['Produit', 'Quantité livrée', 'Objectif', 'Restant', 'Completion %', 'Rotations', 'Camions', 'Clients'], businessBatchesPayload.rows, (row) => [row.produit, formatFrenchQuantity(row.quantiteLivree), row.objectif ? formatFrenchQuantity(row.objectif) : '', row.restant !== null && row.restant !== undefined ? formatFrenchQuantity(row.restant) : '', row.completion ?? '', row.rotations, row.camions, row.clients])
+    if (reportType === 'custom-high-level-k1') {
+      const rows = [
+        ['HIGH LEVEL K1 - PRODUIT 0/5'],
+        ['N° BL', 'Type produit', 'Qté', 'Date/heure déchargement', 'Immatriculation'],
+        ...k1Batch05Rows.map((row) => [row.reference, row.produit, formatFrenchQuantity(row.quantite), formatDateTime(row.dechargement), row.immatriculation]),
+        [],
+        ['HIGH LEVEL K1 - PRODUIT 10/14'],
+        ['N° BL', 'Type produit', 'Qté', 'Date/heure déchargement', 'Immatriculation'],
+        ...k1Batch1014Rows.map((row) => [row.reference, row.produit, formatFrenchQuantity(row.quantite), formatDateTime(row.dechargement), row.immatriculation]),
+      ]
+      return downloadCsv('rapport-high-level-k1.csv', rows)
+    }
+    if (reportType === 'custom-high-level-caderac') {
+      const rows = [
+        ['HIGH LEVEL CADERAC - DETAIL'],
+        ['N° BL', 'Type produit', 'Qté', 'Date/heure déchargement', 'Immatriculation', 'Destination'],
+        ...caderacRows.map((row) => [row.reference, row.produit, formatFrenchQuantity(row.quantite), formatDateTime(row.dechargement), row.immatriculation, row.destination]),
+        [],
+        ['QUANTITE PAR DESTINATION'],
+        ['Destination', 'Qté'],
+        ...caderacByDestination.map((row) => [row.destination, formatFrenchQuantity(row.quantite)]),
+        [],
+        ['QUANTITE TOTALE', formatFrenchQuantity(caderacRows.reduce((acc, row) => acc + (Number(row.quantite) || 0), 0))],
+      ]
+      return downloadCsv('rapport-high-level-caderac.csv', rows)
+    }
+    if (reportType === 'custom-reconciliation-k1') {
+      return exportGeneric('rapport-reconciliation-k1.csv', ['N° BL', 'Type produit', 'Qté', 'Date/heure déchargement', 'Immatriculation', 'Chauffeur'], k1Rows, (row) => [row.reference, row.produit, formatFrenchQuantity(row.quantite), formatDateTime(row.dechargement), row.immatriculation, row.chauffeur])
+    }
+    if (reportType === 'custom-fuel-by-supplier') {
+      const rows = [
+        ['Fournisseur', 'N° bon', 'Immatriculation', 'Date/heure prise', 'Qté', 'Prix unitaire', 'Montant'],
+        ...fuelBySupplierRows.map((row) => [row.supplier || '-', row.voucherNumber || '-', row.truckLabel || '-', formatDateTime(row.dateTime), formatFrenchQuantity(row.quantityLiters), formatFrenchQuantity(row.unitPrice), formatFrenchQuantity(row.amount)]),
+        [],
+        ['MONTANT TOTAL', '', '', '', '', '', formatFrenchQuantity(fuelBySupplierTotal)],
+      ]
+      return downloadCsv('rapport-suivi-bon-carburant.csv', rows)
+    }
     return exportGeneric('rapport-projets-clients.csv', ['Projet', 'Client', 'Destination', 'Bons', 'Quantité livrée', 'Camions', 'Chauffeurs', 'Marchandises'], businessProjectsPayload.rows, (row) => [row.projet, row.client, row.destination, row.bons, formatFrenchQuantity(row.quantiteLivree), row.camions, row.chauffeurs, row.marchandises])
   }
 
@@ -435,6 +557,10 @@ export function ReportsPage() {
       {isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
         <input placeholder="Projet / client" value={filters.project} onChange={(e) => setFilters((current) => ({ ...current, project: e.target.value }))} />
         <input placeholder="Objectif quantité (optionnel)" value={filters.targetQuantity} onChange={(e) => setFilters((current) => ({ ...current, targetQuantity: e.target.value }))} />
+      </div>}
+      {(reportType.startsWith('custom-')) && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+        <label className="field-stack"><span>Du</span><input type="date" value={filters.dateFrom} onChange={(e) => setFilters((current) => ({ ...current, dateFrom: e.target.value }))} /></label>
+        <label className="field-stack"><span>Au</span><input type="date" value={filters.dateTo} onChange={(e) => setFilters((current) => ({ ...current, dateTo: e.target.value }))} /></label>
       </div>}
       {!isBusinessReport && <div className="reports-filter-grid" style={{ marginTop: 12 }}>
         <input placeholder="Type alerte (ex: speedup)" value={filters.eventType} onChange={(e) => setFilters((current) => ({ ...current, eventType: e.target.value }))} />
@@ -586,5 +712,60 @@ export function ReportsPage() {
       { key: 'chauffeurs', label: 'Chauffeurs' },
       { key: 'marchandises', label: 'Marchandises' },
     ]} />}
+
+    {reportType === 'custom-high-level-k1' && <>
+      <GenericTable title="HIGH LEVEL K1 - Produit 0/5" subtitle={`${k1Batch05Rows.length} lignes`} rows={k1Batch05Rows} rowKey={(row, i) => `${row.reference}-${i}`} columns={[
+        { key: 'reference', label: 'N° BL' },
+        { key: 'produit', label: 'Type produit' },
+        { key: 'quantite', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+        { key: 'dechargement', label: 'Date/heure déchargement', render: (value) => formatDateTime(value) },
+        { key: 'immatriculation', label: 'Immatriculation' },
+      ]} />
+      <GenericTable title="HIGH LEVEL K1 - Produit 10/14" subtitle={`${k1Batch1014Rows.length} lignes`} rows={k1Batch1014Rows} rowKey={(row, i) => `${row.reference}-${i}`} columns={[
+        { key: 'reference', label: 'N° BL' },
+        { key: 'produit', label: 'Type produit' },
+        { key: 'quantite', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+        { key: 'dechargement', label: 'Date/heure déchargement', render: (value) => formatDateTime(value) },
+        { key: 'immatriculation', label: 'Immatriculation' },
+      ]} />
+    </>}
+
+    {reportType === 'custom-high-level-caderac' && <>
+      <GenericTable title="HIGH LEVEL CADERAC - Détail" subtitle={`${caderacRows.length} lignes`} rows={caderacRows} rowKey={(row, i) => `${row.reference}-${i}`} columns={[
+        { key: 'reference', label: 'N° BL' },
+        { key: 'produit', label: 'Type produit' },
+        { key: 'quantite', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+        { key: 'dechargement', label: 'Date/heure déchargement', render: (value) => formatDateTime(value) },
+        { key: 'immatriculation', label: 'Immatriculation' },
+        { key: 'destination', label: 'Destination' },
+      ]} />
+      <GenericTable title="CADERAC - Quantité par destination" subtitle={`${caderacByDestination.length} destinations`} rows={caderacByDestination} rowKey={(row) => row.destination} columns={[
+        { key: 'destination', label: 'Destination' },
+        { key: 'quantite', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+      ]} />
+      <section className="panel panel-large"><div className="panel-header"><div><h3>Quantité totale CADERAC</h3></div></div><div className="mini-kpi"><strong>{formatFrenchQuantity(caderacRows.reduce((acc, row) => acc + (Number(row.quantite) || 0), 0))}</strong></div></section>
+    </>}
+
+    {reportType === 'custom-reconciliation-k1' && <GenericTable title="ETAT DE RECONCILIATION K1" subtitle={`${k1Rows.length} lignes`} rows={k1Rows} rowKey={(row, i) => `${row.reference}-${i}`} columns={[
+      { key: 'reference', label: 'N° BL' },
+      { key: 'produit', label: 'Type produit' },
+      { key: 'quantite', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+      { key: 'dechargement', label: 'Date/heure déchargement', render: (value) => formatDateTime(value) },
+      { key: 'immatriculation', label: 'Immatriculation' },
+      { key: 'chauffeur', label: 'Nom chauffeur' },
+    ]} />}
+
+    {reportType === 'custom-fuel-by-supplier' && <>
+      <GenericTable title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelBySupplierRows.length} lignes`} rows={fuelBySupplierRows} rowKey={(row) => row.id} columns={[
+        { key: 'supplier', label: 'Fournisseur' },
+        { key: 'voucherNumber', label: 'N° BL / N° bon' },
+        { key: 'truckLabel', label: 'Immatriculation' },
+        { key: 'dateTime', label: 'Date/heure de prise', render: (value) => formatDateTime(value) },
+        { key: 'quantityLiters', label: 'Qté', render: (value) => formatFrenchQuantity(value) },
+        { key: 'unitPrice', label: 'Prix unitaire', render: (value) => formatFrenchQuantity(value) },
+        { key: 'amount', label: 'Montant', render: (value) => formatFrenchQuantity(value) },
+      ]} />
+      <section className="panel panel-large"><div className="panel-header"><div><h3>Montant TOTAL</h3></div></div><div className="mini-kpi"><strong>{formatFrenchQuantity(fuelBySupplierTotal)}</strong></div></section>
+    </>}
   </div>
 }
