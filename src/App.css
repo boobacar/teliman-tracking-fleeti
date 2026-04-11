@@ -1233,6 +1233,12 @@ input {
   background: rgba(16, 185, 129, 0.08);
 }
 
+.reports-excel .report-footer-row td {
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.16);
+  color: #d1fae5;
+}
+
 .reports-excel .overview-card {
   border: 1px solid rgba(16, 185, 129, 0.32);
   background: linear-gradient(180deg, rgba(16, 185, 129, 0.14) 0%, rgba(15, 23, 42, 0.84) 100%);

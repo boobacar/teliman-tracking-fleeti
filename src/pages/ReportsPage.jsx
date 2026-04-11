@@ -24,6 +24,10 @@ function formatQty(value, digits = 2) {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 
+function formatPeriodLabel(from, to) {
+  return `du ${from || '...'} au ${to || '...'}`
+}
+
 function inRange(value, from, to) {
   const d = toDate(value)
   if (!d) return false
@@ -69,7 +73,7 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url)
 }
 
-function Table({ title, subtitle, columns, rows }) {
+function Table({ title, subtitle, columns, rows, footerRows = [] }) {
   return (
     <section className="panel panel-large">
       <div className="panel-header"><div><h3>{title}</h3><p>{subtitle}</p></div></div>
@@ -83,6 +87,11 @@ function Table({ title, subtitle, columns, rows }) {
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={columns.length} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune donnée sur la période.</td></tr>}
+            {footerRows.map((line, idx) => (
+              <tr key={`footer-${idx}`} className="report-footer-row">
+                {line.map((cell, cIdx) => <td key={`f-${idx}-${cIdx}`}>{cell}</td>)}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -181,7 +190,7 @@ export function ReportsPage() {
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>Rapports TLM</h3><p>Version métier 1:1 (inspirée de ton Excel)</p></div><button className="primary-btn" onClick={exportCurrent}>Télécharger la période</button></div>
+        <div className="panel-header"><div><h3>RAPPORTS TLM</h3><p>Version métier 1:1 — {formatPeriodLabel(from, to)}</p></div><button className="primary-btn" onClick={exportCurrent}>Télécharger la période</button></div>
         <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack"><span>Du</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -193,14 +202,14 @@ export function ReportsPage() {
 
       {type === 'k1' && (
         <>
-          <Table title="HIGH LEVEL K1 – Tableau produit 0/5" subtitle={`${k1_05.length} ligne(s)`} rows={k1_05} columns={[
+          <Table title="HIGH LEVEL K1 – Tableau produit 0/5" subtitle={`${k1_05.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_05} footerRows={[[`TOTAL`, '', formatQty(k1_05.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
             { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
           ]} />
-          <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s)`} rows={k1_1014} columns={[
+          <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_1014} footerRows={[[`TOTAL`, '', formatQty(k1_1014.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -212,7 +221,7 @@ export function ReportsPage() {
 
       {type === 'caderac' && (
         <>
-          <Table title="HIGH LEVEL CADERAC – Détail" subtitle={`${caderacRows.length} ligne(s)`} rows={caderacRows} columns={[
+          <Table title="HIGH LEVEL CADERAC – Détail" subtitle={`${caderacRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={caderacRows} footerRows={[[`TOTAL`, '', formatQty(caderacRows.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -229,7 +238,7 @@ export function ReportsPage() {
       )}
 
       {type === 'reco-k1' && (
-        <Table title="ETAT DE RECONCILIATION K1" subtitle={`${k1Rows.length} ligne(s)`} rows={k1Rows} columns={[
+        <Table title="ETAT DE RECONCILIATION K1" subtitle={`${k1Rows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1Rows} footerRows={[[`TOTAL`, '', formatQty(k1Rows.reduce((a, r) => a + (Number(r.quantity) || 0), 0)), '', '', '']]} columns={[
           { key: 'reference', label: 'NUMERO BL' },
           { key: 'goods', label: 'TYPE DE PRODUIT' },
           { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -241,7 +250,7 @@ export function ReportsPage() {
 
       {type === 'fuel' && (
         <>
-          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s)`} rows={fuelRows} columns={[
+          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`MONTANT TOTAL`, '', '', '', '', '', formatQty(fuelTotal)]]} columns={[
             { key: 'supplier', label: 'FOURNISSEUR' },
             { key: 'voucherNumber', label: 'NUMERO BL/BON' },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
