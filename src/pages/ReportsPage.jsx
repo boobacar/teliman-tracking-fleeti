@@ -19,8 +19,10 @@ function formatDateTime(value) {
 }
 
 function formatQty(value, digits = 2) {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
+  if (value === null || value === undefined || value === '') return '-'
+  const normalized = typeof value === 'string' ? value.replace(',', '.') : value
+  const n = Number(normalized)
+  if (!Number.isFinite(n)) return String(value)
   return n.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 
