@@ -98,6 +98,16 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url)
 }
 
+function buildPdfHeader(doc, title, from, to) {
+  const now = new Date().toLocaleString('fr-FR')
+  doc.setFontSize(14)
+  doc.text('TELIMAN TRACKING FLEETI', 14, 14)
+  doc.setFontSize(11)
+  doc.text(title, 14, 22)
+  doc.text(`Période: du ${from || '...'} au ${to || '...'}`, 14, 28)
+  doc.text(`Date export: ${now}`, 14, 34)
+}
+
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
   return (
     <section className="panel panel-large">
@@ -171,6 +181,55 @@ export function ReportsPage() {
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
   const fuelQtyTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.quantityLiters), 0), [fuelRows])
 
+  const getCurrentReportForExport = () => {
+    if (type === 'k1') {
+      return {
+        title: 'HIGH LEVEL K1',
+        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
+        rows: [
+          ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+          ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+        ],
+      }
+    }
+    if (type === 'caderac') {
+      return {
+        title: 'HIGH LEVEL CADERAC',
+        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
+        rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.destination]),
+      }
+    }
+    if (type === 'reco-k1') {
+      return {
+        title: 'ETAT DE RECONCILIATION K1',
+        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
+        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
+      }
+    }
+    return {
+      title: 'SUIVI BON DE CARBURANT',
+      headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
+      rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
+    }
+  }
+
+  const exportCurrentPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const autoTableModule = await import('jspdf-autotable')
+    const autoTable = autoTableModule.default
+    const report = getCurrentReportForExport()
+    const doc = new jsPDF({ orientation: 'landscape' })
+    buildPdfHeader(doc, report.title, from, to)
+    autoTable(doc, {
+      startY: 40,
+      head: [report.headers],
+      body: report.rows,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [16, 185, 129] },
+    })
+    doc.save(`${report.title.replaceAll(' ', '_')}_${from || 'NA'}_${to || 'NA'}.pdf`)
+  }
+
   const exportCurrent = () => {
     if (type === 'k1') {
       return downloadCsv('HIGH_LEVEL_K1.csv', [
@@ -217,7 +276,7 @@ export function ReportsPage() {
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><button className="primary-btn" onClick={exportCurrent}>Télécharger la période</button></div>
+        <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><div className="table-actions"><button className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div></div>
         <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack">
