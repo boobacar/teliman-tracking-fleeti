@@ -98,14 +98,29 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url)
 }
 
-function buildPdfHeader(doc, title, from, to) {
+async function loadLogoDataUrl() {
+  const response = await fetch('/teliman-logistique-logo.jpg')
+  const blob = await response.blob()
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Impossible de charger le logo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function buildPdfHeader(doc, title, from, to) {
   const now = new Date().toLocaleString('fr-FR')
+  try {
+    const logo = await loadLogoDataUrl()
+    doc.addImage(logo, 'JPEG', 14, 8, 44, 14)
+  } catch {}
   doc.setFontSize(14)
-  doc.text('TELIMAN TRACKING FLEETI', 14, 14)
+  doc.text('TELIMAN TRACKING FLEETI', 62, 14)
   doc.setFontSize(11)
-  doc.text(title, 14, 22)
-  doc.text(`Période: du ${from || '...'} au ${to || '...'}`, 14, 28)
-  doc.text(`Date export: ${now}`, 14, 34)
+  doc.text(title, 62, 22)
+  doc.text(`Période: du ${from || '...'} au ${to || '...'}`, 62, 28)
+  doc.text(`Date export: ${now}`, 62, 34)
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -190,6 +205,13 @@ export function ReportsPage() {
           ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
           ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
         ],
+        footerRows: [[
+          'TOTAL K1',
+          '',
+          formatQty(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+          '',
+          '',
+        ]],
       }
     }
     if (type === 'caderac') {
@@ -197,6 +219,14 @@ export function ReportsPage() {
         title: 'HIGH LEVEL CADERAC',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
         rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.destination]),
+        footerRows: [[
+          'TOTAL CADERAC',
+          '',
+          formatQty(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+          '',
+          '',
+          '',
+        ]],
       }
     }
     if (type === 'reco-k1') {
@@ -204,12 +234,24 @@ export function ReportsPage() {
         title: 'ETAT DE RECONCILIATION K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
         rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
+        footerRows: [[
+          'TOTAL K1',
+          '',
+          formatQty(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+          '',
+          '',
+          '',
+        ]],
       }
     }
     return {
       title: 'SUIVI BON DE CARBURANT',
       headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
       rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
+      footerRows: [
+        ['QUANTITE TOTALE', '', '', '', formatQty(fuelQtyTotal), '', ''],
+        ['MONTANT TOTAL', '', '', '', '', '', formatQty(fuelTotal, 0)],
+      ],
     }
   }
 
@@ -219,11 +261,16 @@ export function ReportsPage() {
     const autoTable = autoTableModule.default
     const report = getCurrentReportForExport()
     const doc = new jsPDF({ orientation: 'landscape' })
-    buildPdfHeader(doc, report.title, from, to)
+    await buildPdfHeader(doc, report.title, from, to)
+    const bodyRows = [...report.rows]
+    if (Array.isArray(report.footerRows) && report.footerRows.length) {
+      bodyRows.push([])
+      bodyRows.push(...report.footerRows)
+    }
     autoTable(doc, {
       startY: 40,
       head: [report.headers],
-      body: report.rows,
+      body: bodyRows,
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [16, 185, 129] },
     })
@@ -236,10 +283,13 @@ export function ReportsPage() {
         ['HIGH LEVEL K1 - PRODUIT 0/5'],
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
         ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+        ['TOTAL 0/5', '', formatQty(k1_05.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
         [],
         ['HIGH LEVEL K1 - PRODUIT 10/14'],
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
         ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+        ['TOTAL 10/14', '', formatQty(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
+        ['TOTAL K1', '', formatQty(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
       ])
     }
 
@@ -261,6 +311,8 @@ export function ReportsPage() {
       return downloadCsv('RECONCILIATION_K1.csv', [
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM CHAUFFEUR'],
         ...k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
+        [],
+        ['TOTAL K1', '', formatQty(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', ''],
       ])
     }
 
