@@ -789,7 +789,8 @@ async function buildReportsPayload(filters = {}) {
     if (includeFuelSensors && hash) {
       const fuelSensors = await getFuelSensorInfo(hash, row.trackerId)
       const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption')) || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres')) || fuelSensors[0]
-      carburantL = preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A'
+      const fuelValue = extractFuelSensorValue(preferredFuelSensor)
+      carburantL = fuelValue ?? (preferredFuelSensor ? `Capteur détecté: ${preferredFuelSensor.name}` : 'N/A')
     }
 
     return {
@@ -840,6 +841,36 @@ async function buildReportsPayload(filters = {}) {
     business: buildBusinessReports(dataset.missionRows, fleetRows),
     pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters),
   }
+}
+
+function extractFuelSensorValue(sensor) {
+  if (!sensor || typeof sensor !== 'object') return null
+  const candidates = [
+    sensor.value,
+    sensor.last_value,
+    sensor.current_value,
+    sensor.val,
+    sensor.liters,
+    sensor.fuel_level,
+    sensor.fuel,
+    sensor.count,
+    sensor.total,
+  ]
+  for (const candidate of candidates) {
+    const num = Number(String(candidate ?? '').replace(',', '.'))
+    if (Number.isFinite(num) && String(candidate ?? '').trim() !== '') {
+      return num
+    }
+  }
+  if (sensor.additional && typeof sensor.additional === 'object') {
+    for (const value of Object.values(sensor.additional)) {
+      const num = Number(String(value ?? '').replace(',', '.'))
+      if (Number.isFinite(num) && String(value ?? '').trim() !== '') {
+        return num
+      }
+    }
+  }
+  return null
 }
 
 async function getFuelSensorInfo(hash, trackerId) {
