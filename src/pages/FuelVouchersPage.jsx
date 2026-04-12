@@ -179,18 +179,18 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
         </div>
         <div className="reports-table-wrap">
           <table className="reports-table">
-            <thead><tr><th>Camion</th><th>Carburant live</th><th>Source</th><th>Mise à jour</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Camion</th><th>Carburant live</th>{/* <th>Source</th> */}<th>Mise à jour</th><th>Statut</th></tr></thead>
             <tbody>
               {liveFuel.map((item) => (
                 <tr key={`fuel-live-${item.assetId || item.trackerId}`}>
                   <td>{item.truckLabel || '-'}</td>
                   <td>{item.fuelLevel != null ? `${Number(item.fuelLevel).toLocaleString('fr-FR')} ${item.fuelUnits || 'L'}` : 'N/A'}</td>
-                  <td>{item.fuelInputName || '-'}</td>
+                  {/* <td>{item.fuelInputName || '-'}</td> */}
                   <td>{item.fuelUpdatedAt ? new Date(item.fuelUpdatedAt).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</td>
                   <td>{item.isOnline ? 'En ligne' : 'Hors ligne'}</td>
                 </tr>
               ))}
-              {liveFuel.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>{liveFuelLoading ? 'Chargement…' : 'Aucune donnée carburant live disponible.'}</td></tr>}
+              {liveFuel.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>{liveFuelLoading ? 'Chargement…' : 'Aucune donnée carburant live disponible.'}</td></tr>}
             </tbody>
           </table>
         </div>
