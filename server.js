@@ -17,6 +17,8 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
 
 const PORT = Number(process.env.PORT || 8787)
 const API_BASE = process.env.FLEETI_API_BASE
+const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
+const PUBLIC_API_KEY = process.env.FLEETI_PUBLIC_API_KEY || ''
 const LOGIN = process.env.FLEETI_LOGIN
 const PASSWORD = process.env.FLEETI_PASSWORD
 const DEALER_ID = Number(process.env.FLEETI_DEALER_ID || 0)
@@ -376,6 +378,79 @@ async function authenticate() {
     locale: LOCALE,
   })
   return auth.hash
+}
+
+async function publicApiGet(pathname, query = {}) {
+  if (!PUBLIC_API_KEY) throw new Error('Missing FLEETI_PUBLIC_API_KEY')
+  const url = new URL(`${PUBLIC_API_BASE}${pathname}`)
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue
+    if (Array.isArray(value)) {
+      value.filter((item) => item !== undefined && item !== null && item !== '').forEach((item) => url.searchParams.append(key, String(item)))
+    } else {
+      url.searchParams.append(key, String(value))
+    }
+  }
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'X-API-Key': PUBLIC_API_KEY,
+    },
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || data.isSuccess === false) throw new Error(data?.message || 'Fleeti public API error')
+  return data
+}
+
+function getFuelSensorPriority(sensor = {}) {
+  const inputName = String(sensor.inputName || '').toLowerCase()
+  if (inputName === 'avl_io_89') return 100
+  if (inputName === 'can_fuel_litres') return 80
+  if (inputName.includes('fuel')) return 50
+  return 0
+}
+
+function formatFuelSnapshot(asset = {}) {
+  const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0]
+  const providerSensors = (gateway?.providerSensors || []).filter((sensor) => {
+    const inputName = String(sensor.inputName || '').toLowerCase()
+    return inputName.includes('fuel') || inputName === 'avl_io_89'
+  })
+  const sortedSensors = [...providerSensors].sort((a, b) => getFuelSensorPriority(b) - getFuelSensorPriority(a))
+  const preferredSensor = sortedSensors.find((sensor) => Number.isFinite(sensor?.value)) || sortedSensors[0] || null
+  return {
+    assetId: asset.id || '',
+    trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
+    sourceId: gateway?.provider?.sourceId ? Number(gateway.provider.sourceId) : null,
+    truckLabel: asset.name || gateway?.name || asset.properties?.licensePlate || 'Camion sans nom',
+    imei: gateway?.imei || '',
+    isOnline: Boolean(gateway?.isOnline),
+    movementStatus: gateway?.state?.movementStatus ?? null,
+    connectionStatus: gateway?.state?.connectionStatus ?? null,
+    fuelLevel: Number.isFinite(preferredSensor?.value) ? preferredSensor.value : null,
+    fuelUnits: preferredSensor?.units || 'L',
+    fuelUpdatedAt: preferredSensor?.valueUpdatedAt || null,
+    fuelInputName: preferredSensor?.inputName || null,
+    sensorId: preferredSensor?.id || null,
+    sensors: providerSensors.map((sensor) => ({
+      id: sensor.id,
+      inputName: sensor.inputName || null,
+      value: Number.isFinite(sensor.value) ? sensor.value : null,
+      valueUpdatedAt: sensor.valueUpdatedAt || null,
+      units: sensor.units || null,
+      isCan: Boolean(sensor.isCan),
+    })),
+  }
+}
+
+async function loadLiveFuelLevels() {
+  const payload = await publicApiGet('/Asset/Search', { Take: 200 })
+  const items = (payload.results || [])
+    .filter((asset) => asset.assetType === 10)
+    .map((asset) => formatFuelSnapshot(asset))
+    .filter((item) => item.trackerId && TRACKER_IDS.includes(Number(item.trackerId)))
+    .sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
+  return { items, generatedAt: new Date().toISOString() }
 }
 
 function sanitizeTrackers(trackers = []) {
@@ -1236,6 +1311,14 @@ app.delete('/api/delivery-orders/:id', (req, res) => {
 
 app.get('/api/fuel-vouchers', (_req, res) => {
   res.json({ items: readFuelVouchers() })
+})
+
+app.get('/api/fuel-live', async (_req, res) => {
+  try {
+    res.json(await loadLiveFuelLevels())
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Impossible de charger les niveaux de carburant live.' })
+  }
 })
 
 app.post('/api/fuel-vouchers', (req, res) => {

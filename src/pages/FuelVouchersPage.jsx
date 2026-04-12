@@ -3,7 +3,7 @@ import DatePicker from 'react-datepicker'
 import { fr } from 'date-fns/locale'
 import { Camera, Pencil, Trash2 } from 'lucide-react'
 import 'react-datepicker/dist/react-datepicker.css'
-import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
+import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
   trackerId: '',
@@ -61,6 +61,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [loading, setLoading] = useState(false)
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
+  const [liveFuel, setLiveFuel] = useState([])
+  const [liveFuelLoading, setLiveFuelLoading] = useState(false)
 
   const amount = useMemo(() => Number((toNumber(form.quantityLiters) * toNumber(form.unitPrice)).toFixed(2)), [form.quantityLiters, form.unitPrice])
 
@@ -69,18 +71,30 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     setItems(payload.items ?? [])
   }
 
+  const reloadLiveFuel = async () => {
+    setLiveFuelLoading(true)
+    try {
+      const payload = await loadLiveFuelLevels()
+      setLiveFuel(payload?.items || [])
+    } finally {
+      setLiveFuelLoading(false)
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
     async function loadData() {
       setLoading(true)
       try {
-        const [payload, masterData] = await Promise.all([
+        const [payload, masterData, liveFuelPayload] = await Promise.all([
           loadFuelVouchers(),
           loadMasterData(),
+          loadLiveFuelLevels().catch(() => ({ items: [] })),
         ])
         if (!cancelled) {
           setItems(payload.items ?? [])
           setSuppliers(masterData?.suppliers || [])
+          setLiveFuel(liveFuelPayload?.items || [])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -152,6 +166,33 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <div className="mission-highlight-card"><span>Total bons</span><strong>{items.length}</strong><small>bons carburant enregistrés</small></div>
           <div className="mission-highlight-card"><span>Total litres</span><strong>{items.reduce((acc, item) => acc + (Number(item.quantityLiters) || 0), 0).toLocaleString('fr-FR')}</strong><small>volume cumulé</small></div>
           <div className="mission-highlight-card"><span>Montant total</span><strong>{items.reduce((acc, item) => acc + (Number(item.amount) || 0), 0).toLocaleString('fr-FR')} FCFA</strong><small>historique</small></div>
+        </div>
+      </section>
+
+      <section className="panel panel-large delivery-table-panel">
+        <div className="panel-header">
+          <div>
+            <h3>Niveau carburant live par camion</h3>
+            <p>Lecture instantanée Fleeti depuis les capteurs CAN publiés.</p>
+          </div>
+          <button className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>
+        </div>
+        <div className="reports-table-wrap">
+          <table className="reports-table">
+            <thead><tr><th>Camion</th><th>Carburant live</th><th>Source</th><th>Mise à jour</th><th>Statut</th></tr></thead>
+            <tbody>
+              {liveFuel.map((item) => (
+                <tr key={`fuel-live-${item.assetId || item.trackerId}`}>
+                  <td>{item.truckLabel || '-'}</td>
+                  <td>{item.fuelLevel != null ? `${Number(item.fuelLevel).toLocaleString('fr-FR')} ${item.fuelUnits || 'L'}` : 'N/A'}</td>
+                  <td>{item.fuelInputName || '-'}</td>
+                  <td>{item.fuelUpdatedAt ? new Date(item.fuelUpdatedAt).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</td>
+                  <td>{item.isOnline ? 'En ligne' : 'Hors ligne'}</td>
+                </tr>
+              ))}
+              {liveFuel.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>{liveFuelLoading ? 'Chargement…' : 'Aucune donnée carburant live disponible.'}</td></tr>}
+            </tbody>
+          </table>
         </div>
       </section>
 

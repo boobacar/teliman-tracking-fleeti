@@ -78,6 +78,7 @@ export const loadDeliveryOrder = async (id) => {
 }
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
 export const loadFuelVouchers = () => getJson('/api/fuel-vouchers')
+export const loadLiveFuelLevels = () => getJson('/api/fuel-live')
 export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', payload)
 export const updateFuelVoucher = async (id, payload) => {
   const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, {
