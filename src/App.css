@@ -1972,6 +1972,12 @@ input {
     display: none;
   }
 
+  .delivery-table-panel .live-fuel-table-wrap {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .mobile-voucher-list {
     display: grid;
     gap: 10px;

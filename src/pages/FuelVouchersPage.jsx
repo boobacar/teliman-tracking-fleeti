@@ -177,7 +177,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           </div>
           <button className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>
         </div>
-        <div className="reports-table-wrap">
+        <div className="reports-table-wrap live-fuel-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Camion</th><th>Carburant live</th>{/* <th>Source</th> */}<th>Mise à jour</th><th>Statut</th></tr></thead>
             <tbody>
