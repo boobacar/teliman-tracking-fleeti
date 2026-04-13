@@ -11,18 +11,31 @@ export function AlertsPage({ importantEvents }) {
   const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const [truckFilter, setTruckFilter] = useState('all')
 
   const types = useMemo(() => ['all', ...new Set(importantEvents.map((event) => event.event))], [importantEvents])
+
+  const truckTabs = useMemo(() => {
+    const map = new Map()
+    importantEvents.forEach((event) => {
+      const trackerId = String(event.tracker_id || event.trackerId || 'unknown')
+      const truckLabel = event.label || event.extra?.tracker_label || `Camion ${trackerId}`
+      if (!map.has(trackerId)) map.set(trackerId, truckLabel)
+    })
+    return [{ id: 'all', label: 'Tous les camions' }, ...Array.from(map.entries()).map(([id, label]) => ({ id, label }))]
+  }, [importantEvents])
 
   const filtered = useMemo(
     () =>
       importantEvents.filter((event) => {
+        const trackerId = String(event.tracker_id || event.trackerId || 'unknown')
+        const matchesTruck = truckFilter === 'all' || trackerId === truckFilter
         const matchesType = typeFilter === 'all' || event.event === typeFilter
         const priority = getPriority(event.event)
         const matchesPriority = priorityFilter === 'all' || priority === priorityFilter
-        return matchesType && matchesPriority
+        return matchesTruck && matchesType && matchesPriority
       }),
-    [importantEvents, typeFilter, priorityFilter],
+    [importantEvents, truckFilter, typeFilter, priorityFilter],
   )
 
   const groupedByTruck = useMemo(() => {
@@ -74,6 +87,19 @@ export function AlertsPage({ importantEvents }) {
         {['all', 'high', 'medium', 'normal'].map((level) => (
           <button key={level} className={`chip ${priorityFilter === level ? 'selected' : ''}`} onClick={() => setPriorityFilter(level)}>
             {level}
+          </button>
+        ))}
+      </div>
+
+      <div className="filters filter-row" style={{ marginTop: -6 }}>
+        {truckTabs.map((truck) => (
+          <button
+            key={truck.id}
+            className={`chip ${truckFilter === truck.id ? 'selected' : ''}`}
+            onClick={() => setTruckFilter(truck.id)}
+            title={truck.label}
+          >
+            {truck.label}
           </button>
         ))}
       </div>
