@@ -433,7 +433,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               <th>Statut</th>
               <th>Départ</th>
               <th>Arrivée</th>
-              <th>Date</th>
+              <th>Dechargement</th>
               <th>Actions</th>
             </tr>
           </thead>
