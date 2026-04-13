@@ -1736,17 +1736,17 @@ input {
   .mobile-nav-toggle {
     display: inline-flex;
     position: sticky;
-    top: 12px;
-    left: 12px;
-    z-index: 30;
-    margin: 12px;
+    top: 0;
+    z-index: 60;
+    margin: 0;
     border: 1px solid rgba(148, 163, 184, 0.12);
-    background: rgba(15, 23, 42, 0.92);
+    background: rgba(2, 6, 23, 0.96);
     color: #e2e8f0;
-    padding: 10px 14px;
-    border-radius: 12px;
+    padding: 12px 14px;
+    border-radius: 0 0 12px 12px;
     align-items: center;
     gap: 8px;
+    backdrop-filter: blur(10px);
   }
 
   .sidebar {
