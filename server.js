@@ -196,6 +196,16 @@ function writeFuelVouchers(rows) {
   fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
 }
 
+function normalizePurchaseOrdersMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([client, purchaseOrderNumber]) => [String(client || '').trim(), String(purchaseOrderNumber || '').trim()])
+      .filter(([client, purchaseOrderNumber]) => client && purchaseOrderNumber)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+  )
+}
+
 function readMasterData() {
   try {
     const payload = JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8'))
@@ -204,9 +214,10 @@ function readMasterData() {
       goods: Array.isArray(payload.goods) ? payload.goods : [],
       destinations: Array.isArray(payload.destinations) ? payload.destinations : [],
       suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
+      purchaseOrders: normalizePurchaseOrdersMap(payload.purchaseOrders),
     }
   } catch {
-    return { clients: [], goods: [], destinations: [], suppliers: [] }
+    return { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} }
   }
 }
 
@@ -216,6 +227,7 @@ function writeMasterData(data) {
     goods: Array.from(new Set((data.goods || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     destinations: Array.from(new Set((data.destinations || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     suppliers: Array.from(new Set((data.suppliers || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    purchaseOrders: normalizePurchaseOrdersMap(data.purchaseOrders),
   }
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
 }
@@ -1202,12 +1214,22 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+
+  const data = readMasterData()
+
+  if (listName === 'purchaseOrders') {
+    const client = String(req.body?.client || '').trim()
+    const purchaseOrderNumber = String(req.body?.purchaseOrderNumber || req.body?.value || '').trim()
+    if (!client || !purchaseOrderNumber) return res.status(400).json({ ok: false, error: 'Client et numéro de bon de commande obligatoires' })
+    data.purchaseOrders = { ...(data.purchaseOrders || {}), [client]: purchaseOrderNumber }
+    writeMasterData(data)
+    return res.status(201).json({ ok: true, data })
+  }
 
   const value = String(req.body?.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
 
-  const data = readMasterData()
   data[listName] = Array.from(new Set([...(data[listName] || []), value]))
   writeMasterData(data)
   res.status(201).json({ ok: true, data })
@@ -1215,12 +1237,23 @@ app.post('/api/master-data/:listName', (req, res) => {
 
 app.delete('/api/master-data/:listName', (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+
+  const data = readMasterData()
+
+  if (listName === 'purchaseOrders') {
+    const client = String(req.query.client || req.query.value || '').trim()
+    if (!client) return res.status(400).json({ ok: false, error: 'Client obligatoire' })
+    const next = { ...(data.purchaseOrders || {}) }
+    delete next[client]
+    data.purchaseOrders = next
+    writeMasterData(data)
+    return res.json({ ok: true, data })
+  }
 
   const value = String(req.query.value || '').trim()
   if (!value) return res.status(400).json({ ok: false, error: 'Valeur obligatoire' })
 
-  const data = readMasterData()
   data[listName] = (data[listName] || []).filter((item) => item !== value)
   writeMasterData(data)
   res.json({ ok: true, data })

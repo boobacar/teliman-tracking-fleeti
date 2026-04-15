@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import DatePicker from 'react-datepicker'
 import { fr } from 'date-fns/locale'
-import { loadDeliveryOrders, loadFuelVouchers } from '../lib/fleeti'
+import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fleeti'
 import 'react-datepicker/dist/react-datepicker.css'
 
 const REPORT_TYPES = [
@@ -121,18 +121,25 @@ async function loadLogoDataUrl() {
   })
 }
 
-async function buildPdfHeader(doc, title, from, to) {
+async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
   const now = new Date().toLocaleString('fr-FR')
   try {
     const logo = await loadLogoDataUrl()
-    doc.addImage(logo, 'JPEG', 14, 8, 44, 14)
+    doc.addImage(logo, 'JPEG', 14, 8, 52, 18)
   } catch {}
-  doc.setFontSize(14)
-  doc.text('TELIMAN TRACKING FLEETI', 62, 14)
-  doc.setFontSize(11)
-  doc.text(title, 62, 22)
-  doc.text(`Période: ${formatPeriodLabel(from, to)}`, 62, 28)
-  doc.text(`Date export: ${now}`, 62, 34)
+  doc.setTextColor(20, 20, 20)
+  doc.setFontSize(20)
+  doc.setFont('helvetica', 'bold')
+  doc.text(title, 14, 34, { align: 'left' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(15)
+  doc.text(`Période: ${formatPeriodLabel(from, to)}`, 14, 44, { align: 'left' })
+  doc.text(`Date export: ${now}`, 14, 53, { align: 'left' })
+  if (purchaseOrderNumber) {
+    doc.setFont('helvetica', 'bold')
+    doc.text(`N° bon de commande: ${purchaseOrderNumber}`, 14, 62, { align: 'left' })
+    doc.setFont('helvetica', 'normal')
+  }
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -169,6 +176,8 @@ export function ReportsPage() {
   const [error, setError] = useState('')
   const [deliveries, setDeliveries] = useState([])
   const [fuel, setFuel] = useState([])
+  const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+  const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -176,10 +185,11 @@ export function ReportsPage() {
       setLoading(true)
       setError('')
       try {
-        const [d, f] = await Promise.all([loadDeliveryOrders(), loadFuelVouchers()])
+        const [d, f, m] = await Promise.all([loadDeliveryOrders(), loadFuelVouchers(), loadMasterData()])
         if (!cancelled) {
           setDeliveries(d?.items || [])
           setFuel(f?.items || [])
+          setMasterData(m || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
         }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Erreur chargement rapports')
@@ -212,6 +222,7 @@ export function ReportsPage() {
     if (type === 'k1') {
       return {
         title: 'HIGH LEVEL K1',
+        clientName: 'K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
         rows: [
           ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
@@ -229,6 +240,7 @@ export function ReportsPage() {
     if (type === 'caderac') {
       return {
         title: 'HIGH LEVEL CADERAC',
+        clientName: 'CADERAC',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
         rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.destination]),
         footerRows: [[
@@ -244,6 +256,7 @@ export function ReportsPage() {
     if (type === 'reco-k1') {
       return {
         title: 'ETAT DE RECONCILIATION K1',
+        clientName: 'K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
         rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
         footerRows: [[
@@ -258,6 +271,7 @@ export function ReportsPage() {
     }
     return {
       title: 'SUIVI BON DE CARBURANT',
+      clientName: '',
       headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
       rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
       footerRows: [
@@ -273,7 +287,8 @@ export function ReportsPage() {
     const autoTable = autoTableModule.default
     const report = getCurrentReportForExport()
     const doc = new jsPDF({ orientation: 'landscape' })
-    await buildPdfHeader(doc, report.title, from, to)
+    const purchaseOrderNumber = includePurchaseOrder ? (masterData.purchaseOrders?.[type === 'caderac' ? 'CADERAC' : 'K1'] || masterData.purchaseOrders?.[report.clientName || ''] || '') : ''
+    await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
     const bodyRows = [...report.rows]
     const footerCount = Array.isArray(report.footerRows) ? report.footerRows.length : 0
     if (footerCount) {
@@ -281,11 +296,11 @@ export function ReportsPage() {
       bodyRows.push(...report.footerRows)
     }
     autoTable(doc, {
-      startY: 40,
+      startY: purchaseOrderNumber ? 72 : 62,
       head: [report.headers],
       body: bodyRows,
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [16, 185, 129] },
+      styles: { fontSize: 11, cellPadding: 3 },
+      headStyles: { fillColor: [0, 153, 102], textColor: [255, 255, 255], fontSize: 11 },
       didParseCell: (data) => {
         if (data.section !== 'body' || !footerCount) return
         const footerStart = bodyRows.length - footerCount
@@ -379,6 +394,13 @@ export function ReportsPage() {
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
             />
+          </label>
+          <label className="field-stack" style={{ alignSelf: 'end' }}>
+            <span>Options PDF</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
+              <input type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} />
+              <span>Numéro bon de commande</span>
+            </label>
           </label>
         </div>
         {loading && <div className="info-banner">Chargement des données…</div>}

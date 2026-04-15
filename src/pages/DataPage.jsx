@@ -23,11 +23,13 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
 }
 
 export function DataPage() {
-  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [] })
+  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
   const [destinationValue, setDestinationValue] = useState('')
   const [supplierValue, setSupplierValue] = useState('')
+  const [purchaseOrderClient, setPurchaseOrderClient] = useState('')
+  const [purchaseOrderValue, setPurchaseOrderValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -62,6 +64,7 @@ export function DataPage() {
     { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
     { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
     { label: 'Fournisseurs', value: data.suppliers?.length || 0, helper: 'bons carburant' },
+    { label: 'N° bons commande', value: Object.keys(data.purchaseOrders || {}).length || 0, helper: 'affectation par client' },
   ]), [data])
 
   return <div style={{ display: 'grid', gap: 20 }}>
@@ -131,6 +134,39 @@ export function DataPage() {
         onAdd={addItem}
         onRemove={removeItem}
       />
+
+      <section className="panel panel-large data-card-panel">
+        <div className="panel-header">
+          <div>
+            <h3>Numéro bon de commande</h3>
+            <p>Associer un numéro de bon de commande à un client pour l’inclure dans les PDF exportés.</p>
+          </div>
+          <div className="stat-icon"><Users size={18} /></div>
+        </div>
+        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
+          <select value={purchaseOrderClient} onChange={(e) => setPurchaseOrderClient(e.target.value)}>
+            <option value="">Sélectionner un client</option>
+            {(data.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
+          </select>
+          <input placeholder="Numéro bon de commande" value={purchaseOrderValue} onChange={(e) => setPurchaseOrderValue(e.target.value)} />
+          <button className="primary-btn" onClick={async () => {
+            if (!purchaseOrderClient.trim() || !purchaseOrderValue.trim()) return
+            await addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), { client: purchaseOrderClient.trim(), purchaseOrderNumber: purchaseOrderValue.trim() })
+            setPurchaseOrderClient('')
+            setPurchaseOrderValue('')
+            await refresh()
+          }}>Enregistrer</button>
+        </div>
+        <div className="data-list-grid">
+          {Object.keys(data.purchaseOrders || {}).length === 0 && <div className="empty-banner">Aucun numéro de bon de commande assigné.</div>}
+          {Object.entries(data.purchaseOrders || {}).map(([client, purchaseOrderNumber]) => (
+            <div key={client} className="driver-rank-row static-row data-row-card">
+              <div><span>{client}</span><small>{purchaseOrderNumber}</small></div>
+              <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </div>
+      </section>
     </section>
   </div>
 }

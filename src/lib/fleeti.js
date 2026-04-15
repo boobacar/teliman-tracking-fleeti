@@ -48,7 +48,7 @@ export const loadReportBatches = (query = '') => getJson(`/api/reports/batches${
 export const loadReportProjects = (query = '') => getJson(`/api/reports/projects${query ? `?${query}` : ''}`)
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
-export const addMasterDataItem = (listName, value) => postJson(`/api/master-data/${listName}`, { value })
+export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })
 export const deleteMasterDataItem = async (listName, value) => {
   const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?value=${encodeURIComponent(value)}`, { method: 'DELETE' })
   const data = await response.json()
