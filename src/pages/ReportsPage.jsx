@@ -122,24 +122,24 @@ async function loadLogoDataUrl() {
 }
 
 async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
-  const now = new Date().toLocaleString('fr-FR')
+  const now = new Date().toLocaleDateString('fr-FR')
   try {
     const logo = await loadLogoDataUrl()
     doc.addImage(logo, 'JPEG', 14, 10, 60, 24)
   } catch {}
 
-  const textX = 88
+  const textX = 110
   const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
 
   doc.setTextColor(18, 18, 18)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(24)
-  doc.text(titleText, textX, 22, { align: 'left' })
+  doc.setFontSize(19)
+  doc.text(titleText, textX, 20, { align: 'left' })
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(18)
-  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 38, { align: 'left' })
-  doc.text(`Date export: ${now}`, textX, 52, { align: 'left' })
+  doc.setFontSize(13)
+  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 32, { align: 'left' })
+  doc.text(`Date: ${now}`, textX, 42, { align: 'left' })
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -296,7 +296,7 @@ export function ReportsPage() {
       bodyRows.push(...report.footerRows)
     }
     autoTable(doc, {
-      startY: 68,
+      startY: 56,
       head: [report.headers],
       body: bodyRows,
       styles: { fontSize: 11, cellPadding: 3 },
