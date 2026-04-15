@@ -62,7 +62,13 @@ function formatPeriodDate(value, endOfDay = false) {
 }
 
 function formatPeriodLabel(from, to) {
-  return `du ${formatPeriodDate(from)} au ${formatPeriodDate(to, true)}`
+  const formatShort = (value) => {
+    if (!value) return '...'
+    const base = new Date(`${value}T00:00:00`)
+    if (Number.isNaN(base.getTime())) return '...'
+    return base.toLocaleDateString('fr-FR')
+  }
+  return `du ${formatShort(from)} au ${formatShort(to)}`
 }
 
 function inRange(value, from, to) {
@@ -128,7 +134,7 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
     doc.addImage(logo, 'JPEG', 14, 10, 60, 24)
   } catch {}
 
-  const textX = 110
+  const textX = 96
   const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
 
   doc.setTextColor(18, 18, 18)
