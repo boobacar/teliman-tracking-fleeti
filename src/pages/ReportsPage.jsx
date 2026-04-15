@@ -125,21 +125,21 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
   const now = new Date().toLocaleString('fr-FR')
   try {
     const logo = await loadLogoDataUrl()
-    doc.addImage(logo, 'JPEG', 14, 8, 52, 18)
+    doc.addImage(logo, 'JPEG', 14, 10, 60, 24)
   } catch {}
-  doc.setTextColor(20, 20, 20)
-  doc.setFontSize(20)
+
+  const textX = 88
+  const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
+
+  doc.setTextColor(18, 18, 18)
   doc.setFont('helvetica', 'bold')
-  doc.text(title, 14, 34, { align: 'left' })
+  doc.setFontSize(24)
+  doc.text(titleText, textX, 22, { align: 'left' })
+
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(15)
-  doc.text(`Période: ${formatPeriodLabel(from, to)}`, 14, 44, { align: 'left' })
-  doc.text(`Date export: ${now}`, 14, 53, { align: 'left' })
-  if (purchaseOrderNumber) {
-    doc.setFont('helvetica', 'bold')
-    doc.text(`N° bon de commande: ${purchaseOrderNumber}`, 14, 62, { align: 'left' })
-    doc.setFont('helvetica', 'normal')
-  }
+  doc.setFontSize(18)
+  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 38, { align: 'left' })
+  doc.text(`Date export: ${now}`, textX, 52, { align: 'left' })
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -296,7 +296,7 @@ export function ReportsPage() {
       bodyRows.push(...report.footerRows)
     }
     autoTable(doc, {
-      startY: purchaseOrderNumber ? 72 : 62,
+      startY: 68,
       head: [report.headers],
       body: bodyRows,
       styles: { fontSize: 11, cellPadding: 3 },
@@ -397,15 +397,23 @@ export function ReportsPage() {
           </label>
           <div className="field-stack" style={{ alignSelf: 'end' }}>
             <span>Options PDF</span>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '10px 14px', border: '1px solid rgba(148, 163, 184, 0.25)', borderRadius: 14, background: 'rgba(15, 23, 42, 0.35)', width: 'fit-content' }}>
-              <input
-                type="checkbox"
-                checked={includePurchaseOrder}
-                onChange={(e) => setIncludePurchaseOrder(e.target.checked)}
-                style={{ width: 16, height: 16, margin: 0, accentColor: '#2563eb', flex: '0 0 auto' }}
-              />
-              <span style={{ fontSize: 14, lineHeight: 1.2, whiteSpace: 'nowrap' }}>Numéro bon de commande</span>
-            </label>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '10px 16px', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, background: 'linear-gradient(180deg, rgba(15,23,42,0.42), rgba(15,23,42,0.28))', width: 'fit-content', boxShadow: '0 8px 18px rgba(15,23,42,0.12)' }}>
+              <div style={{ display: 'grid', gap: 2 }}>
+                <strong style={{ fontSize: 14, color: '#f8fafc' }}>Inclure le bon de commande</strong>
+                <span style={{ fontSize: 12, color: '#cbd5e1' }}>Ajoute le numéro dans l’en-tête du PDF exporté</span>
+              </div>
+              <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={includePurchaseOrder}
+                  onChange={(e) => setIncludePurchaseOrder(e.target.checked)}
+                  style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                />
+                <span style={{ width: 44, height: 24, borderRadius: 999, background: includePurchaseOrder ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: includePurchaseOrder ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
+                </span>
+              </label>
+            </div>
           </div>
         </div>
         {loading && <div className="info-banner">Chargement des données…</div>}
