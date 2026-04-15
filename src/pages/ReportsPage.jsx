@@ -395,13 +395,18 @@ export function ReportsPage() {
               popperClassName="modern-date-popper"
             />
           </label>
-          <label className="field-stack" style={{ alignSelf: 'end' }}>
+          <div className="field-stack" style={{ alignSelf: 'end' }}>
             <span>Options PDF</span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}>
-              <input type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} />
-              <span>Numéro bon de commande</span>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '10px 14px', border: '1px solid rgba(148, 163, 184, 0.25)', borderRadius: 14, background: 'rgba(15, 23, 42, 0.35)', width: 'fit-content' }}>
+              <input
+                type="checkbox"
+                checked={includePurchaseOrder}
+                onChange={(e) => setIncludePurchaseOrder(e.target.checked)}
+                style={{ width: 16, height: 16, margin: 0, accentColor: '#2563eb', flex: '0 0 auto' }}
+              />
+              <span style={{ fontSize: 14, lineHeight: 1.2, whiteSpace: 'nowrap' }}>Numéro bon de commande</span>
             </label>
-          </label>
+          </div>
         </div>
         {loading && <div className="info-banner">Chargement des données…</div>}
         {error && <div className="error-banner">{error}</div>}
