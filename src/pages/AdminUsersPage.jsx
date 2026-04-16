@@ -141,16 +141,25 @@ export function AdminUsersPage() {
         </form>
         {role !== 'admin' && (
           <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
-            {PAGE_PERMISSIONS.map((item) => (
-              <label key={item.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedPermissions.includes(item.permission)}
-                  onChange={(e) => setSelectedPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
-                />
-                <span>{item.label}</span>
-              </label>
-            ))}
+            {PAGE_PERMISSIONS.map((item) => {
+              const checked = selectedPermissions.includes(item.permission)
+              return (
+                <label key={item.permission} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12, background: 'rgba(15,23,42,0.18)' }}>
+                  <span>{item.label}</span>
+                  <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setSelectedPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                      style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                    />
+                    <span style={{ width: 44, height: 24, borderRadius: 999, background: checked ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
+                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
+                    </span>
+                  </span>
+                </label>
+              )
+            })}
           </div>
         )}
         {error && <div className="error-banner" style={{ marginTop: 12 }}>{error}</div>}
@@ -208,16 +217,25 @@ export function AdminUsersPage() {
           </div>
           {editingRole !== 'admin' && (
             <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
-              {PAGE_PERMISSIONS.map((item) => (
-                <label key={item.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={editingPermissions.includes(item.permission)}
-                    onChange={(e) => setEditingPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
-                  />
-                  <span>{item.label}</span>
-                </label>
-              ))}
+              {PAGE_PERMISSIONS.map((item) => {
+                const checked = editingPermissions.includes(item.permission)
+                return (
+                  <label key={item.permission} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12, background: 'rgba(15,23,42,0.18)' }}>
+                    <span>{item.label}</span>
+                    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setEditingPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                      />
+                      <span style={{ width: 44, height: 24, borderRadius: 999, background: checked ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
+                        <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
             </div>
           )}
         </section>
