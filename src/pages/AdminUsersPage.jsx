@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, Shield, UserCog, UserPlus, Users } from 'lucide-react'
 import { createAdminUser, deleteAdminUser, loadAdminUsers, updateAdminUser } from '../lib/fleeti'
 
 const ROLE_OPTIONS = [
@@ -14,6 +15,7 @@ export function AdminUsersPage() {
   const [role, setRole] = useState('viewer')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
   const [editingEmail, setEditingEmail] = useState('')
   const [editingRole, setEditingRole] = useState('viewer')
   const [editingPassword, setEditingPassword] = useState('')
@@ -68,6 +70,24 @@ export function AdminUsersPage() {
     }
   }
 
+  const filteredUsers = useMemo(() => users.filter((user) => {
+    const haystack = `${user.email} ${user.role} ${(user.permissions || []).join(' ')}`.toLowerCase()
+    return haystack.includes(search.toLowerCase())
+  }), [users, search])
+
+  const roleStats = useMemo(() => ({
+    total: users.length,
+    admins: users.filter((user) => user.role === 'admin').length,
+    ops: users.filter((user) => user.role === 'ops').length,
+    viewers: users.filter((user) => user.role === 'viewer').length,
+  }), [users])
+
+  function roleBadge(role) {
+    if (role === 'admin') return { label: 'Admin', bg: '#dcfce7', color: '#166534' }
+    if (role === 'ops') return { label: 'Exploitation', bg: '#dbeafe', color: '#1d4ed8' }
+    return { label: 'Lecture', bg: '#f1f5f9', color: '#334155' }
+  }
+
   async function remove(emailToDelete) {
     if (!window.confirm(`Supprimer ${emailToDelete} ?`)) return
     try {
@@ -82,10 +102,16 @@ export function AdminUsersPage() {
     <div style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
         <div className="panel-header"><div><h3>Administration des utilisateurs</h3><p>Créer des comptes, définir un rôle et attribuer un mot de passe.</p></div></div>
+        <section className="reports-summary-grid reports-v2-kpis">
+          <div className="overview-card"><span>Total</span><strong>{roleStats.total}</strong><small>comptes configurés</small></div>
+          <div className="overview-card"><span>Admins</span><strong>{roleStats.admins}</strong><small>accès complet</small></div>
+          <div className="overview-card"><span>Exploitation</span><strong>{roleStats.ops}</strong><small>opérations terrain</small></div>
+          <div className="overview-card"><span>Lecture</span><strong>{roleStats.viewers}</strong><small>consultation simple</small></div>
+        </section>
       </section>
 
       <section className="panel panel-large data-card-panel">
-        <div className="panel-header"><div><h3>Ajouter un utilisateur</h3></div></div>
+        <div className="panel-header"><div><h3><UserPlus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Ajouter un utilisateur</h3></div></div>
         <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto' }} onSubmit={submit}>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
           <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
@@ -98,26 +124,35 @@ export function AdminUsersPage() {
       </section>
 
       <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Utilisateurs existants</h3></div></div>
+        <div className="panel-header"><div><h3><Users size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Utilisateurs existants</h3></div></div>
         {loading && <div className="info-banner">Chargement des utilisateurs…</div>}
+        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr' }}>
+          <label className="field-stack">
+            <span>Recherche</span>
+            <div style={{ position: 'relative' }}>
+              <Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: '#64748b' }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par email, rôle ou permission" style={{ paddingLeft: 38 }} />
+            </div>
+          </label>
+        </div>
         <div className="reports-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Email</th><th>Rôle</th><th>Permissions</th><th>Actions</th></tr></thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.email}>
                   <td>{user.email}</td>
-                  <td>{user.role}</td>
+                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: roleBadge(user.role).bg, color: roleBadge(user.role).color, fontWeight: 600, fontSize: 12 }}><Shield size={13} />{roleBadge(user.role).label}</span></td>
                   <td>{Array.isArray(user.permissions) ? user.permissions.join(', ') || 'Aucune' : 'Aucune'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="ghost-btn small-btn" onClick={() => startEdit(user)}>Modifier</button>
+                      <button className="ghost-btn small-btn" onClick={() => startEdit(user)}><UserCog size={14} />Modifier</button>
                       <button className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
                     </div>
                   </td>
                 </tr>
               ))}
-              {users.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur.</td></tr>}
+              {filteredUsers.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur correspondant.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -125,7 +160,7 @@ export function AdminUsersPage() {
 
       {editingEmail && (
         <section className="panel panel-large data-card-panel">
-          <div className="panel-header"><div><h3>Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
+          <div className="panel-header"><div><h3><UserCog size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
           <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto auto' }}>
             <select value={editingRole} onChange={(e) => setEditingRole(e.target.value)}>
               {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
