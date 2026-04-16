@@ -110,9 +110,9 @@ export function AdminUsersPage() {
         </section>
       </section>
 
-      <section className="panel panel-large data-card-panel">
-        <div className="panel-header"><div><h3><UserPlus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Ajouter un utilisateur</h3></div></div>
-        <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto' }} onSubmit={submit}>
+      <section className="panel panel-large data-card-panel" style={{ minHeight: 'unset', alignContent: 'start' }}>
+        <div className="panel-header" style={{ marginBottom: 12 }}><div><h3><UserPlus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Ajouter un utilisateur</h3></div></div>
+        <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto', marginBottom: 0, alignItems: 'center' }} onSubmit={submit}>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
           <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
           <select value={role} onChange={(e) => setRole(e.target.value)}>
@@ -120,7 +120,7 @@ export function AdminUsersPage() {
           </select>
           <button className="primary-btn" type="submit">Créer</button>
         </form>
-        {error && <div className="error-banner">{error}</div>}
+        {error && <div className="error-banner" style={{ marginTop: 12 }}>{error}</div>}
       </section>
 
       <section className="panel panel-large">
