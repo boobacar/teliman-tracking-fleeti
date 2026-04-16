@@ -123,12 +123,13 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <DatePicker
               selected={ymdToDate(from)}
               onChange={(value) => setFrom(dateToYmd(value))}
+              onCalendarClose={() => setFrom((prev) => prev || today)}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date début"
-              isClearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
+              popperClassName="modern-date-popper modern-date-popper--front"
+              popperPlacement="bottom-start"
             />
           </label>
           <label className="field-stack">
@@ -136,12 +137,13 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <DatePicker
               selected={ymdToDate(to)}
               onChange={(value) => setTo(dateToYmd(value))}
+              onCalendarClose={() => setTo((prev) => prev || today)}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date fin"
-              isClearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
+              popperClassName="modern-date-popper modern-date-popper--front"
+              popperPlacement="bottom-start"
             />
           </label>
           <label className="field-stack"><span>Chauffeur</span><select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}><option value="">Tous</option>{driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}</select></label>

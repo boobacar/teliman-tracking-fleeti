@@ -138,8 +138,14 @@ input {
 }
 
 .modern-date-popper,
-.react-datepicker-popper {
+.react-datepicker-popper,
+.modern-date-popper--front {
   z-index: 2147483647 !important;
+}
+
+#root .modern-date-popper--front {
+  z-index: 2147483647 !important;
+  position: relative;
 }
 
 .reports-excel .panel,
