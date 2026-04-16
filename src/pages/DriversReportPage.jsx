@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DatePicker from 'react-datepicker'
 import { fr } from 'date-fns/locale'
 import { Download, MapPin, Truck } from 'lucide-react'
@@ -47,9 +47,14 @@ function formatQty(value) {
 
 export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [selectedDriver, setSelectedDriver] = useState('')
+
+  useEffect(() => {
+    setFrom((prev) => prev || today)
+    setTo((prev) => prev || today)
+  }, [today])
 
   const rows = useMemo(() => deliveryOrders.filter((item) => inRange(item.date, from, to)), [deliveryOrders, from, to])
 
