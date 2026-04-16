@@ -239,7 +239,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
             />
           </label>
           <label className="field-stack">
-            <span>Créé le</span>
+            <span>Date déchargement</span>
             <StableDatePicker
               value={form?.date ? new Date(form.date) : null}
               onChange={(value) => setForm((current) => ({ ...current, date: value ? value.toISOString() : '' }))}

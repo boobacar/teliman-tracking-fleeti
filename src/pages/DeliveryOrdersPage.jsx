@@ -358,12 +358,12 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             />
           </label>
           <label className="field-stack">
-            <span>Date BL</span>
+            <span>Date Déchargement</span>
             <StableDatePicker
               value={form.date ? new Date(form.date) : null}
               onChange={(value) => setForm({ ...form, date: value ? value.toISOString() : '' })}
               withTime
-              placeholder="Choisir date et heure du BL"
+              placeholder="Choisir date et heure de déchargement"
               clearable
               className="filter-control modern-date-input"
             />
