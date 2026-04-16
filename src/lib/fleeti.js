@@ -68,6 +68,28 @@ export async function getCurrentUser() {
   return data.user
 }
 
+export const loadAdminUsers = () => getJson('/api/admin/users')
+export const createAdminUser = (payload) => postJson('/api/admin/users', payload)
+export const updateAdminUser = async (email, payload) => {
+  const response = await fetch(`${BACKEND_URL}/api/admin/users/${encodeURIComponent(email)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Erreur de mise à jour')
+  return data
+}
+export const deleteAdminUser = async (email) => {
+  const response = await fetch(`${BACKEND_URL}/api/admin/users/${encodeURIComponent(email)}`, {
+    method: 'DELETE',
+    headers: { ...getSessionHeaders() },
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Erreur de suppression')
+  return data
+}
+
 export const loadFleetData = () => getJson('/api/dashboard')
 export const loadTrackers = () => getJson('/api/trackers')
 export const loadDrivers = () => getJson('/api/drivers')

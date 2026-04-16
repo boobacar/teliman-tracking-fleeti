@@ -20,6 +20,7 @@ const DeliveryOrderDetailPage = lazy(() => import('./pages/DeliveryOrderDetailPa
 const FuelVouchersPage = lazy(() => import('./pages/FuelVouchersPage').then((module) => ({ default: module.FuelVouchersPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ default: module.DataPage })))
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -202,6 +203,7 @@ function App() {
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
           <Route path="/data" element={<DataPage />} />
+          <Route path="/admin-users" element={<AdminUsersPage />} />
         </Routes>
       </Suspense>
 

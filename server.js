@@ -18,7 +18,8 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
 const AUTH_PBKDF2_ITERATIONS = Number(process.env.AUTH_PBKDF2_ITERATIONS || 120000)
-const AUTH_USERS = parseAuthUsers(process.env.AUTH_USERS)
+const AUTH_USERS_FILE = path.join(__dirname, 'auth-users.json')
+const AUTH_USERS = loadAuthUsers()
 const API_BASE = process.env.FLEETI_API_BASE
 const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
 const PUBLIC_API_KEY = process.env.FLEETI_PUBLIC_API_KEY || ''
@@ -148,6 +149,25 @@ function parseAuthUsers(raw) {
   }
 }
 
+function loadAuthUsers() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(AUTH_USERS_FILE, 'utf8'))
+    const parsed = parseAuthUsers(JSON.stringify(payload))
+    return parsed.length ? parsed : parseAuthUsers('')
+  } catch {
+    const fallback = parseAuthUsers('')
+    try { fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(fallback, null, 2)) } catch {}
+    return fallback
+  }
+}
+
+function saveAuthUsers(users) {
+  const normalized = parseAuthUsers(JSON.stringify(users))
+  fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(normalized, null, 2))
+  AUTH_USERS.length = 0
+  AUTH_USERS.push(...normalized)
+}
+
 function hashPassword(password, salt) {
   return crypto.pbkdf2Sync(String(password || ''), String(salt || ''), AUTH_PBKDF2_ITERATIONS, 32, 'sha256').toString('hex')
 }
@@ -170,6 +190,14 @@ function hasPermission(user, permission) {
   const permissions = Array.isArray(user.permissions) ? user.permissions : []
   if (permissions.includes('*')) return true
   return permissions.includes(permission)
+}
+
+function sanitizeUserOutput(user) {
+  return {
+    email: user.email,
+    role: user.role,
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
+  }
 }
 
 function protectAppSession(req, res, next) {
@@ -1313,6 +1341,52 @@ app.get('/api/auth/me', (req, res) => {
     return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
   }
   return res.json({ ok: true, user: { email: user.email, role: user.role, permissions: user.permissions || [] } })
+})
+
+app.get('/api/admin/users', requirePermission('manage_users'), (_req, res) => {
+  return res.json({ ok: true, items: AUTH_USERS.map(sanitizeUserOutput) })
+})
+
+app.post('/api/admin/users', requirePermission('manage_users'), (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  const role = String(req.body?.role || 'user').trim().toLowerCase()
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : []
+  if (!email || !password) return res.status(400).json({ ok: false, error: 'Email et mot de passe obligatoires.' })
+  if (findAuthUser(email)) return res.status(409).json({ ok: false, error: 'Cet utilisateur existe déjà.' })
+  const salt = crypto.randomBytes(16).toString('hex')
+  const passwordHash = hashPassword(password, salt)
+  const nextUsers = [...AUTH_USERS, { email, role, permissions: role === 'admin' ? ['*'] : permissions, salt, passwordHash }]
+  saveAuthUsers(nextUsers)
+  return res.status(201).json({ ok: true, user: sanitizeUserOutput(findAuthUser(email)) })
+})
+
+app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
+  const targetEmail = String(req.params.email || '').trim().toLowerCase()
+  const existing = findAuthUser(targetEmail)
+  if (!existing) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
+  const role = String(req.body?.role || existing.role).trim().toLowerCase()
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : existing.permissions
+  const password = String(req.body?.password || '')
+  const updatedUsers = AUTH_USERS.map((item) => {
+    if (item.email !== targetEmail) return item
+    const next = { ...item, role, permissions: role === 'admin' ? ['*'] : permissions }
+    if (password) {
+      const salt = crypto.randomBytes(16).toString('hex')
+      next.salt = salt
+      next.passwordHash = hashPassword(password, salt)
+    }
+    return next
+  })
+  saveAuthUsers(updatedUsers)
+  return res.json({ ok: true, user: sanitizeUserOutput(findAuthUser(targetEmail)) })
+})
+
+app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
+  const targetEmail = String(req.params.email || '').trim().toLowerCase()
+  if (!findAuthUser(targetEmail)) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
+  saveAuthUsers(AUTH_USERS.filter((item) => item.email !== targetEmail))
+  return res.json({ ok: true })
 })
 
 app.get('/api/master-data', (_req, res) => {

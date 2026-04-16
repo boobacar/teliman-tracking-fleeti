@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Siren, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Shield, Siren, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const views = [
   { id: '/delivery-orders', label: 'Bons livraison', icon: ReceiptText, permission: 'manage_delivery_orders' },
   { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
   { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
+  { id: '/admin-users', label: 'Utilisateurs', icon: Shield, permission: 'manage_users' },
 ]
 
 export function Layout({ children, loading, refreshData, search, setSearch, dataset, currentUser, onLogout }) {
