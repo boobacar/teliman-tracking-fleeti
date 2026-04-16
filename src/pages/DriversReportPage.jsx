@@ -115,8 +115,8 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
         <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée de l’activité chauffeur, clients desservis, tonnage et position actuelle.</p></div></div>
       </section>
 
-      <section className="panel panel-large">
-        <div className="reports-filter-grid" style={{ marginTop: 0, alignItems: 'end' }}>
+      <section className="panel panel-large" style={{ minHeight: 'unset', paddingBottom: 18 }}>
+        <div className="reports-filter-grid" style={{ marginTop: 0, alignItems: 'start' }}>
           <label className="field-stack">
             <span>Du</span>
             <StableDatePicker
@@ -146,8 +146,8 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
               {driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}
             </select>
           </label>
-          <div className="field-stack" style={{ alignSelf: 'end', justifySelf: 'stretch' }}>
-            <span>&nbsp;</span>
+          <div className="field-stack" style={{ alignSelf: 'start', justifySelf: 'stretch' }}>
+            <span>Export</span>
             <button className="primary-btn" onClick={exportPdf} style={{ width: '100%', minHeight: 48 }}><Download size={16} />Exporter PDF</button>
           </div>
         </div>
