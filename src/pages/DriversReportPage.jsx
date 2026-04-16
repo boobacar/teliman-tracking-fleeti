@@ -38,8 +38,16 @@ function ymdToDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function parseQuantity(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const raw = String(value || '').trim().replace(',', '.')
+  if (!raw) return 0
+  const match = raw.match(/-?\d+(?:\.\d+)?/)
+  return match ? Number(match[0]) : 0
+}
+
 function formatQty(value) {
-  const num = Number(value)
+  const num = parseQuantity(value)
   if (!Number.isFinite(num)) return value || '-'
   return `${num.toLocaleString('fr-FR')} t`
 }
@@ -62,7 +70,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
     return Array.from(grouped.entries()).map(([driver, items]) => {
       const latest = [...items].sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0))[0]
       const tracker = filteredTrackers.find((entry) => Number(entry.id) === Number(latest?.trackerId)) || null
-      const totalTonnage = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+      const totalTonnage = items.reduce((sum, item) => sum + parseQuantity(item.quantity), 0)
       const clients = Array.from(new Set(items.map((item) => item.client).filter(Boolean)))
       const destinations = Array.from(new Set(items.map((item) => item.destination).filter(Boolean)))
       return {
