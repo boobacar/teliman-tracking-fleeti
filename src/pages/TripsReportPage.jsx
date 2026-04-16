@@ -5,8 +5,7 @@ import autoTable from 'jspdf-autotable'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { loadTracksBatch } from '../lib/fleeti'
 
-const STOP_GAP_MINUTES = 35
-const MIN_TRIP_DISTANCE_KM = 1
+const MIN_TRIP_DISTANCE_KM = 0
 
 function dateToYmd(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ''
@@ -120,69 +119,36 @@ function buildTrips(bundle, tracker) {
     }
   }
 
-  const trips = []
-  let currentTrip = null
+  return normalizedSegments
+    .map((segment, index) => {
+      const startDate = toDate(segment.start)
+      const endDate = toDate(segment.end)
+      const segmentEvents = events.filter((event) => {
+        const eventTime = toDate(event?.time)
+        return eventTime && startDate && endDate && eventTime >= startDate && eventTime <= endDate
+      })
+      const tripDurationMinutes = durationMinutes(segment.start, segment.end)
+      const distanceKm = Number((segment.distanceKm || 0).toFixed(1))
+      const avgSpeed = tripDurationMinutes > 0
+        ? Number((distanceKm / (tripDurationMinutes / 60)).toFixed(1))
+        : Number((segment.avgSpeed || 0).toFixed(1))
 
-  const flushTrip = () => {
-    if (!currentTrip) return
-    currentTrip.durationMinutes = durationMinutes(currentTrip.start, currentTrip.end)
-    currentTrip.events = events.filter((event) => {
-      const eventTime = toDate(event?.time)
-      return eventTime && eventTime >= toDate(currentTrip.start) && eventTime <= toDate(currentTrip.end)
-    })
-    currentTrip.eventCount = currentTrip.events.length
-    currentTrip.distanceKm = Number(currentTrip.distanceKm.toFixed(1))
-    currentTrip.avgSpeed = currentTrip.durationMinutes > 0
-      ? Number((currentTrip.distanceKm / (currentTrip.durationMinutes / 60)).toFixed(1))
-      : Number((currentTrip.avgSpeed || 0).toFixed(1))
-    currentTrip.maxSpeed = Number((currentTrip.maxSpeed || 0).toFixed(0))
-    if (currentTrip.distanceKm >= MIN_TRIP_DISTANCE_KM || currentTrip.durationMinutes >= 10) {
-      trips.push(currentTrip)
-    }
-    currentTrip = null
-  }
-
-  normalizedSegments.forEach((segment) => {
-    if (!currentTrip) {
-      currentTrip = {
-        id: `${bundle.trackerId}-trip-${trips.length + 1}`,
+      return {
+        id: `${bundle.trackerId}-segment-trip-${index + 1}`,
         trackerId: bundle.trackerId,
         truckLabel: tracker?.label || `Camion ${bundle.trackerId}`,
         driver: tracker?.employeeName || 'Non assigné',
         start: segment.start,
         end: segment.end,
-        distanceKm: segment.distanceKm,
-        avgSpeed: segment.avgSpeed,
-        maxSpeed: segment.maxSpeed,
+        distanceKm,
+        durationMinutes: tripDurationMinutes,
+        avgSpeed,
+        maxSpeed: Number((segment.maxSpeed || 0).toFixed(0)),
+        events: segmentEvents,
+        eventCount: segmentEvents.length,
       }
-      return
-    }
-
-    const gapMinutes = durationMinutes(currentTrip.end, segment.start)
-    if (gapMinutes <= STOP_GAP_MINUTES) {
-      currentTrip.end = segment.end
-      currentTrip.distanceKm += segment.distanceKm
-      currentTrip.maxSpeed = Math.max(currentTrip.maxSpeed || 0, segment.maxSpeed || 0)
-      currentTrip.avgSpeed = currentTrip.avgSpeed || segment.avgSpeed
-      return
-    }
-
-    flushTrip()
-    currentTrip = {
-      id: `${bundle.trackerId}-trip-${trips.length + 1}`,
-      trackerId: bundle.trackerId,
-      truckLabel: tracker?.label || `Camion ${bundle.trackerId}`,
-      driver: tracker?.employeeName || 'Non assigné',
-      start: segment.start,
-      end: segment.end,
-      distanceKm: segment.distanceKm,
-      avgSpeed: segment.avgSpeed,
-      maxSpeed: segment.maxSpeed,
-    }
-  })
-
-  flushTrip()
-  return trips
+    })
+    .filter((segment) => segment.distanceKm >= MIN_TRIP_DISTANCE_KM || segment.durationMinutes > 0)
 }
 
 export function TripsReportPage({ filteredTrackers = [] }) {
@@ -297,7 +263,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
     doc.text('Rapport Trajets Fleeti', 14, 18)
     doc.setFontSize(11)
     doc.text(`Période: ${from} → ${to}`, 14, 26)
-    doc.text(`Règle métier: option B (regroupement de segments proches, arrêt > ${STOP_GAP_MINUTES} min = nouveau trajet)`, 14, 33)
+    doc.text('Source: segments Fleeti bruts sans regroupement', 14, 33)
 
     autoTable(doc, {
       startY: 40,
@@ -338,7 +304,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>Rapport Trajets Fleeti</h3><p>Trajets camion / chauffeur calculés directement depuis les données de trajet Fleeti avec regroupement métier option B.</p></div></div>
+        <div className="panel-header"><div><h3>Rapport Trajets Fleeti</h3><p>Chaque ligne correspond directement à un segment de trajet renvoyé par Fleeti, sans regroupement.</p></div></div>
       </section>
 
       <section className="panel panel-large" style={{ minHeight: 'unset', paddingBottom: 18 }}>
@@ -427,7 +393,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       </section>
 
       <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Détail des trajets</h3><p>Chaque ligne correspond à un trajet métier obtenu par regroupement de segments Fleeti proches.</p></div></div>
+        <div className="panel-header"><div><h3>Détail des trajets</h3><p>Chaque ligne correspond à un segment de trajet Fleeti brut.</p></div></div>
         <div className="reports-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Départ</th><th>Arrivée</th><th>Camion</th><th>Chauffeur</th><th>Distance</th><th>Durée</th><th>Vitesse moy.</th><th>Vitesse max</th><th>Événements</th></tr></thead>
