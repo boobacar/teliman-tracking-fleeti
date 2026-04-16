@@ -122,7 +122,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <span>Du</span>
             <DatePicker
               selected={ymdToDate(from)}
-              onChange={(value) => setFrom(dateToYmd(value) || today)}
+              onChange={(value) => setFrom(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date début"
@@ -135,7 +135,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <span>Au</span>
             <DatePicker
               selected={ymdToDate(to)}
-              onChange={(value) => setTo(dateToYmd(value) || today)}
+              onChange={(value) => setTo(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date fin"
