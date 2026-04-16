@@ -116,8 +116,8 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
         <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée de l’activité chauffeur, clients desservis, tonnage et position actuelle.</p></div></div>
       </section>
 
-      <section className="panel panel-large reports-v2-hero">
-        <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+      <section className="panel panel-large">
+        <div className="reports-filter-grid" style={{ marginTop: 0, alignItems: 'end' }}>
           <label className="field-stack">
             <span>Du</span>
             <DatePicker
@@ -144,8 +144,17 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
               popperClassName="modern-date-popper"
             />
           </label>
-          <label className="field-stack"><span>Chauffeur</span><select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}><option value="">Tous</option>{driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}</select></label>
-          <div className="field-stack" style={{ alignSelf: 'end' }}><button className="primary-btn" onClick={exportPdf}><Download size={16} />Exporter PDF</button></div>
+          <label className="field-stack">
+            <span>Chauffeur</span>
+            <select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}>
+              <option value="">Tous</option>
+              {driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}
+            </select>
+          </label>
+          <div className="field-stack" style={{ alignSelf: 'end', justifySelf: 'stretch' }}>
+            <span>&nbsp;</span>
+            <button className="primary-btn" onClick={exportPdf} style={{ width: '100%', minHeight: 48 }}><Download size={16} />Exporter PDF</button>
+          </div>
         </div>
       </section>
 
