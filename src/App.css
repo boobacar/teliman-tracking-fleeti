@@ -143,6 +143,10 @@ input {
   gap: 8px;
 }
 
+.stable-date-picker-trigger-wrap {
+  position: relative;
+}
+
 .stable-date-picker-trigger {
   display: flex;
   align-items: center;
@@ -150,6 +154,28 @@ input {
   gap: 10px;
   width: 100%;
   text-align: left;
+}
+
+.stable-date-picker-inline-clear {
+  position: absolute;
+  top: 50%;
+  right: 38px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.stable-date-picker-inline-clear:hover {
+  background: rgba(148, 163, 184, 0.28);
+  color: #fff;
 }
 
 .stable-date-picker-popover {
@@ -177,22 +203,6 @@ input {
   min-width: 120px;
 }
 
-.stable-date-picker-clear {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  color: #94a3b8;
-  font-size: 12px;
-  padding: 0;
-  cursor: pointer;
-}
-
-.stable-date-picker-clear:hover {
-  color: #e2e8f0;
-}
 
 .rdp {
   --rdp-accent-color: #2563eb;

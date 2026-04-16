@@ -86,16 +86,17 @@ export function StableDatePicker({
 
   return (
     <div className="stable-date-picker-shell" ref={wrapperRef}>
-      <button type="button" className={`${className} stable-date-picker-trigger`} onClick={() => setOpen((prev) => !prev)}>
-        <span>{displayValue || placeholder}</span>
-        <CalendarDays size={16} />
-      </button>
-      {clearable && selected ? (
-        <button type="button" className="stable-date-picker-clear" onClick={() => onChange?.(null)} aria-label="Réinitialiser la date">
-          <X size={14} />
-          Réinitialiser
+      <div className={`${className} stable-date-picker-trigger-wrap`}>
+        <button type="button" className="stable-date-picker-trigger" onClick={() => setOpen((prev) => !prev)}>
+          <span>{displayValue || placeholder}</span>
+          <CalendarDays size={16} />
         </button>
-      ) : null}
+        {clearable && selected ? (
+          <button type="button" className="stable-date-picker-inline-clear" onClick={() => onChange?.(null)} aria-label="Réinitialiser la date">
+            <X size={12} />
+          </button>
+        ) : null}
+      </div>
       {open && popoverStyle ? createPortal(
         <div className="stable-date-picker-popover" style={popoverStyle}>
           <DayPicker
