@@ -179,7 +179,7 @@ function App() {
   ]
   const executiveCards = [
     { title: 'Kilométrage total', value: `${stats.totalMileage} km`, helper: 'activité consolidée du jour' },
-    { title: 'Risque moyen', value: `${Math.round(riskRanking.reduce((a, t) => a + t.riskScore, 0) / Math.max(riskRanking.length, 1))}`, helper: 'score global flotte' },
+    { title: 'Score de vigilance moyen', value: `${Math.round(riskRanking.reduce((a, t) => a + t.riskScore, 0) / Math.max(riskRanking.length, 1))}`, helper: 'niveau moyen de surveillance flotte' },
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
