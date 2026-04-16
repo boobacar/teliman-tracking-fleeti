@@ -33,7 +33,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
-const scoreRisk = (tracker) => (tracker.eventCounts.speedup || 0) * 4 + (tracker.eventCounts.excessive_parking || 0) * 2 + ((tracker.state.battery_level || 100) < 20 ? 5 : 0)
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
 
 function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
@@ -145,7 +144,7 @@ function App() {
         eventCounts,
         statusColor: statusColor(state.connection_status),
       }
-      return { ...base, riskScore: scoreRisk(base) }
+      return base
     })
   }, [dataset])
 
@@ -168,10 +167,15 @@ function App() {
     totalMileage: Math.round(enrichedTrackers.reduce((a, t) => a + (t.latestDayMileage || 0), 0)),
   }
 
-  const riskRanking = [...enrichedTrackers].sort((a, b) => b.riskScore - a.riskScore)
+  const priorityTrackers = [...enrichedTrackers].sort((a, b) => {
+    const leftScore = (a.eventCounts.speedup || 0) + (a.eventCounts.excessive_parking || 0)
+    const rightScore = (b.eventCounts.speedup || 0) + (b.eventCounts.excessive_parking || 0)
+    if (leftScore !== rightScore) return rightScore - leftScore
+    return (b.events.length || 0) - (a.events.length || 0)
+  })
   const offlineTrackers = enrichedTrackers.filter((tracker) => tracker.state.connection_status === 'offline')
-  const anomalyTrackers = [...enrichedTrackers].filter((tracker) => tracker.events.length > 3 || tracker.riskScore > 10).sort((a, b) => b.riskScore - a.riskScore)
-  const topDrivers = riskRanking.slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, risk: tracker.riskScore }))
+  const anomalyTrackers = [...enrichedTrackers].filter((tracker) => tracker.events.length > 3).sort((a, b) => b.events.length - a.events.length)
+  const topDrivers = [...enrichedTrackers].sort((a, b) => b.latestDayMileage - a.latestDayMileage).slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, events: tracker.events.length }))
   const connectionChart = [
     { name: 'Active', value: stats.active, color: '#22c55e' },
     { name: 'Offline', value: stats.offline, color: '#ef4444' },
@@ -179,7 +183,7 @@ function App() {
   ]
   const executiveCards = [
     { title: 'Kilométrage total', value: `${stats.totalMileage} km`, helper: 'activité consolidée du jour' },
-    { title: 'Score de vigilance moyen', value: `${Math.round(riskRanking.reduce((a, t) => a + t.riskScore, 0) / Math.max(riskRanking.length, 1))}`, helper: 'niveau moyen de surveillance flotte' },
+    { title: 'Événements suivis', value: `${importantEvents.length}`, helper: 'alertes critiques et surveillance' },
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
@@ -213,7 +217,7 @@ function App() {
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
       <Suspense fallback={<div className="info-banner">Chargement de la vue…</div>}>
         <Routes>
-          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} riskRanking={riskRanking} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
+          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
           <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/cameras" element={<CamerasPage />} />

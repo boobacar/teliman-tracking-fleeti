@@ -94,7 +94,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     if (!tracker.state?.gps?.location) return false
     if (mapFilter === 'moving') return (tracker.state?.gps?.speed ?? 0) > 0
     if (mapFilter === 'offline') return tracker.state?.connection_status === 'offline'
-    if (mapFilter === 'risk') return tracker.riskScore > 10
+    if (mapFilter === 'risk') return (tracker.eventCounts?.speedup || 0) + (tracker.eventCounts?.excessive_parking || 0) > 0
     return true
   }), [filteredTrackers, mapFilter])
 
@@ -228,7 +228,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
       {prefetchReady && selectedTrackIds.length > 0 && alertMarkers.length === 0 && <div className="empty-banner">Aucune alerte géolocalisée sur la période sélectionnée.</div>}
 
       <div className="map-filter-stack">
-        <div className="filters filter-row"><button className={`chip ${mapFilter === 'all' ? 'selected' : ''}`} onClick={() => setMapFilter('all')}>Toutes</button><button className={`chip ${mapFilter === 'moving' ? 'selected' : ''}`} onClick={() => setMapFilter('moving')}>En mouvement</button><button className={`chip ${mapFilter === 'offline' ? 'selected' : ''}`} onClick={() => setMapFilter('offline')}>Offline</button><button className={`chip ${mapFilter === 'risk' ? 'selected' : ''}`} onClick={() => setMapFilter('risk')}>À risque</button></div>
+        <div className="filters filter-row"><button className={`chip ${mapFilter === 'all' ? 'selected' : ''}`} onClick={() => setMapFilter('all')}>Toutes</button><button className={`chip ${mapFilter === 'moving' ? 'selected' : ''}`} onClick={() => setMapFilter('moving')}>En mouvement</button><button className={`chip ${mapFilter === 'offline' ? 'selected' : ''}`} onClick={() => setMapFilter('offline')}>Offline</button><button className={`chip ${mapFilter === 'risk' ? 'selected' : ''}`} onClick={() => setMapFilter('risk')}>Avec alertes</button></div>
         <div className="filters filter-row">{allVisibleTrackers.slice(0, 12).map((tracker) => <button key={tracker.id} className={`chip ${selectedTrackIds.includes(String(tracker.id)) ? 'selected' : ''}`} onClick={() => toggleTrackerSelection(tracker.id)}>{tracker.label}</button>)}</div>
         <div className="filters filter-row">{[{ value: 'today', label: "Aujourd'hui" }, { value: '12h', label: '12h' }, { value: '24h', label: '24h' }, { value: '48h', label: '48h' }].map((item) => <button key={item.value} className={`chip ${period === item.value ? 'selected' : ''}`} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div>
       </div>
@@ -257,7 +257,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
             const isActive = selectedTrackIds.includes(String(tracker.id))
             const activeOrder = deliveryOrders.find((item) => Number(item.trackerId) === Number(tracker.id) && item.active)
             const computedBearing = bearingByTrackerId.get(String(tracker.id))
-            return <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} icon={createTrackerIcon(tracker, !!activeOrder, isActive, computedBearing)} opacity={isActive || selectedTrackIds.length === 0 ? 1 : 0.72} eventHandlers={{ click: () => toggleTrackerSelection(tracker.id) }}><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />Etat: {state.text}<br />Connexion: {tracker.state.connection_status}<br />Mouvement: {tracker.state.movement_status}<br />Vitesse: {tracker.state.gps.speed ?? 0} km/h<br />Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°<br />Risque: {tracker.riskScore}<br />{activeOrder ? <><br /><strong>BL:</strong> {activeOrder.reference}<br /><strong>Client:</strong> {activeOrder.client}<br /><strong>Destination:</strong> {activeOrder.destination}<br /><strong>Marchandise:</strong> {activeOrder.goods || '-'}<br /><strong>Quantité:</strong> {activeOrder.quantity || '-'}<br /><strong>Statut:</strong> {activeOrder.status}<br /><strong>Fiche mission:</strong> /delivery-order/{activeOrder.id}</> : <><br />Aucun bon actif</>}</Popup></Marker>
+            return <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} icon={createTrackerIcon(tracker, !!activeOrder, isActive, computedBearing)} opacity={isActive || selectedTrackIds.length === 0 ? 1 : 0.72} eventHandlers={{ click: () => toggleTrackerSelection(tracker.id) }}><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />Etat: {state.text}<br />Connexion: {tracker.state.connection_status}<br />Mouvement: {tracker.state.movement_status}<br />Vitesse: {tracker.state.gps.speed ?? 0} km/h<br />Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°<br />{activeOrder ? <><br /><strong>BL:</strong> {activeOrder.reference}<br /><strong>Client:</strong> {activeOrder.client}<br /><strong>Destination:</strong> {activeOrder.destination}<br /><strong>Marchandise:</strong> {activeOrder.goods || '-'}<br /><strong>Quantité:</strong> {activeOrder.quantity || '-'}<br /><strong>Statut:</strong> {activeOrder.status}<br /><strong>Fiche mission:</strong> /delivery-order/{activeOrder.id}</> : <><br />Aucun bon actif</>}</Popup></Marker>
           })}
         </MapContainer>
       </div>
