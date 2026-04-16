@@ -17,6 +17,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ d
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const DriversReportPage = lazy(() => import('./pages/DriversReportPage').then((module) => ({ default: module.DriversReportPage })))
+const TripsReportPage = lazy(() => import('./pages/TripsReportPage').then((module) => ({ default: module.TripsReportPage })))
 const DeliveryOrdersPage = lazy(() => import('./pages/DeliveryOrdersPage').then((module) => ({ default: module.DeliveryOrdersPage })))
 const DeliveryOrderDetailPage = lazy(() => import('./pages/DeliveryOrderDetailPage').then((module) => ({ default: module.DeliveryOrderDetailPage })))
 const FuelVouchersPage = lazy(() => import('./pages/FuelVouchersPage').then((module) => ({ default: module.FuelVouchersPage })))
@@ -222,6 +223,7 @@ function App() {
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
+          <Route path="/trips-report" element={<TripsReportPage filteredTrackers={filteredTrackers} />} />
           <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
           <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={enrichedTrackers} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />

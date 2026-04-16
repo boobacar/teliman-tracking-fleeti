@@ -235,6 +235,7 @@ function getDateRange(period = '48h') {
 
   if (period === '1h') fromDate.setHours(now.getHours() - 1)
   else if (period === '6h') fromDate.setHours(now.getHours() - 6)
+  else if (period === '12h') fromDate.setHours(now.getHours() - 12)
   else if (period === '24h') fromDate.setHours(now.getHours() - 24)
   else if (period === 'today') fromDate.setHours(0, 0, 0, 0)
   else if (period === '7d') fromDate.setDate(now.getDate() - 7)
