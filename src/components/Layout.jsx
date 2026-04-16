@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Camera, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Shield, Siren, X, Car } from 'lucide-react'
+import { BarChart3, Camera, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Shield, Siren, Users, X, Car } from 'lucide-react'
 
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
@@ -10,6 +10,7 @@ export const APP_VIEWS = [
   { id: '/alerts', label: 'Alertes', icon: Siren, permission: 'page_alerts' },
   { id: '/analytics', label: 'Analytics', icon: BarChart3, permission: 'page_analytics' },
   { id: '/reports', label: 'Rapports', icon: FileSpreadsheet, permission: 'page_reports' },
+  { id: '/drivers-report', label: 'Rapport Chauffeurs', icon: Users, permission: 'page_reports' },
   { id: '/delivery-orders', label: 'Bons livraison', icon: ReceiptText, permission: 'manage_delivery_orders' },
   { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
   { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
