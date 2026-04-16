@@ -85,6 +85,35 @@ function inRange(value, from, to) {
   return true
 }
 
+function sortByReportDate(rows = [], selector) {
+  return [...rows].sort((a, b) => {
+    const left = toDate(selector(a))
+    const right = toDate(selector(b))
+    const leftTs = left ? left.getTime() : 0
+    const rightTs = right ? right.getTime() : 0
+    return leftTs - rightTs
+  })
+}
+
+function parseReferenceNumber(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return Number.POSITIVE_INFINITY
+  const digits = raw.match(/\d+/g)
+  if (!digits || digits.length === 0) return Number.POSITIVE_INFINITY
+  return Number(digits.join(''))
+}
+
+function sortByReference(rows = [], selector) {
+  return [...rows].sort((a, b) => {
+    const leftRaw = String(selector(a) || '')
+    const rightRaw = String(selector(b) || '')
+    const leftNum = parseReferenceNumber(leftRaw)
+    const rightNum = parseReferenceNumber(rightRaw)
+    if (leftNum !== rightNum) return leftNum - rightNum
+    return leftRaw.localeCompare(rightRaw, 'fr', { numeric: true, sensitivity: 'base' })
+  })
+}
+
 function isK1Client(client = '') {
   return String(client).toUpperCase().includes('K1')
 }
@@ -207,11 +236,11 @@ export function ReportsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const rowsInRange = useMemo(() => deliveries.filter((r) => inRange(r.arrivalDateTime || r.date, from, to)), [deliveries, from, to])
-  const k1Rows = useMemo(() => rowsInRange.filter((r) => isK1Client(r.client)), [rowsInRange])
-  const caderacRows = useMemo(() => rowsInRange.filter((r) => isCaderacClient(r.client)), [rowsInRange])
-  const k1_05 = useMemo(() => k1Rows.filter((r) => isBatch05(r.goods)), [k1Rows])
-  const k1_1014 = useMemo(() => k1Rows.filter((r) => isBatch1014(r.goods)), [k1Rows])
+  const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => inRange(r.arrivalDateTime || r.date, from, to)), (row) => row.reference), [deliveries, from, to])
+  const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
+  const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
+  const k1_05 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch05(r.goods)), (row) => row.reference), [k1Rows])
+  const k1_1014 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch1014(r.goods)), (row) => row.reference), [k1Rows])
   const caderacByDestination = useMemo(() => {
     const map = new Map()
     caderacRows.forEach((r) => {
@@ -220,7 +249,7 @@ export function ReportsPage() {
     })
     return Array.from(map.entries()).map(([destination, quantity]) => ({ destination, quantity }))
   }, [caderacRows])
-  const fuelRows = useMemo(() => fuel.filter((r) => inRange(r.dateTime, from, to)), [fuel, from, to])
+  const fuelRows = useMemo(() => sortByReference(fuel.filter((r) => inRange(r.dateTime, from, to)), (row) => row.voucherNumber || row.reference), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
   const fuelQtyTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.quantityLiters), 0), [fuelRows])
 
