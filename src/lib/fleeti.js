@@ -1,5 +1,11 @@
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'
 
+function getSessionHeaders() {
+  const email = localStorage.getItem('teliman_user_email') || ''
+  const sessionToken = localStorage.getItem('teliman_session_token') || ''
+  return email && sessionToken ? { 'x-user-email': email, 'x-session-token': sessionToken } : {}
+}
+
 export function resolveMediaUrl(path) {
   const value = String(path || '')
   if (!value) return ''
@@ -9,7 +15,7 @@ export function resolveMediaUrl(path) {
 }
 
 async function getJson(path) {
-  const response = await fetch(`${BACKEND_URL}${path}`)
+  const response = await fetch(`${BACKEND_URL}${path}`, { headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -18,12 +24,37 @@ async function getJson(path) {
 async function postJson(path, body) {
   const response = await fetch(`${BACKEND_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(body),
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
+}
+
+export async function login(email, password) {
+  const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Connexion impossible')
+  localStorage.setItem('teliman_user_email', data.user.email)
+  localStorage.setItem('teliman_session_token', data.sessionToken)
+  return data
+}
+
+export function logout() {
+  localStorage.removeItem('teliman_user_email')
+  localStorage.removeItem('teliman_session_token')
+}
+
+export async function getCurrentUser() {
+  const response = await fetch(`${BACKEND_URL}/api/auth/me`, { headers: { ...getSessionHeaders() } })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Session invalide')
+  return data.user
 }
 
 export const loadFleetData = () => getJson('/api/dashboard')
@@ -50,7 +81,7 @@ export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })
 export const deleteMasterDataItem = async (listName, value) => {
-  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?value=${encodeURIComponent(value)}`, { method: 'DELETE' })
+  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?value=${encodeURIComponent(value)}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -59,7 +90,7 @@ export const createDeliveryOrder = (payload) => postJson('/api/delivery-orders',
 export const updateDeliveryOrder = async (id, payload) => {
   const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
   const data = await response.json()
@@ -67,7 +98,7 @@ export const updateDeliveryOrder = async (id, payload) => {
   return data
 }
 export const deleteDeliveryOrder = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE' })
+  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -83,7 +114,7 @@ export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', pay
 export const updateFuelVoucher = async (id, payload) => {
   const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
   const data = await response.json()
@@ -91,7 +122,7 @@ export const updateFuelVoucher = async (id, payload) => {
   return data
 }
 export const deleteFuelVoucher = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE' })
+  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data

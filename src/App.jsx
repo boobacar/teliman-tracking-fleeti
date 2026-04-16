@@ -6,7 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { fallbackEvents } from './data/mock'
-import { loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData } from './lib/fleeti'
+import { getCurrentUser, loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData, logout } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
@@ -20,6 +20,7 @@ const DeliveryOrderDetailPage = lazy(() => import('./pages/DeliveryOrderDetailPa
 const FuelVouchersPage = lazy(() => import('./pages/FuelVouchersPage').then((module) => ({ default: module.FuelVouchersPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ default: module.DataPage })))
+const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -63,6 +64,8 @@ function App() {
   const [deliveryOrders, setDeliveryOrders] = useState([])
   const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [] })
+  const [authLoading, setAuthLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState(null)
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -87,8 +90,25 @@ function App() {
     }
   }, [])
 
-  useEffect(() => { refreshData() }, [refreshData])
-  useAutoRefresh(refreshData, 90000)
+  useEffect(() => {
+    let cancelled = false
+    async function boot() {
+      try {
+        const user = await getCurrentUser()
+        if (!cancelled) setCurrentUser(user)
+      } catch {
+        if (!cancelled) setCurrentUser(null)
+      } finally {
+        if (!cancelled) setAuthLoading(false)
+      }
+    }
+    boot()
+  }, [])
+
+  useEffect(() => {
+    if (currentUser) refreshData()
+  }, [currentUser, refreshData])
+  useAutoRefresh(currentUser ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
     const employees = Object.fromEntries((dataset?.employees ?? []).map((e) => [e.tracker_id, e]))
@@ -150,8 +170,20 @@ function App() {
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
 
+  if (authLoading) return <div className="info-banner">Vérification de session...</div>
+  if (!currentUser) {
+    return (
+      <Suspense fallback={<div className="info-banner">Chargement…</div>}>
+        <LoginPage onLoggedIn={async () => {
+          const user = await getCurrentUser()
+          setCurrentUser(user)
+        }} />
+      </Suspense>
+    )
+  }
+
   return (
-    <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} dataset={dataset}>
+    <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} dataset={dataset} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null) }}>
       {error && <div className="error-banner">{error}</div>}
       {loading && <div className="info-banner">Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}

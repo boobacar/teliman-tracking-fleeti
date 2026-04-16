@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, Map, Menu, ReceiptText, RefreshCw, Siren, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Siren, X, Car } from 'lucide-react'
 
 const views = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,7 +14,7 @@ const views = [
   { id: '/data', label: 'Données', icon: Database },
 ]
 
-export function Layout({ children, loading, refreshData, search, setSearch, dataset }) {
+export function Layout({ children, loading, refreshData, search, setSearch, dataset, currentUser, onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
@@ -25,7 +25,12 @@ export function Layout({ children, loading, refreshData, search, setSearch, data
           <div className="mobile-sidebar-header"><div><div className="brand-badge">TELIMAN</div><h1>Operations</h1><p>Flotte, alertes et pilotage.</p></div><button className="mobile-close-btn" onClick={() => setMobileNavOpen(false)}><X size={18} /></button></div>
         </div>
         <button className="primary-btn" onClick={refreshData} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} />{loading ? 'Actualisation...' : 'Rafraîchir'}</button>
+        <div style={{ marginTop: 12, marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(255,255,255,0.06)', color: '#e2e8f0' }}>
+          <strong style={{ display: 'block', fontSize: 13 }}>Connecté</strong>
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>{currentUser?.email || 'Admin'}</span>
+        </div>
         <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
+        <button className="ghost-btn" style={{ marginTop: 16 }} onClick={onLogout}><LogOut size={16} />Déconnexion</button>
       </aside>
 
       <main className="main-content premium-main">

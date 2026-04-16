@@ -16,6 +16,9 @@ const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
 const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
 
 const PORT = Number(process.env.PORT || 8787)
+const ADMIN_EMAILS = ['finances@telimanlogistique.com', 'coordination@telimanlogistique.com', 'marie@telimanlogistique.com', 'boubsfal@gmail.com']
+const ADMIN_PASSWORD = 'Migration3315'
+const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
 const API_BASE = process.env.FLEETI_API_BASE
 const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
 const PUBLIC_API_KEY = process.env.FLEETI_PUBLIC_API_KEY || ''
@@ -40,6 +43,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 app.use(requestLogger)
 app.use(protectApi)
+app.use(protectAppSession)
 
 function parseCsv(value) {
   return String(value || '')
@@ -115,6 +119,15 @@ function protectApi(req, res, next) {
   const providedToken = req.get('x-api-key') || req.query.api_key || ''
   if (INTERNAL_API_TOKEN && secureCompare(providedToken, INTERNAL_API_TOKEN)) return next()
   return res.status(401).json({ ok: false, error: 'Unauthorized' })
+}
+
+function protectAppSession(req, res, next) {
+  if (!req.path.startsWith('/api/')) return next()
+  if (req.path === '/api/auth/login' || req.path === '/api/auth/me' || req.path === '/api/health') return next()
+  const email = String(req.get('x-user-email') || '').trim().toLowerCase()
+  const sessionToken = String(req.get('x-session-token') || '').trim()
+  if (ADMIN_EMAILS.includes(email) && secureCompare(sessionToken, APP_SESSION_TOKEN)) return next()
+  return res.status(401).json({ ok: false, error: 'Session invalide' })
 }
 
 function getDateRange(period = '48h') {
@@ -1206,6 +1219,28 @@ app.get('/api/fleeti/live', async (_req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
+})
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true })
+})
+
+app.post('/api/auth/login', (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  const password = String(req.body?.password || '')
+  if (!ADMIN_EMAILS.includes(email) || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ ok: false, error: 'Identifiants invalides' })
+  }
+  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email, role: 'admin' } })
+})
+
+app.get('/api/auth/me', (req, res) => {
+  const email = String(req.get('x-user-email') || '').trim().toLowerCase()
+  const sessionToken = String(req.get('x-session-token') || '').trim()
+  if (!ADMIN_EMAILS.includes(email) || !secureCompare(sessionToken, APP_SESSION_TOKEN)) {
+    return res.status(401).json({ ok: false, error: 'Session invalide' })
+  }
+  return res.json({ ok: true, user: { email, role: 'admin' } })
 })
 
 app.get('/api/master-data', (_req, res) => {
