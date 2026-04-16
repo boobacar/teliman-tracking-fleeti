@@ -593,6 +593,38 @@ function formatFuelSnapshot(asset = {}) {
   }
 }
 
+async function loadCameraAssets() {
+  const payload = await publicApiGet('/Asset/Search', { Take: 200 })
+  const results = payload.results || []
+  const cameraAssets = results.filter((asset) => String(asset.name || '').toLowerCase().includes('-cam'))
+  const truckAssets = results.filter((asset) => asset.assetType === 10 && !String(asset.name || '').toLowerCase().includes('-cam'))
+
+  const items = cameraAssets.map((camera) => {
+    const cameraBase = String(camera.name || '').replace(/-cam$/i, '').trim()
+    const truck = truckAssets.find((asset) => String(asset.name || '').trim().toLowerCase() === cameraBase.toLowerCase()) || null
+    const gateway = (camera.gateways || [])[0] || null
+    const position = gateway?.state?.position?.location || null
+    return {
+      truckLabel: truck?.name || cameraBase || camera.name,
+      truckAssetId: truck?.id || null,
+      truckGatewayId: truck?.gateways?.[0]?.provider?.gatewayId || null,
+      cameraLabel: camera.name || null,
+      cameraAssetId: camera.id || null,
+      cameraGatewayId: gateway?.provider?.gatewayId || null,
+      imei: gateway?.imei || null,
+      model: gateway?.model || null,
+      supplier: gateway?.supplier || null,
+      isOnline: Boolean(gateway?.isOnline),
+      connectionStatus: gateway?.state?.connectionStatus ?? null,
+      movementStatus: gateway?.state?.movementStatus ?? null,
+      updatedAt: gateway?.state?.updatedAt || null,
+      location: position ? { lat: position.latitude, lng: position.longitude } : null,
+    }
+  }).sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
+
+  return { items, generatedAt: new Date().toISOString() }
+}
+
 async function loadLiveFuelLevels() {
   const payload = await publicApiGet('/Asset/Search', { Take: 200 })
   const byTracker = new Map()
@@ -1593,6 +1625,14 @@ app.get('/api/fuel-live', async (_req, res) => {
     res.json(await loadLiveFuelLevels())
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || 'Impossible de charger les niveaux de carburant live.' })
+  }
+})
+
+app.get('/api/cameras', async (_req, res) => {
+  try {
+    res.json(await loadCameraAssets())
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Impossible de charger les caméras.' })
   }
 })
 
