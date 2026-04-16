@@ -189,7 +189,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     setSelectedTrackIds((prev) => prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key])
   }
 
-  const selectedTrackData = Object.values(trackMap)
+  const selectedTrackData = selectedTrackIds.length > 0 ? Object.values(trackMap) : []
   const allSegments = selectedTrackData.flatMap((item) => item?.segments || [])
   const allEvents = selectedTrackData.flatMap((item) => item?.events || [])
   const totalDistanceKm = allSegments.reduce((sum, segment) => sum + (Number(segment.length) || 0), 0)
