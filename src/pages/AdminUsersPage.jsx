@@ -1,24 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search, Shield, UserCog, UserPlus, Users } from 'lucide-react'
+import { APP_VIEWS } from '../components/Layout'
 import { createAdminUser, deleteAdminUser, loadAdminUsers, updateAdminUser } from '../lib/fleeti'
+
+const PAGE_PERMISSIONS = APP_VIEWS.map((view) => ({ permission: view.permission, label: view.label }))
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', permissions: ['*'] },
-  { value: 'ops', label: 'Exploitation', permissions: ['manage_delivery_orders', 'manage_fuel_vouchers'] },
-  { value: 'viewer', label: 'Lecture seule', permissions: [] },
+  { value: 'ops', label: 'Exploitation', permissions: ['manage_delivery_orders', 'manage_fuel_vouchers', 'page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports'] },
+  { value: 'viewer', label: 'Lecture seule', permissions: ['page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports'] },
 ]
+
+function getDefaultPermissions(role) {
+  const roleConfig = ROLE_OPTIONS.find((item) => item.value === role)
+  return (roleConfig?.permissions || []).filter((entry) => entry !== '*')
+}
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('viewer')
+  const [selectedPermissions, setSelectedPermissions] = useState(getDefaultPermissions('viewer'))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [editingEmail, setEditingEmail] = useState('')
   const [editingRole, setEditingRole] = useState('viewer')
   const [editingPassword, setEditingPassword] = useState('')
+  const [editingPermissions, setEditingPermissions] = useState(getDefaultPermissions('viewer'))
 
   async function refresh() {
     setLoading(true)
@@ -38,32 +48,37 @@ export function AdminUsersPage() {
   async function submit(e) {
     e.preventDefault()
     setError('')
-    const selected = ROLE_OPTIONS.find((item) => item.value === role)
     try {
-      await createAdminUser({ email, password, role, permissions: selected?.permissions || [] })
+      await createAdminUser({ email, password, role, permissions: role === 'admin' ? ['*'] : selectedPermissions })
       setEmail('')
       setPassword('')
       setRole('viewer')
+      setSelectedPermissions(getDefaultPermissions('viewer'))
       await refresh()
     } catch (err) {
       setError(err.message || 'Impossible de créer cet utilisateur.')
     }
   }
 
-  async function startEdit(user) {
+  function startEdit(user) {
     setEditingEmail(user.email)
     setEditingRole(user.role || 'viewer')
     setEditingPassword('')
+    setEditingPermissions(Array.isArray(user.permissions) ? user.permissions.filter((entry) => entry !== '*') : [])
     setError('')
   }
 
   async function saveEdit() {
     try {
-      const selected = ROLE_OPTIONS.find((item) => item.value === editingRole)
-      await updateAdminUser(editingEmail, { role: editingRole, permissions: selected?.permissions || [], password: editingPassword || undefined })
+      await updateAdminUser(editingEmail, {
+        role: editingRole,
+        permissions: editingRole === 'admin' ? ['*'] : editingPermissions,
+        password: editingPassword || undefined,
+      })
       setEditingEmail('')
       setEditingRole('viewer')
       setEditingPassword('')
+      setEditingPermissions(getDefaultPermissions('viewer'))
       await refresh()
     } catch (err) {
       setError(err.message || 'Impossible de mettre à jour cet utilisateur.')
@@ -82,9 +97,9 @@ export function AdminUsersPage() {
     viewers: users.filter((user) => user.role === 'viewer').length,
   }), [users])
 
-  function roleBadge(role) {
-    if (role === 'admin') return { label: 'Admin', bg: '#dcfce7', color: '#166534' }
-    if (role === 'ops') return { label: 'Exploitation', bg: '#dbeafe', color: '#1d4ed8' }
+  function roleBadge(roleValue) {
+    if (roleValue === 'admin') return { label: 'Admin', bg: '#dcfce7', color: '#166534' }
+    if (roleValue === 'ops') return { label: 'Exploitation', bg: '#dbeafe', color: '#1d4ed8' }
     return { label: 'Lecture', bg: '#f1f5f9', color: '#334155' }
   }
 
@@ -115,11 +130,29 @@ export function AdminUsersPage() {
         <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto', marginBottom: 0, alignItems: 'center' }} onSubmit={submit}>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
           <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <select value={role} onChange={(e) => {
+            const nextRole = e.target.value
+            setRole(nextRole)
+            setSelectedPermissions(getDefaultPermissions(nextRole))
+          }}>
             {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <button className="primary-btn" type="submit">Créer</button>
         </form>
+        {role !== 'admin' && (
+          <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
+            {PAGE_PERMISSIONS.map((item) => (
+              <label key={item.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedPermissions.includes(item.permission)}
+                  onChange={(e) => setSelectedPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                />
+                <span>{item.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
         {error && <div className="error-banner" style={{ marginTop: 12 }}>{error}</div>}
       </section>
 
@@ -162,13 +195,31 @@ export function AdminUsersPage() {
         <section className="panel panel-large data-card-panel">
           <div className="panel-header"><div><h3><UserCog size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
           <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto auto' }}>
-            <select value={editingRole} onChange={(e) => setEditingRole(e.target.value)}>
+            <select value={editingRole} onChange={(e) => {
+              const nextRole = e.target.value
+              setEditingRole(nextRole)
+              setEditingPermissions(getDefaultPermissions(nextRole))
+            }}>
               {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <input value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
             <button className="primary-btn" onClick={saveEdit}>Enregistrer</button>
             <button className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
           </div>
+          {editingRole !== 'admin' && (
+            <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
+              {PAGE_PERMISSIONS.map((item) => (
+                <label key={item.permission} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={editingPermissions.includes(item.permission)}
+                    onChange={(e) => setEditingPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

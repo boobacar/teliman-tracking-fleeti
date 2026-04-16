@@ -192,6 +192,14 @@ function hasPermission(user, permission) {
   return permissions.includes(permission)
 }
 
+function normalizeUserPermissions(role, permissions = []) {
+  const basePages = ['page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports']
+  if (role === 'admin') return ['*']
+  const normalized = Array.from(new Set((permissions || []).map((entry) => String(entry || '').trim()).filter(Boolean)))
+  const withBase = Array.from(new Set([...basePages, ...normalized]))
+  return withBase
+}
+
 function sanitizeUserOutput(user) {
   return {
     email: user.email,
@@ -1356,7 +1364,7 @@ app.post('/api/admin/users', requirePermission('manage_users'), (req, res) => {
   if (findAuthUser(email)) return res.status(409).json({ ok: false, error: 'Cet utilisateur existe déjà.' })
   const salt = crypto.randomBytes(16).toString('hex')
   const passwordHash = hashPassword(password, salt)
-  const nextUsers = [...AUTH_USERS, { email, role, permissions: role === 'admin' ? ['*'] : permissions, salt, passwordHash }]
+  const nextUsers = [...AUTH_USERS, { email, role, permissions: normalizeUserPermissions(role, permissions), salt, passwordHash }]
   saveAuthUsers(nextUsers)
   return res.status(201).json({ ok: true, user: sanitizeUserOutput(findAuthUser(email)) })
 })
@@ -1377,7 +1385,7 @@ app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, re
 
   const updatedUsers = AUTH_USERS.map((item) => {
     if (item.email !== targetEmail) return item
-    const next = { ...item, role, permissions: role === 'admin' ? ['*'] : permissions }
+    const next = { ...item, role, permissions: normalizeUserPermissions(role, permissions) }
     if (password) {
       const salt = crypto.randomBytes(16).toString('hex')
       next.salt = salt

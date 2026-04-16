@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { BarChart3, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Shield, Siren, X, Car } from 'lucide-react'
 
-const views = [
-  { id: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { id: '/map', label: 'Live Map', icon: Map },
-  { id: '/fleet', label: 'Flotte', icon: Car },
-  { id: '/alerts', label: 'Alertes', icon: Siren },
-  { id: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { id: '/reports', label: 'Rapports', icon: FileSpreadsheet },
+export const APP_VIEWS = [
+  { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
+  { id: '/map', label: 'Live Map', icon: Map, permission: 'page_map' },
+  { id: '/fleet', label: 'Flotte', icon: Car, permission: 'page_fleet' },
+  { id: '/alerts', label: 'Alertes', icon: Siren, permission: 'page_alerts' },
+  { id: '/analytics', label: 'Analytics', icon: BarChart3, permission: 'page_analytics' },
+  { id: '/reports', label: 'Rapports', icon: FileSpreadsheet, permission: 'page_reports' },
   { id: '/delivery-orders', label: 'Bons livraison', icon: ReceiptText, permission: 'manage_delivery_orders' },
   { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
   { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
@@ -32,7 +32,7 @@ export function Layout({ children, loading, refreshData, search, setSearch, data
           <strong style={{ display: 'block', fontSize: 13 }}>Connecté</strong>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>{currentUser?.email || 'Admin'}</span>
         </div>
-        <nav className="view-nav">{views.filter((view) => canAccess(view.permission)).map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
+        <nav className="view-nav">{APP_VIEWS.filter((view) => canAccess(view.permission)).map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
         <button className="ghost-btn" style={{ marginTop: 16 }} onClick={onLogout}><LogOut size={16} />Déconnexion</button>
       </aside>
 
