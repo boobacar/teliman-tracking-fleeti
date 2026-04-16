@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import DatePicker from 'react-datepicker'
+import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fleeti'
-import 'react-datepicker/dist/react-datepicker.css'
 
 const REPORT_TYPES = [
   { value: 'k1', label: 'HIGH LEVEL K1' },
@@ -406,7 +405,7 @@ export function ReportsPage() {
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack">
             <span>Du</span>
-            <DatePicker
+            <StableDatePicker
               selected={ymdToDate(from)}
               onChange={(value) => setFrom(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"
@@ -419,7 +418,7 @@ export function ReportsPage() {
           </label>
           <label className="field-stack">
             <span>Au</span>
-            <DatePicker
+            <StableDatePicker
               selected={ymdToDate(to)}
               onChange={(value) => setTo(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"

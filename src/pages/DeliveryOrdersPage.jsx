@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import DatePicker from 'react-datepicker'
+import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { Camera, Trash2 } from 'lucide-react'
-import 'react-datepicker/dist/react-datepicker.css'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 
 function formatFrenchQuantity(value, digits = 3) {
@@ -338,7 +337,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           <input placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
           <label className="field-stack">
             <span>Départ</span>
-            <DatePicker
+            <StableDatePicker
               selected={form.departureDateTime ? new Date(form.departureDateTime) : null}
               onChange={(value) => setForm({ ...form, departureDateTime: value ? value.toISOString() : '' })}
               showTimeSelect
@@ -353,7 +352,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           </label>
           <label className="field-stack">
             <span>Arrivée</span>
-            <DatePicker
+            <StableDatePicker
               selected={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
               onChange={(value) => setForm({ ...form, arrivalDateTime: value ? value.toISOString() : '' })}
               showTimeSelect
@@ -402,7 +401,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           <option value="all">Tous les clients</option>
           {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
         </select>
-        <DatePicker
+        <StableDatePicker
           selected={dateFilter}
           onChange={(value) => setDateFilter(value)}
           dateFormat="dd/MM/yyyy"

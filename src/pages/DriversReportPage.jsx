@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import DatePicker from 'react-datepicker'
+import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { Download, MapPin, Truck } from 'lucide-react'
 import { jsPDF } from 'jspdf'
@@ -125,7 +125,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
         <div className="reports-filter-grid" style={{ marginTop: 0, alignItems: 'end' }}>
           <label className="field-stack">
             <span>Du</span>
-            <DatePicker
+            <StableDatePicker
               selected={ymdToDate(from)}
               onChange={(value) => setFrom(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"
@@ -138,7 +138,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
           </label>
           <label className="field-stack">
             <span>Au</span>
-            <DatePicker
+            <StableDatePicker
               selected={ymdToDate(to)}
               onChange={(value) => setTo(dateToYmd(value))}
               dateFormat="dd/MM/yyyy"

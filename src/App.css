@@ -137,6 +137,25 @@ input {
   min-width: 170px;
 }
 
+.stable-date-picker-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.stable-date-picker-clear {
+  justify-self: start;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.stable-date-picker-clear:hover {
+  color: #e2e8f0;
+}
+
 .modern-date-popper,
 .react-datepicker-popper,
 .modern-date-popper--front {

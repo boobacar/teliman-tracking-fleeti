@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import DatePicker from 'react-datepicker'
+import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { Camera, Pencil, Trash2 } from 'lucide-react'
-import 'react-datepicker/dist/react-datepicker.css'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
@@ -202,7 +201,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <input value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
           <label className="field-stack">
             <span>Date et heure</span>
-            <DatePicker
+            <StableDatePicker
               selected={form.dateTime ? new Date(form.dateTime) : null}
               onChange={(value) => setForm((c) => ({ ...c, dateTime: value ? value.toISOString() : '' }))}
               showTimeSelect
@@ -237,7 +236,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             <option value="all">Tous les camions</option>
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
-          <DatePicker
+          <StableDatePicker
             selected={dateFilter}
             onChange={(value) => setDateFilter(value)}
             dateFormat="dd/MM/yyyy"

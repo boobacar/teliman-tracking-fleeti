@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Printer, Trash2 } from 'lucide-react'
-import DatePicker from 'react-datepicker'
+import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, loadDeliveryOrder, resolveMediaUrl, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
-import 'react-datepicker/dist/react-datepicker.css'
 
 function formatFrenchQuantity(value, digits = 3) {
   const normalized = Number(String(value ?? '').replace(',', '.'))
@@ -219,7 +218,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <input value={form?.quantity || ''} onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))} disabled={saving} placeholder="Quantité / tonnage" />
           <label className="field-stack">
             <span>Départ</span>
-            <DatePicker
+            <StableDatePicker
               selected={form?.departureDateTime ? new Date(form.departureDateTime) : null}
               onChange={(value) => setForm((current) => ({ ...current, departureDateTime: value ? value.toISOString() : '' }))}
               showTimeSelect
@@ -235,7 +234,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           </label>
           <label className="field-stack">
             <span>Arrivée</span>
-            <DatePicker
+            <StableDatePicker
               selected={form?.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
               onChange={(value) => setForm((current) => ({ ...current, arrivalDateTime: value ? value.toISOString() : '' }))}
               showTimeSelect
@@ -251,7 +250,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           </label>
           <label className="field-stack">
             <span>Créé le</span>
-            <DatePicker
+            <StableDatePicker
               selected={form?.date ? new Date(form.date) : null}
               onChange={(value) => setForm((current) => ({ ...current, date: value ? value.toISOString() : '' }))}
               showTimeSelect
