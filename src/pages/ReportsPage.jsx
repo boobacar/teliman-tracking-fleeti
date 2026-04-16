@@ -236,7 +236,7 @@ export function ReportsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => inRange(r.arrivalDateTime || r.date, from, to)), (row) => row.reference), [deliveries, from, to])
+  const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => inRange(r.date, from, to)), (row) => row.reference), [deliveries, from, to])
   const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
   const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
   const k1_05 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch05(r.goods)), (row) => row.reference), [k1Rows])
@@ -260,8 +260,8 @@ export function ReportsPage() {
         clientName: 'K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
         rows: [
-          ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
-          ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+          ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
+          ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
         ],
         footerRows: [[
           'TOTAL K1',
@@ -277,7 +277,7 @@ export function ReportsPage() {
         title: 'HIGH LEVEL CADERAC',
         clientName: 'CADERAC',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
-        rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.destination]),
+        rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination]),
         footerRows: [[
           'TOTAL CADERAC',
           '',
@@ -293,7 +293,7 @@ export function ReportsPage() {
         title: 'ETAT DE RECONCILIATION K1',
         clientName: 'K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
-        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
+        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
         footerRows: [[
           'TOTAL K1',
           '',
@@ -355,12 +355,12 @@ export function ReportsPage() {
       return downloadCsv('HIGH_LEVEL_K1.csv', [
         ['HIGH LEVEL K1 - PRODUIT 0/5'],
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+        ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
         ['TOTAL 0/5', '', formatQtyPlain(k1_05.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
         [],
         ['HIGH LEVEL K1 - PRODUIT 10/14'],
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel]),
+        ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
         ['TOTAL 10/14', '', formatQtyPlain(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
         ['TOTAL K1', '', formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
       ], from, to)
@@ -370,7 +370,7 @@ export function ReportsPage() {
       return downloadCsv('HIGH_LEVEL_CADERAC.csv', [
         ['HIGH LEVEL CADERAC - DETAIL'],
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
-        ...caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.destination]),
+        ...caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination]),
         [],
         ['AGREGAT QUANTITE PAR DESTINATION'],
         ['DESTINATION', 'QTE'],
@@ -383,7 +383,7 @@ export function ReportsPage() {
     if (type === 'reco-k1') {
       return downloadCsv('RECONCILIATION_K1.csv', [
         ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM CHAUFFEUR'],
-        ...k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.arrivalDateTime || r.date), r.truckLabel, r.driver]),
+        ...k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
         [],
         ['TOTAL K1', '', formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', ''],
       ], from, to)
@@ -461,14 +461,14 @@ export function ReportsPage() {
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
+            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
           ]} />
           <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_1014} footerRows={[[`TOTAL`, '', formatQtyPlain(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
+            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
           ]} />
         </>
@@ -480,7 +480,7 @@ export function ReportsPage() {
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
+            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
             { key: 'destination', label: 'DESTINATION' },
           ]} />
@@ -497,7 +497,7 @@ export function ReportsPage() {
           { key: 'reference', label: 'NUMERO BL' },
           { key: 'goods', label: 'TYPE DE PRODUIT' },
           { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-          { key: 'arrivalDateTime', label: 'DATE ET HEURE DE DECHARGEMENT', render: (_, row) => formatDateTime(row.arrivalDateTime || row.date) },
+          { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
           { key: 'truckLabel', label: 'IMMATRICULATION' },
           { key: 'driver', label: 'NOM DU CHAUFFEUR' },
         ]} />
