@@ -1,6 +1,11 @@
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'
 
+function isBrowser() {
+  return typeof window !== 'undefined'
+}
+
 function getSessionHeaders() {
+  if (!isBrowser()) return {}
   const email = localStorage.getItem('teliman_user_email') || ''
   const sessionToken = localStorage.getItem('teliman_session_token') || ''
   return email && sessionToken ? { 'x-user-email': email, 'x-session-token': sessionToken } : {}
@@ -41,10 +46,12 @@ export async function login(email, password) {
     })
     const data = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(data?.error || 'Connexion impossible. Veuillez réessayer.')
-    localStorage.setItem('teliman_user_email', data.user.email)
-    localStorage.setItem('teliman_session_token', data.sessionToken)
-    localStorage.setItem('teliman_user_role', data.user.role || '')
-    localStorage.setItem('teliman_user_permissions', JSON.stringify(data.user.permissions || []))
+    if (isBrowser()) {
+      localStorage.setItem('teliman_user_email', data.user.email)
+      localStorage.setItem('teliman_session_token', data.sessionToken)
+      localStorage.setItem('teliman_user_role', data.user.role || '')
+      localStorage.setItem('teliman_user_permissions', JSON.stringify(data.user.permissions || []))
+    }
     return data
   } catch (error) {
     if (error instanceof TypeError) {
@@ -55,6 +62,7 @@ export async function login(email, password) {
 }
 
 export function logout() {
+  if (!isBrowser()) return
   localStorage.removeItem('teliman_user_email')
   localStorage.removeItem('teliman_session_token')
   localStorage.removeItem('teliman_user_role')

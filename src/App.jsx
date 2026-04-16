@@ -76,16 +76,24 @@ function App() {
       setDataset(fleet)
       try {
         const module = await import('./lib/fleeti')
-        const reportsPayload = await module.loadReports()
+        const [reportsPayload, ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
+          module.loadReports().catch(() => ({ summary: {}, rows: [] })),
+          module.loadDeliveryOrders().catch(() => ({ items: [] })),
+          module.loadDeliveryOrdersSummary().catch(() => ({ total: 0, active: 0, delivered: 0, byTruck: {} })),
+          module.loadMasterData().catch(() => ({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })),
+        ])
         setReports(reportsPayload)
+        setDeliveryOrders(ordersPayload?.items || [])
+        setDeliveryOrdersSummary(ordersSummaryPayload || { total: 0, active: 0, delivered: 0, byTruck: {} })
+        setMasterData(masterDataPayload || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
       } catch {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
         setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [] })
+        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
       }
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Chargement impossible. Veuillez vérifier votre session.')
     } finally {
       setLoading(false)
     }
@@ -104,6 +112,7 @@ function App() {
       }
     }
     boot()
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -171,7 +180,13 @@ function App() {
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
 
-  if (authLoading) return <div className="info-banner">Vérification de session...</div>
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #0f172a, #111827)', color: '#fff' }}>
+        <div style={{ padding: 24, borderRadius: 18, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(6px)' }}>Vérification de session...</div>
+      </div>
+    )
+  }
   if (!currentUser) {
     return (
       <Suspense fallback={<div className="info-banner">Chargement…</div>}>
