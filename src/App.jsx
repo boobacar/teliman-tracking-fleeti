@@ -175,9 +175,13 @@ function App() {
   if (!currentUser) {
     return (
       <Suspense fallback={<div className="info-banner">Chargement…</div>}>
-        <LoginPage onLoggedIn={async () => {
-          const user = await getCurrentUser()
-          setCurrentUser(user)
+        <LoginPage onLoggedIn={async (user) => {
+          if (user) {
+            setCurrentUser(user)
+            return
+          }
+          const refreshedUser = await getCurrentUser()
+          setCurrentUser(refreshedUser)
         }} />
       </Suspense>
     )
