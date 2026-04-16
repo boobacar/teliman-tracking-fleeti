@@ -1,10 +1,10 @@
 import { Activity, AlertTriangle, Gauge, Route } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, LineChart, Line } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 export function AnalyticsPage({ filteredTrackers, importantEvents }) {
   const mileageData = filteredTrackers.map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage }))
-  const riskData = filteredTrackers.map((tracker) => ({ name: tracker.label, risk: tracker.riskScore }))
+  const alertCountData = filteredTrackers.map((tracker) => ({ name: tracker.label, alerts: tracker.events.length }))
   const speedData = filteredTrackers.map((tracker) => ({ name: tracker.label, speed: tracker.state?.gps?.speed ?? 0 }))
   const statusData = [
     { name: 'Active', value: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'active').length },
@@ -20,7 +20,7 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
     { icon: <Route size={16} />, label: 'Km moyens', value: Math.round(mileageData.reduce((a, x) => a + x.mileage, 0) / Math.max(mileageData.length, 1)) },
     { icon: <AlertTriangle size={16} />, label: 'Alertes visibles', value: importantEvents.length },
     { icon: <Gauge size={16} />, label: 'Vitesse max', value: Math.max(...speedData.map((x) => x.speed), 0) },
-    { icon: <Activity size={16} />, label: 'Risque max', value: Math.max(...riskData.map((x) => x.risk), 0) },
+    { icon: <Activity size={16} />, label: 'Événements max', value: Math.max(...alertCountData.map((x) => x.alerts), 0) },
   ]
 
   return (
@@ -44,15 +44,15 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
         </div>
 
         <div className="panel">
-          <div className="panel-header"><div><h3>Analyse risque</h3><p>Score de risque par tracker</p></div></div>
+          <div className="panel-header"><div><h3>Analyse alertes</h3><p>Nombre d’événements par tracker</p></div></div>
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={riskData}>
+            <BarChart data={alertCountData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
               <XAxis dataKey="name" stroke="#8da2c0" />
               <YAxis stroke="#8da2c0" />
               <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-              <Line type="monotone" dataKey="risk" stroke="#f59e0b" strokeWidth={3} />
-            </LineChart>
+              <Bar dataKey="alerts" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </section>
@@ -72,7 +72,7 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
 
       <section className="dashboard-grid premium-grid phase2-grid">
         <div className="panel"><div className="panel-header"><div><h3>Top trackers</h3><p>Les plus actifs aujourd’hui</p></div></div><div className="driver-ranking">{mileageData.sort((a,b) => b.mileage - a.mileage).slice(0,5).map((item, index) => <Link key={item.name} className="driver-rank-row link-row" to="/trackers"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Kilométrage</small></div><div><span>{item.mileage} km</span><small>activité</small></div></Link>)}</div></div>
-        <div className="panel"><div className="panel-header"><div><h3>Top risque</h3><p>Les plus sensibles</p></div></div><div className="driver-ranking">{riskData.sort((a,b) => b.risk - a.risk).slice(0,5).map((item, index) => <Link key={item.name} className="driver-rank-row link-row" to="/trackers"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Score de risque</small></div><div><span>{item.risk}</span><small>priorité</small></div></Link>)}</div></div>
+        <div className="panel"><div className="panel-header"><div><h3>Top alertes</h3><p>Trackers avec le plus d’événements</p></div></div><div className="driver-ranking">{alertCountData.sort((a,b) => b.alerts - a.alerts).slice(0,5).map((item, index) => <Link key={item.name} className="driver-rank-row link-row" to="/trackers"><strong>#{index + 1}</strong><div><span>{item.name}</span><small>Événements détectés</small></div><div><span>{item.alerts}</span><small>priorité terrain</small></div></Link>)}</div></div>
       </section>
 
       <section className="dashboard-grid premium-grid phase2-grid">
