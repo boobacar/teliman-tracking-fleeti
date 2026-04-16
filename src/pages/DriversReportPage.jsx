@@ -111,39 +111,37 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
         <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée de l’activité chauffeur, clients desservis, tonnage et position actuelle.</p></div></div>
       </section>
 
-      <section className="panel panel-large">
-        <div className="reports-filter-grid" style={{ marginTop: 0 }}>
+      <section className="panel panel-large reports-v2-hero">
+        <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack">
             <span>Du</span>
             <DatePicker
               selected={ymdToDate(from)}
-              onChange={(value) => setFrom(dateToYmd(value))}
-              onCalendarClose={() => setFrom((prev) => prev || today)}
+              onChange={(value) => setFrom(dateToYmd(value) || today)}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date début"
+              isClearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper modern-date-popper--front"
-              popperPlacement="bottom-start"
+              popperClassName="modern-date-popper"
             />
           </label>
           <label className="field-stack">
             <span>Au</span>
             <DatePicker
               selected={ymdToDate(to)}
-              onChange={(value) => setTo(dateToYmd(value))}
-              onCalendarClose={() => setTo((prev) => prev || today)}
+              onChange={(value) => setTo(dateToYmd(value) || today)}
               dateFormat="dd/MM/yyyy"
               locale={fr}
               placeholderText="Date fin"
+              isClearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper modern-date-popper--front"
-              popperPlacement="bottom-start"
+              popperClassName="modern-date-popper"
             />
           </label>
           <label className="field-stack"><span>Chauffeur</span><select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}><option value="">Tous</option>{driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}</select></label>
