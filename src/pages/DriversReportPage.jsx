@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { fr } from 'date-fns/locale'
 import { Download, MapPin, Truck } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -47,14 +46,9 @@ function formatQty(value) {
 
 export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  const [from, setFrom] = useState(today)
+  const [to, setTo] = useState(today)
   const [selectedDriver, setSelectedDriver] = useState('')
-
-  useEffect(() => {
-    setFrom((prev) => prev || today)
-    setTo((prev) => prev || today)
-  }, [today])
 
   const rows = useMemo(() => deliveryOrders.filter((item) => inRange(item.date, from, to)), [deliveryOrders, from, to])
 
@@ -126,27 +120,23 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
           <label className="field-stack">
             <span>Du</span>
             <StableDatePicker
-              selected={ymdToDate(from)}
-              onChange={(value) => setFrom(dateToYmd(value))}
-              dateFormat="dd/MM/yyyy"
-              locale={fr}
-              placeholderText="Date début"
-              isClearable
+              value={ymdToDate(from)}
+              onChange={(value) => setFrom(dateToYmd(value) || today)}
+              placeholder="Date début"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
+              popperClassName="modern-date-popper driver-report-date-popper"
             />
           </label>
           <label className="field-stack">
             <span>Au</span>
             <StableDatePicker
-              selected={ymdToDate(to)}
-              onChange={(value) => setTo(dateToYmd(value))}
-              dateFormat="dd/MM/yyyy"
-              locale={fr}
-              placeholderText="Date fin"
-              isClearable
+              value={ymdToDate(to)}
+              onChange={(value) => setTo(dateToYmd(value) || today)}
+              placeholder="Date fin"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
+              popperClassName="modern-date-popper driver-report-date-popper"
             />
           </label>
           <label className="field-stack">

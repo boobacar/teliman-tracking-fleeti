@@ -9,6 +9,7 @@ export function StableDatePicker({
   withTime = false,
   clearable = true,
   className = 'filter-control modern-date-input',
+  popperClassName = 'modern-date-popper',
 }) {
   const selected = value instanceof Date ? value : value ? new Date(value) : null
   const isValid = selected instanceof Date && !Number.isNaN(selected.getTime())
@@ -25,7 +26,7 @@ export function StableDatePicker({
         placeholderText={placeholder}
         isClearable={clearable}
         className={className}
-        popperClassName="modern-date-popper"
+        popperClassName={popperClassName}
       />
       {clearable && isValid ? (
         <button type="button" className="stable-date-picker-clear" onClick={() => onChange(null)} aria-label="Réinitialiser la date">

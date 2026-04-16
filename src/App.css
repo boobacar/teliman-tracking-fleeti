@@ -167,6 +167,10 @@ input {
   position: relative;
 }
 
+.driver-report-date-popper {
+  z-index: 2147483647 !important;
+}
+
 .reports-excel .panel,
 .reports-excel .reports-v2-hero {
   overflow: visible !important;
