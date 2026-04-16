@@ -259,14 +259,15 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
   function exportPdf() {
     const doc = new jsPDF({ orientation: 'landscape' })
-    doc.setFontSize(18)
-    doc.text('Rapport Trajets Fleeti', 14, 18)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(20)
+    doc.text('Rapport Trajets Teliman', 14, 18)
+    doc.setFont('helvetica', 'normal')
     doc.setFontSize(11)
-    doc.text(`Période: ${from} → ${to}`, 14, 26)
-    doc.text('Source: segments Fleeti bruts sans regroupement', 14, 33)
+    doc.text(`Période : du ${from} au ${to}`, 14, 27)
 
     autoTable(doc, {
-      startY: 40,
+      startY: 36,
       head: [['Camion', 'Chauffeur', 'Trajets', 'Distance', 'Durée', 'Événements']],
       body: summaryByTruck.map((item) => [
         item.truckLabel,
