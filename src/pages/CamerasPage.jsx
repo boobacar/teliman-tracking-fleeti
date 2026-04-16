@@ -46,6 +46,7 @@ export function CamerasPage() {
                 <th>IMEI</th>
                 <th>Dernière remontée</th>
                 <th>Position</th>
+                <th>Live view</th>
               </tr>
             </thead>
             <tbody>
@@ -62,9 +63,15 @@ export function CamerasPage() {
                   <td>{item.imei || '-'}</td>
                   <td>{item.updatedAt ? new Date(item.updatedAt).toLocaleString('fr-FR') : '-'}</td>
                   <td>{item.location ? <><MapPin size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />{item.location.lat?.toFixed(5)}, {item.location.lng?.toFixed(5)}</> : '-'}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: item.liveViewAvailable ? '#dcfce7' : '#fef3c7', color: item.liveViewAvailable ? '#166534' : '#92400e', fontWeight: 600, fontSize: 12 }}>
+                      {item.liveViewAvailable ? 'Disponible' : 'Indisponible'}
+                    </span>
+                    {!item.liveViewAvailable && <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>{item.liveViewReason}</div>}
+                  </td>
                 </tr>
               ))}
-              {!loading && items.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune caméra trouvée.</td></tr>}
+              {!loading && items.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune caméra trouvée.</td></tr>}
             </tbody>
           </table>
         </div>

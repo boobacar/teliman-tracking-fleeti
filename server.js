@@ -594,13 +594,15 @@ function formatFuelSnapshot(asset = {}) {
 }
 
 async function loadCameraAssets() {
-  const payload = await publicApiGet('/Asset/Search', { Take: 200 })
+  const payload = await publicApiGet('/Asset/Search', { Take: 500 })
   const results = payload.results || []
-  const cameraAssets = results.filter((asset) => String(asset.name || '').toLowerCase().includes('-cam'))
-  const truckAssets = results.filter((asset) => asset.assetType === 10 && !String(asset.name || '').toLowerCase().includes('-cam'))
+  const isCameraName = (value) => /(?:-cam|_cam)$/i.test(String(value || '').trim())
+  const normalizeCameraBase = (value) => String(value || '').replace(/(?:-cam|_cam)$/i, '').trim()
+  const cameraAssets = results.filter((asset) => isCameraName(asset.name) || isCameraName(asset.properties?.licensePlate) || /dashcam/i.test(String(asset.gateways?.[0]?.model || '')))
+  const truckAssets = results.filter((asset) => asset.assetType === 10 && !isCameraName(asset.name) && !isCameraName(asset.properties?.licensePlate))
 
   const items = cameraAssets.map((camera) => {
-    const cameraBase = String(camera.name || '').replace(/-cam$/i, '').trim()
+    const cameraBase = normalizeCameraBase(camera.name || camera.properties?.licensePlate)
     const truck = truckAssets.find((asset) => String(asset.name || '').trim().toLowerCase() === cameraBase.toLowerCase()) || null
     const gateway = (camera.gateways || [])[0] || null
     const position = gateway?.state?.position?.location || null
@@ -611,6 +613,8 @@ async function loadCameraAssets() {
       cameraLabel: camera.name || null,
       cameraAssetId: camera.id || null,
       cameraGatewayId: gateway?.provider?.gatewayId || null,
+      liveViewAvailable: false,
+      liveViewReason: 'Aucun flux live ou lien vidéo exploitable n’est exposé par l’API publique Fleeti actuellement.',
       imei: gateway?.imei || null,
       model: gateway?.model || null,
       supplier: gateway?.supplier || null,
