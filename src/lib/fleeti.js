@@ -20,21 +20,31 @@ export function resolveMediaUrl(path) {
 }
 
 async function getJson(path) {
-  const response = await fetch(`${BACKEND_URL}${path}`, { headers: { ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, { headers: { ...getSessionHeaders() } })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    return data
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    throw error
+  }
 }
 
 async function postJson(path, body) {
-  const response = await fetch(`${BACKEND_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
-    body: JSON.stringify(body),
-  })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    return data
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    throw error
+  }
 }
 
 export async function login(email, password) {

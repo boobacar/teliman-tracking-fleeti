@@ -93,7 +93,8 @@ function App() {
         setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
       }
     } catch (err) {
-      setError(err.message || 'Chargement impossible. Veuillez vérifier votre session.')
+      const message = err?.message || 'Chargement impossible. Veuillez vérifier votre session.'
+      setError(message === 'Failed to fetch' ? 'Impossible de joindre le serveur. Vérifiez la configuration réseau ou CORS.' : message)
     } finally {
       setLoading(false)
     }

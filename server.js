@@ -97,8 +97,8 @@ function buildCorsOptions() {
       if (isAllowedOrigin(origin)) return callback(null, true)
       return callback(new Error(`Origin not allowed by CORS: ${origin}`))
     },
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'X-API-Key'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-API-Key', 'x-user-email', 'x-session-token'],
   }
 }
 
