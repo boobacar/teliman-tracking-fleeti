@@ -545,14 +545,29 @@ function getFuelSensorPriority(sensor = {}) {
   return 0
 }
 
+function collectGatewayFuelSensors(gateway = {}) {
+  const directSensors = gateway?.providerSensors || []
+  const accessorySensors = (gateway?.accessories || []).flatMap((accessory) => accessory?.providerSensors || [])
+  return [...directSensors, ...accessorySensors]
+}
+
 function formatFuelSnapshot(asset = {}) {
   const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0]
-  const providerSensors = (gateway?.providerSensors || []).filter((sensor) => {
+  const gatewaySensors = collectGatewayFuelSensors(gateway)
+  const preferredFuelSensors = gatewaySensors.filter((sensor) => {
     const inputName = String(sensor.inputName || '').toLowerCase()
-    return inputName.includes('fuel') || inputName === 'avl_io_89'
+    const units = String(sensor.units || '').toLowerCase()
+    return inputName.includes('fuel') || inputName.includes('lls_level') || inputName === 'avl_io_89' || units === 'l'
   })
-  const sortedSensors = [...providerSensors].sort((a, b) => getFuelSensorPriority(b) - getFuelSensorPriority(a))
-  const preferredSensor = sortedSensors.find((sensor) => Number.isFinite(sensor?.value)) || sortedSensors[0] || null
+  const allValueSensors = gatewaySensors.filter((sensor) => Number.isFinite(sensor?.value))
+  const sortedSensors = [...preferredFuelSensors].sort((a, b) => getFuelSensorPriority(b) - getFuelSensorPriority(a))
+  const fallbackSensor = allValueSensors.find((sensor) => {
+    const inputName = String(sensor.inputName || '').toLowerCase()
+    const units = String(sensor.units || '').toLowerCase()
+    return units === 'l' || inputName.includes('litre') || inputName.includes('fuel') || inputName.includes('lls_level') || inputName === 'avl_io_89' || inputName === 'avl_io_90'
+  }) || null
+  const preferredSensor = sortedSensors.find((sensor) => Number.isFinite(sensor?.value)) || sortedSensors[0] || fallbackSensor || null
+  const sensors = preferredFuelSensors.length ? preferredFuelSensors : (fallbackSensor ? [fallbackSensor] : [])
   return {
     assetId: asset.id || '',
     trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
@@ -567,7 +582,7 @@ function formatFuelSnapshot(asset = {}) {
     fuelUpdatedAt: preferredSensor?.valueUpdatedAt || null,
     fuelInputName: preferredSensor?.inputName || null,
     sensorId: preferredSensor?.id || null,
-    sensors: providerSensors.map((sensor) => ({
+    sensors: sensors.map((sensor) => ({
       id: sensor.id,
       inputName: sensor.inputName || null,
       value: Number.isFinite(sensor.value) ? sensor.value : null,
@@ -580,11 +595,27 @@ function formatFuelSnapshot(asset = {}) {
 
 async function loadLiveFuelLevels() {
   const payload = await publicApiGet('/Asset/Search', { Take: 200 })
-  const items = (payload.results || [])
-    .filter((asset) => asset.assetType === 10)
-    .map((asset) => formatFuelSnapshot(asset))
-    .filter((item) => item.trackerId && TRACKER_IDS.includes(Number(item.trackerId)))
-    .sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
+  const byTracker = new Map()
+  for (const asset of (payload.results || []).filter((entry) => entry.assetType === 10)) {
+    const snapshot = formatFuelSnapshot(asset)
+    if (!snapshot.trackerId || !TRACKER_IDS.includes(Number(snapshot.trackerId))) continue
+    const existing = byTracker.get(String(snapshot.trackerId))
+    const snapshotHasLiters = snapshot.fuelLevel != null && String(snapshot.fuelUnits || '').toLowerCase() === 'l'
+    const existingHasLiters = existing && existing.fuelLevel != null && String(existing.fuelUnits || '').toLowerCase() === 'l'
+    const looksLikeCamera = String(snapshot.truckLabel || '').toLowerCase().includes('-cam')
+    if (!existing) {
+      byTracker.set(String(snapshot.trackerId), snapshot)
+      continue
+    }
+    if (snapshotHasLiters && !existingHasLiters) {
+      byTracker.set(String(snapshot.trackerId), snapshot)
+      continue
+    }
+    if (snapshotHasLiters === existingHasLiters && !looksLikeCamera && String(existing.truckLabel || '').toLowerCase().includes('-cam')) {
+      byTracker.set(String(snapshot.trackerId), snapshot)
+    }
+  }
+  const items = Array.from(byTracker.values()).sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
   return { items, generatedAt: new Date().toISOString() }
 }
 
