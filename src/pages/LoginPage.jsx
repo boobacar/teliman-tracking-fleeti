@@ -15,7 +15,7 @@ export function LoginPage({ onLoggedIn }) {
       await login(email, password)
       onLoggedIn?.()
     } catch (err) {
-      setError(err.message || 'Connexion impossible')
+      setError(err.message || 'Connexion impossible. Veuillez vérifier vos identifiants.')
     } finally {
       setLoading(false)
     }

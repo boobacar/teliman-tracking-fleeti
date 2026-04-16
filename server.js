@@ -16,9 +16,9 @@ const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
 const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
 
 const PORT = Number(process.env.PORT || 8787)
-const ADMIN_EMAILS = ['finances@telimanlogistique.com', 'coordination@telimanlogistique.com', 'marie@telimanlogistique.com', 'boubsfal@gmail.com']
-const ADMIN_PASSWORD = 'Migration3315'
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
+const AUTH_PBKDF2_ITERATIONS = Number(process.env.AUTH_PBKDF2_ITERATIONS || 120000)
+const AUTH_USERS = parseAuthUsers(process.env.AUTH_USERS)
 const API_BASE = process.env.FLEETI_API_BASE
 const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
 const PUBLIC_API_KEY = process.env.FLEETI_PUBLIC_API_KEY || ''
@@ -121,13 +121,49 @@ function protectApi(req, res, next) {
   return res.status(401).json({ ok: false, error: 'Unauthorized' })
 }
 
+function parseAuthUsers(raw) {
+  const fallbackHash = 'ac8412f2775cc339fe63c96e8a876611d35cd941d5325ba962b336b78f131734'
+  const fallbackSalt = 'e36f6f8132d2389d746a4f6e052c7fc0'
+  const fallbackUsers = [
+    'finances@telimanlogistique.com',
+    'coordination@telimanlogistique.com',
+    'marie@telimanlogistique.com',
+    'boubsfal@gmail.com',
+  ].map((email) => ({ email, role: 'admin', salt: fallbackSalt, passwordHash: fallbackHash }))
+  if (!String(raw || '').trim()) return fallbackUsers
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return fallbackUsers
+    return parsed
+      .map((item) => ({
+        email: String(item?.email || '').trim().toLowerCase(),
+        role: String(item?.role || 'user').trim().toLowerCase(),
+        salt: String(item?.salt || '').trim(),
+        passwordHash: String(item?.passwordHash || '').trim(),
+      }))
+      .filter((item) => item.email && item.salt && item.passwordHash)
+  } catch {
+    return fallbackUsers
+  }
+}
+
+function hashPassword(password, salt) {
+  return crypto.pbkdf2Sync(String(password || ''), String(salt || ''), AUTH_PBKDF2_ITERATIONS, 32, 'sha256').toString('hex')
+}
+
+function findAuthUser(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  return AUTH_USERS.find((item) => item.email === normalized) || null
+}
+
 function protectAppSession(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
   if (req.path === '/api/auth/login' || req.path === '/api/auth/me' || req.path === '/api/health') return next()
   const email = String(req.get('x-user-email') || '').trim().toLowerCase()
   const sessionToken = String(req.get('x-session-token') || '').trim()
-  if (ADMIN_EMAILS.includes(email) && secureCompare(sessionToken, APP_SESSION_TOKEN)) return next()
-  return res.status(401).json({ ok: false, error: 'Session invalide' })
+  const user = findAuthUser(email)
+  if (user && secureCompare(sessionToken, APP_SESSION_TOKEN)) return next()
+  return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
 }
 
 function getDateRange(period = '48h') {
@@ -1228,19 +1264,28 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/auth/login', (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
-  if (!ADMIN_EMAILS.includes(email) || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ ok: false, error: 'Identifiants invalides' })
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: 'Email et mot de passe obligatoires.' })
   }
-  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email, role: 'admin' } })
+  const user = findAuthUser(email)
+  if (!user) {
+    return res.status(401).json({ ok: false, error: 'Adresse email non autorisée.' })
+  }
+  const passwordHash = hashPassword(password, user.salt)
+  if (!secureCompare(passwordHash, user.passwordHash)) {
+    return res.status(401).json({ ok: false, error: 'Mot de passe incorrect.' })
+  }
+  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email: user.email, role: user.role } })
 })
 
 app.get('/api/auth/me', (req, res) => {
   const email = String(req.get('x-user-email') || '').trim().toLowerCase()
   const sessionToken = String(req.get('x-session-token') || '').trim()
-  if (!ADMIN_EMAILS.includes(email) || !secureCompare(sessionToken, APP_SESSION_TOKEN)) {
-    return res.status(401).json({ ok: false, error: 'Session invalide' })
+  const user = findAuthUser(email)
+  if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) {
+    return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
   }
-  return res.json({ ok: true, user: { email, role: 'admin' } })
+  return res.json({ ok: true, user: { email: user.email, role: user.role } })
 })
 
 app.get('/api/master-data', (_req, res) => {
