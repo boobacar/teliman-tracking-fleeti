@@ -137,13 +137,51 @@ input {
   min-width: 170px;
 }
 
-.stable-date-picker-wrap {
+.stable-date-picker-shell {
+  position: relative;
   display: grid;
   gap: 8px;
 }
 
+.stable-date-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.stable-date-picker-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 2147483647;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+  padding: 14px;
+  min-width: 290px;
+}
+
+.stable-date-picker-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.stable-date-picker-time-row input {
+  min-width: 120px;
+}
+
 .stable-date-picker-clear {
   justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: none;
   background: transparent;
   color: #94a3b8;
@@ -153,6 +191,24 @@ input {
 }
 
 .stable-date-picker-clear:hover {
+  color: #e2e8f0;
+}
+
+.rdp {
+  --rdp-accent-color: #2563eb;
+  --rdp-background-color: rgba(37, 99, 235, 0.16);
+  margin: 0;
+}
+
+.rdp-root {
+  color: #e2e8f0;
+}
+
+.rdp-chevron {
+  fill: #e2e8f0;
+}
+
+.rdp-day_button {
   color: #e2e8f0;
 }
 

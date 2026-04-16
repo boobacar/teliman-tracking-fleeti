@@ -1,6 +1,16 @@
-import DatePicker from 'react-datepicker'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
-import 'react-datepicker/dist/react-datepicker.css'
+import { CalendarDays, X } from 'lucide-react'
+import { DayPicker } from 'react-day-picker'
+import 'react-day-picker/dist/style.css'
+
+function normalizeDate(value) {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
 
 export function StableDatePicker({
   value,
@@ -9,29 +19,85 @@ export function StableDatePicker({
   withTime = false,
   clearable = true,
   className = 'filter-control modern-date-input',
-  popperClassName = 'modern-date-popper',
 }) {
-  const selected = value instanceof Date ? value : value ? new Date(value) : null
-  const isValid = selected instanceof Date && !Number.isNaN(selected.getTime())
+  const wrapperRef = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [timeValue, setTimeValue] = useState('00:00')
+
+  const selected = useMemo(() => normalizeDate(value), [value])
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (!wrapperRef.current?.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (selected && withTime) {
+      setTimeValue(format(selected, 'HH:mm'))
+    }
+  }, [selected, withTime])
+
+  function applyDate(nextDate) {
+    if (!nextDate) {
+      onChange?.(null)
+      setOpen(false)
+      return
+    }
+    if (withTime) {
+      const [hours, minutes] = String(timeValue || '00:00').split(':').map((part) => Number(part) || 0)
+      const merged = new Date(nextDate)
+      merged.setHours(hours, minutes, 0, 0)
+      onChange?.(merged)
+    } else {
+      onChange?.(nextDate)
+      setOpen(false)
+    }
+  }
+
+  function applyTime(nextTime) {
+    setTimeValue(nextTime)
+    if (!selected) return
+    const [hours, minutes] = String(nextTime || '00:00').split(':').map((part) => Number(part) || 0)
+    const merged = new Date(selected)
+    merged.setHours(hours, minutes, 0, 0)
+    onChange?.(merged)
+  }
+
+  const displayValue = selected ? format(selected, withTime ? 'dd/MM/yyyy HH:mm' : 'dd/MM/yyyy', { locale: fr }) : ''
 
   return (
-    <div className="stable-date-picker-wrap">
-      <DatePicker
-        selected={isValid ? selected : null}
-        onChange={onChange}
-        showTimeSelect={withTime}
-        timeIntervals={5}
-        dateFormat={withTime ? 'dd/MM/yyyy HH:mm' : 'dd/MM/yyyy'}
-        locale={fr}
-        placeholderText={placeholder}
-        isClearable={clearable}
-        className={className}
-        popperClassName={popperClassName}
-      />
-      {clearable && isValid ? (
-        <button type="button" className="stable-date-picker-clear" onClick={() => onChange(null)} aria-label="Réinitialiser la date">
+    <div className="stable-date-picker-shell" ref={wrapperRef}>
+      <button type="button" className={`${className} stable-date-picker-trigger`} onClick={() => setOpen((prev) => !prev)}>
+        <span>{displayValue || placeholder}</span>
+        <CalendarDays size={16} />
+      </button>
+      {clearable && selected ? (
+        <button type="button" className="stable-date-picker-clear" onClick={() => onChange?.(null)} aria-label="Réinitialiser la date">
+          <X size={14} />
           Réinitialiser
         </button>
+      ) : null}
+      {open ? (
+        <div className="stable-date-picker-popover">
+          <DayPicker
+            mode="single"
+            selected={selected || undefined}
+            onSelect={applyDate}
+            locale={fr}
+            weekStartsOn={1}
+          />
+          {withTime ? (
+            <div className="stable-date-picker-time-row">
+              <input type="time" value={timeValue} onChange={(event) => applyTime(event.target.value)} />
+              <button type="button" className="ghost-btn small-btn" onClick={() => setOpen(false)}>Valider</button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )
