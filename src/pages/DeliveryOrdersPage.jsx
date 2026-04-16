@@ -338,31 +338,34 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           <label className="field-stack">
             <span>Départ</span>
             <StableDatePicker
-              selected={form.departureDateTime ? new Date(form.departureDateTime) : null}
+              value={form.departureDateTime ? new Date(form.departureDateTime) : null}
               onChange={(value) => setForm({ ...form, departureDateTime: value ? value.toISOString() : '' })}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure de départ"
-              isClearable
+              withTime
+              placeholder="Choisir date et heure de départ"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
             />
           </label>
           <label className="field-stack">
             <span>Arrivée</span>
             <StableDatePicker
-              selected={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
+              value={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
               onChange={(value) => setForm({ ...form, arrivalDateTime: value ? value.toISOString() : '' })}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure d'arrivée"
-              isClearable
+              withTime
+              placeholder="Choisir date et heure d'arrivée"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
+            />
+          </label>
+          <label className="field-stack">
+            <span>Date BL</span>
+            <StableDatePicker
+              value={form.date ? new Date(form.date) : null}
+              onChange={(value) => setForm({ ...form, date: value ? value.toISOString() : '' })}
+              withTime
+              placeholder="Choisir date et heure du BL"
+              clearable
+              className="filter-control modern-date-input"
             />
           </label>
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>

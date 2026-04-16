@@ -219,49 +219,34 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <label className="field-stack">
             <span>Départ</span>
             <StableDatePicker
-              selected={form?.departureDateTime ? new Date(form.departureDateTime) : null}
+              value={form?.departureDateTime ? new Date(form.departureDateTime) : null}
               onChange={(value) => setForm((current) => ({ ...current, departureDateTime: value ? value.toISOString() : '' }))}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure"
-              isClearable
+              withTime
+              placeholder="Choisir date et heure"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-              disabled={saving}
             />
           </label>
           <label className="field-stack">
             <span>Arrivée</span>
             <StableDatePicker
-              selected={form?.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
+              value={form?.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
               onChange={(value) => setForm((current) => ({ ...current, arrivalDateTime: value ? value.toISOString() : '' }))}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure"
-              isClearable
+              withTime
+              placeholder="Choisir date et heure"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-              disabled={saving}
             />
           </label>
           <label className="field-stack">
             <span>Créé le</span>
             <StableDatePicker
-              selected={form?.date ? new Date(form.date) : null}
+              value={form?.date ? new Date(form.date) : null}
               onChange={(value) => setForm((current) => ({ ...current, date: value ? value.toISOString() : '' }))}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure"
-              isClearable
+              withTime
+              placeholder="Choisir date et heure"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-              disabled={saving}
             />
           </label>
           <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
