@@ -923,13 +923,24 @@ input {
 
 .event-row {
   display: grid;
-  grid-template-columns: 120px 120px 180px 1.4fr 1.6fr 180px;
-  gap: 12px;
-  padding: 14px;
+  grid-template-columns: minmax(180px, 220px) minmax(140px, 180px) minmax(220px, 1fr) 1.5fr minmax(170px, 210px);
+  gap: 18px;
+  padding: 14px 16px;
   border-radius: 16px;
   background: rgba(30, 41, 59, 0.62);
   border: 1px solid rgba(148, 163, 184, 0.08);
   align-items: start;
+}
+
+.event-type-cell,
+.event-driver-cell {
+  min-width: 0;
+}
+
+.event-type-cell strong,
+.event-driver-cell {
+  display: block;
+  line-height: 1.35;
 }
 
 .event-button {

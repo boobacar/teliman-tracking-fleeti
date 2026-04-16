@@ -7,6 +7,20 @@ function getPriority(eventType) {
   return 'normal'
 }
 
+function getAlertTypeLabel(eventType) {
+  if (eventType === 'speedup') return 'Excès de vitesse'
+  if (eventType === 'fuel_level_leap') return 'Variation carburant'
+  if (eventType === 'excessive_parking') return 'Stationnement prolongé'
+  return String(eventType || 'Alerte')
+}
+
+function getPriorityLabel(level) {
+  if (level === 'high') return 'Critique'
+  if (level === 'medium') return 'Surveillance'
+  if (level === 'normal') return 'Standard'
+  return 'Toutes'
+}
+
 export function AlertsPage({ importantEvents }) {
   const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState('all')
@@ -78,7 +92,7 @@ export function AlertsPage({ importantEvents }) {
       <div className="filters filter-row">
         {types.map((type) => (
           <button key={type} className={`chip ${typeFilter === type ? 'selected' : ''}`} onClick={() => setTypeFilter(type)}>
-            {type}
+            {type === 'all' ? 'Toutes' : getAlertTypeLabel(type)}
           </button>
         ))}
       </div>
@@ -86,7 +100,7 @@ export function AlertsPage({ importantEvents }) {
       <div className="filters filter-row">
         {['all', 'high', 'medium', 'normal'].map((level) => (
           <button key={level} className={`chip ${priorityFilter === level ? 'selected' : ''}`} onClick={() => setPriorityFilter(level)}>
-            {level}
+            {getPriorityLabel(level)}
           </button>
         ))}
       </div>
@@ -123,9 +137,9 @@ export function AlertsPage({ importantEvents }) {
                     className={`event-row event-button priority-${priority}`}
                     onClick={() => navigate(`/tracker/${event.tracker_id}`)}
                   >
-                    <div><strong>{event.event}</strong></div>
-                    <div>{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div>
-                    <div>{event.message}</div>
+                    <div className="event-type-cell"><strong>{getAlertTypeLabel(event.event)}</strong></div>
+                    <div className="event-driver-cell">{event.chauffeur || event.extra?.employee_full_name || 'N/A'}</div>
+                    <div>{event.message || getAlertTypeLabel(event.event)}</div>
                     <div>{event.address}</div>
                     <div>{new Date(event.time).toLocaleString()}</div>
                   </button>
