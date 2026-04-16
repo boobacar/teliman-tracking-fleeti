@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import DatePicker from 'react-datepicker'
+import { fr } from 'date-fns/locale'
 import { Download, MapPin, Truck } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -26,6 +28,17 @@ function inRange(value, from, to) {
   return true
 }
 
+function dateToYmd(value) {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ''
+  return value.toISOString().slice(0, 10)
+}
+
+function ymdToDate(value) {
+  if (!value) return null
+  const parsed = new Date(`${value}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 function formatQty(value) {
   const num = Number(value)
   if (!Number.isFinite(num)) return value || '-'
@@ -33,8 +46,9 @@ function formatQty(value) {
 }
 
 export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }) {
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  const today = new Date().toISOString().slice(0, 10)
+  const [from, setFrom] = useState(today)
+  const [to, setTo] = useState(today)
   const [selectedDriver, setSelectedDriver] = useState('')
 
   const rows = useMemo(() => deliveryOrders.filter((item) => inRange(item.date, from, to)), [deliveryOrders, from, to])
@@ -104,8 +118,32 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
 
       <section className="panel panel-large">
         <div className="reports-filter-grid" style={{ marginTop: 0 }}>
-          <label className="field-stack"><span>Du</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label className="field-stack"><span>Au</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+          <label className="field-stack">
+            <span>Du</span>
+            <DatePicker
+              selected={ymdToDate(from)}
+              onChange={(value) => setFrom(dateToYmd(value))}
+              dateFormat="dd/MM/yyyy"
+              locale={fr}
+              placeholderText="Date début"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
+          <label className="field-stack">
+            <span>Au</span>
+            <DatePicker
+              selected={ymdToDate(to)}
+              onChange={(value) => setTo(dateToYmd(value))}
+              dateFormat="dd/MM/yyyy"
+              locale={fr}
+              placeholderText="Date fin"
+              isClearable
+              className="filter-control modern-date-input"
+              popperClassName="modern-date-popper"
+            />
+          </label>
           <label className="field-stack"><span>Chauffeur</span><select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}><option value="">Tous</option>{driverSummaries.map((item) => <option key={item.driver} value={item.driver}>{item.driver}</option>)}</select></label>
           <div className="field-stack" style={{ alignSelf: 'end' }}><button className="primary-btn" onClick={exportPdf}><Download size={16} />Exporter PDF</button></div>
         </div>
