@@ -33,21 +33,32 @@ async function postJson(path, body) {
 }
 
 export async function login(email, password) {
-  const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Connexion impossible')
-  localStorage.setItem('teliman_user_email', data.user.email)
-  localStorage.setItem('teliman_session_token', data.sessionToken)
-  return data
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Connexion impossible. Veuillez réessayer.')
+    localStorage.setItem('teliman_user_email', data.user.email)
+    localStorage.setItem('teliman_session_token', data.sessionToken)
+    localStorage.setItem('teliman_user_role', data.user.role || '')
+    localStorage.setItem('teliman_user_permissions', JSON.stringify(data.user.permissions || []))
+    return data
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('Impossible de joindre le serveur. Vérifiez votre connexion ou réessayez plus tard.')
+    }
+    throw error
+  }
 }
 
 export function logout() {
   localStorage.removeItem('teliman_user_email')
   localStorage.removeItem('teliman_session_token')
+  localStorage.removeItem('teliman_user_role')
+  localStorage.removeItem('teliman_user_permissions')
 }
 
 export async function getCurrentUser() {

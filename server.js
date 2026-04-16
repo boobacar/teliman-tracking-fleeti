@@ -129,7 +129,7 @@ function parseAuthUsers(raw) {
     'coordination@telimanlogistique.com',
     'marie@telimanlogistique.com',
     'boubsfal@gmail.com',
-  ].map((email) => ({ email, role: 'admin', salt: fallbackSalt, passwordHash: fallbackHash }))
+  ].map((email) => ({ email, role: 'admin', permissions: ['*'], salt: fallbackSalt, passwordHash: fallbackHash }))
   if (!String(raw || '').trim()) return fallbackUsers
   try {
     const parsed = JSON.parse(raw)
@@ -138,6 +138,7 @@ function parseAuthUsers(raw) {
       .map((item) => ({
         email: String(item?.email || '').trim().toLowerCase(),
         role: String(item?.role || 'user').trim().toLowerCase(),
+        permissions: Array.isArray(item?.permissions) ? item.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
         salt: String(item?.salt || '').trim(),
         passwordHash: String(item?.passwordHash || '').trim(),
       }))
@@ -156,14 +157,40 @@ function findAuthUser(email) {
   return AUTH_USERS.find((item) => item.email === normalized) || null
 }
 
-function protectAppSession(req, res, next) {
-  if (!req.path.startsWith('/api/')) return next()
-  if (req.path === '/api/auth/login' || req.path === '/api/auth/me' || req.path === '/api/health') return next()
+function getSessionUser(req) {
   const email = String(req.get('x-user-email') || '').trim().toLowerCase()
   const sessionToken = String(req.get('x-session-token') || '').trim()
   const user = findAuthUser(email)
-  if (user && secureCompare(sessionToken, APP_SESSION_TOKEN)) return next()
+  if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) return null
+  return user
+}
+
+function hasPermission(user, permission) {
+  if (!user) return false
+  const permissions = Array.isArray(user.permissions) ? user.permissions : []
+  if (permissions.includes('*')) return true
+  return permissions.includes(permission)
+}
+
+function protectAppSession(req, res, next) {
+  if (!req.path.startsWith('/api/')) return next()
+  if (req.path === '/api/auth/login' || req.path === '/api/auth/me' || req.path === '/api/health') return next()
+  const user = getSessionUser(req)
+  if (user) {
+    req.authUser = user
+    return next()
+  }
   return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
+}
+
+function requirePermission(permission) {
+  return (req, res, next) => {
+    const user = req.authUser || getSessionUser(req)
+    if (!hasPermission(user, permission)) {
+      return res.status(403).json({ ok: false, error: 'Accès refusé. Vous n’avez pas les droits nécessaires.' })
+    }
+    return next()
+  }
 }
 
 function getDateRange(period = '48h') {
@@ -1275,7 +1302,7 @@ app.post('/api/auth/login', (req, res) => {
   if (!secureCompare(passwordHash, user.passwordHash)) {
     return res.status(401).json({ ok: false, error: 'Mot de passe incorrect.' })
   }
-  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email: user.email, role: user.role } })
+  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email: user.email, role: user.role, permissions: user.permissions || [] } })
 })
 
 app.get('/api/auth/me', (req, res) => {
@@ -1285,14 +1312,14 @@ app.get('/api/auth/me', (req, res) => {
   if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) {
     return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
   }
-  return res.json({ ok: true, user: { email: user.email, role: user.role } })
+  return res.json({ ok: true, user: { email: user.email, role: user.role, permissions: user.permissions || [] } })
 })
 
 app.get('/api/master-data', (_req, res) => {
   res.json(readMasterData())
 })
 
-app.post('/api/master-data/:listName', (req, res) => {
+app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
   if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
@@ -1315,7 +1342,7 @@ app.post('/api/master-data/:listName', (req, res) => {
   res.status(201).json({ ok: true, data })
 })
 
-app.delete('/api/master-data/:listName', (req, res) => {
+app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
   if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
@@ -1371,7 +1398,7 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
   })
 })
 
-app.post('/api/delivery-orders', (req, res) => {
+app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), (req, res) => {
   try {
     const items = readDeliveryOrders()
     const preparedBody = preprocessDeliveryProofPhotos(req.body)
@@ -1385,7 +1412,7 @@ app.post('/api/delivery-orders', (req, res) => {
   }
 })
 
-app.patch('/api/delivery-orders/:id', (req, res) => {
+app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
@@ -1413,7 +1440,7 @@ app.patch('/api/delivery-orders/:id', (req, res) => {
   }
 })
 
-app.delete('/api/delivery-orders/:id', (req, res) => {
+app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
   const items = readDeliveryOrders()
@@ -1434,7 +1461,7 @@ app.get('/api/fuel-live', async (_req, res) => {
   }
 })
 
-app.post('/api/fuel-vouchers', (req, res) => {
+app.post('/api/fuel-vouchers', requirePermission('manage_fuel_vouchers'), (req, res) => {
   try {
     const items = readFuelVouchers()
     const payload = sanitizeFuelVoucherPayload(req.body)
@@ -1446,7 +1473,7 @@ app.post('/api/fuel-vouchers', (req, res) => {
   }
 })
 
-app.patch('/api/fuel-vouchers/:id', (req, res) => {
+app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
@@ -1464,7 +1491,7 @@ app.patch('/api/fuel-vouchers/:id', (req, res) => {
   }
 })
 
-app.delete('/api/fuel-vouchers/:id', (req, res) => {
+app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
   const items = readFuelVouchers()

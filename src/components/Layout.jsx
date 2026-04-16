@@ -9,13 +9,15 @@ const views = [
   { id: '/alerts', label: 'Alertes', icon: Siren },
   { id: '/analytics', label: 'Analytics', icon: BarChart3 },
   { id: '/reports', label: 'Rapports', icon: FileSpreadsheet },
-  { id: '/delivery-orders', label: 'Bons livraison', icon: ReceiptText },
-  { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel },
-  { id: '/data', label: 'Données', icon: Database },
+  { id: '/delivery-orders', label: 'Bons livraison', icon: ReceiptText, permission: 'manage_delivery_orders' },
+  { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
+  { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
 ]
 
 export function Layout({ children, loading, refreshData, search, setSearch, dataset, currentUser, onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
+  const canAccess = (permission) => !permission || permissions.includes('*') || permissions.includes(permission)
 
   return (
     <div className="app-shell premium-shell phase2-shell">
@@ -29,7 +31,7 @@ export function Layout({ children, loading, refreshData, search, setSearch, data
           <strong style={{ display: 'block', fontSize: 13 }}>Connecté</strong>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>{currentUser?.email || 'Admin'}</span>
         </div>
-        <nav className="view-nav">{views.map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
+        <nav className="view-nav">{views.filter((view) => canAccess(view.permission)).map((view) => { const Icon = view.icon; return <NavLink key={view.id} to={view.id} end={view.id === '/'} className={({ isActive }) => `view-link ${isActive ? 'active' : ''}`} onClick={() => setMobileNavOpen(false)}><Icon size={18} /><span>{view.label}</span><ChevronRight size={16} /></NavLink> })}</nav>
         <button className="ghost-btn" style={{ marginTop: 16 }} onClick={onLogout}><LogOut size={16} />Déconnexion</button>
       </aside>
 
