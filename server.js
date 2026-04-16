@@ -449,11 +449,22 @@ function sanitizeProofPhotoList(value, fallback = []) {
     .slice(0, 10)
 }
 
+function sanitizeOptionalDateField(value, fallback = null, { defaultNow = false } = {}) {
+  if (value === null || value === '') return null
+  if (value !== undefined) return value
+  if (fallback !== undefined && fallback !== null) return fallback
+  return defaultNow ? new Date().toISOString() : null
+}
+
 function sanitizeDeliveryOrderPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) {
     throw new Error('trackerId invalide')
   }
+
+  const date = sanitizeOptionalDateField(body.date, current?.date, { defaultNow: !current })
+  const departureDateTime = sanitizeOptionalDateField(body.departureDateTime, current?.departureDateTime)
+  const arrivalDateTime = sanitizeOptionalDateField(body.arrivalDateTime, current?.arrivalDateTime)
 
   return {
     id: current?.id || Date.now(),
@@ -467,9 +478,9 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     goods: String(body.goods ?? current?.goods ?? '').trim(),
     quantity: String(body.quantity ?? current?.quantity ?? '').trim(),
     status: String(body.status ?? current?.status ?? 'Prévu').trim(),
-    date: body.date || current?.date || new Date().toISOString(),
-    departureDateTime: body.departureDateTime || current?.departureDateTime || null,
-    arrivalDateTime: body.arrivalDateTime || current?.arrivalDateTime || null,
+    date,
+    departureDateTime,
+    arrivalDateTime,
     notes: String(body.notes ?? current?.notes ?? '').trim(),
     active: body.active ?? current?.active ?? true,
     completedAt: body.status === 'Livré' ? (body.completedAt || current?.completedAt || new Date().toISOString()) : (body.completedAt ?? current?.completedAt ?? null),
