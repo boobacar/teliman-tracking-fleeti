@@ -1362,12 +1362,19 @@ app.post('/api/admin/users', requirePermission('manage_users'), (req, res) => {
 })
 
 app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
+  const actor = req.authUser || null
   const targetEmail = String(req.params.email || '').trim().toLowerCase()
   const existing = findAuthUser(targetEmail)
   if (!existing) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
+
   const role = String(req.body?.role || existing.role).trim().toLowerCase()
   const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : existing.permissions
   const password = String(req.body?.password || '')
+
+  if (targetEmail === actor?.email && role !== 'admin') {
+    return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas retirer vos propres droits administrateur.' })
+  }
+
   const updatedUsers = AUTH_USERS.map((item) => {
     if (item.email !== targetEmail) return item
     const next = { ...item, role, permissions: role === 'admin' ? ['*'] : permissions }
@@ -1383,8 +1390,12 @@ app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, re
 })
 
 app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
+  const actor = req.authUser || null
   const targetEmail = String(req.params.email || '').trim().toLowerCase()
   if (!findAuthUser(targetEmail)) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
+  if (targetEmail === actor?.email) {
+    return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas supprimer votre propre compte.' })
+  }
   saveAuthUsers(AUTH_USERS.filter((item) => item.email !== targetEmail))
   return res.json({ ok: true })
 })

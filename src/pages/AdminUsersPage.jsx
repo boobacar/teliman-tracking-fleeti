@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createAdminUser, deleteAdminUser, loadAdminUsers } from '../lib/fleeti'
+import { createAdminUser, deleteAdminUser, loadAdminUsers, updateAdminUser } from '../lib/fleeti'
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', permissions: ['*'] },
@@ -14,6 +14,9 @@ export function AdminUsersPage() {
   const [role, setRole] = useState('viewer')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [editingEmail, setEditingEmail] = useState('')
+  const [editingRole, setEditingRole] = useState('viewer')
+  const [editingPassword, setEditingPassword] = useState('')
 
   async function refresh() {
     setLoading(true)
@@ -42,6 +45,26 @@ export function AdminUsersPage() {
       await refresh()
     } catch (err) {
       setError(err.message || 'Impossible de créer cet utilisateur.')
+    }
+  }
+
+  async function startEdit(user) {
+    setEditingEmail(user.email)
+    setEditingRole(user.role || 'viewer')
+    setEditingPassword('')
+    setError('')
+  }
+
+  async function saveEdit() {
+    try {
+      const selected = ROLE_OPTIONS.find((item) => item.value === editingRole)
+      await updateAdminUser(editingEmail, { role: editingRole, permissions: selected?.permissions || [], password: editingPassword || undefined })
+      setEditingEmail('')
+      setEditingRole('viewer')
+      setEditingPassword('')
+      await refresh()
+    } catch (err) {
+      setError(err.message || 'Impossible de mettre à jour cet utilisateur.')
     }
   }
 
@@ -86,7 +109,12 @@ export function AdminUsersPage() {
                   <td>{user.email}</td>
                   <td>{user.role}</td>
                   <td>{Array.isArray(user.permissions) ? user.permissions.join(', ') || 'Aucune' : 'Aucune'}</td>
-                  <td><button className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button></td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="ghost-btn small-btn" onClick={() => startEdit(user)}>Modifier</button>
+                      <button className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {users.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur.</td></tr>}
@@ -94,6 +122,20 @@ export function AdminUsersPage() {
           </table>
         </div>
       </section>
+
+      {editingEmail && (
+        <section className="panel panel-large data-card-panel">
+          <div className="panel-header"><div><h3>Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
+          <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto auto' }}>
+            <select value={editingRole} onChange={(e) => setEditingRole(e.target.value)}>
+              {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <input value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
+            <button className="primary-btn" onClick={saveEdit}>Enregistrer</button>
+            <button className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
+          </div>
+        </section>
+      )}
     </div>
   )
 }
