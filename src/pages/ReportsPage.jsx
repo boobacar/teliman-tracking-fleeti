@@ -157,7 +157,7 @@ async function loadLogoDataUrl() {
 }
 
 async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
-  const now = new Date().toLocaleDateString('fr-FR')
+  const now = new Date().toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   try {
     const logo = await loadLogoDataUrl()
     doc.addImage(logo, 'JPEG', 14, 10, 60, 24)
