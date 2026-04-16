@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { CalendarDays, X } from 'lucide-react'
@@ -23,18 +24,31 @@ export function StableDatePicker({
   const wrapperRef = useRef(null)
   const [open, setOpen] = useState(false)
   const [timeValue, setTimeValue] = useState('00:00')
+  const [popoverStyle, setPopoverStyle] = useState(null)
 
   const selected = useMemo(() => normalizeDate(value), [value])
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (!wrapperRef.current?.contains(event.target)) {
+      const popover = document.querySelector('.stable-date-picker-popover')
+      if (!wrapperRef.current?.contains(event.target) && !popover?.contains(event.target)) {
         setOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    if (!open || !wrapperRef.current) return
+    const rect = wrapperRef.current.getBoundingClientRect()
+    setPopoverStyle({
+      position: 'fixed',
+      top: rect.bottom + 8,
+      left: rect.left,
+      zIndex: 2147483647,
+    })
+  }, [open])
 
   useEffect(() => {
     if (selected && withTime) {
@@ -82,8 +96,8 @@ export function StableDatePicker({
           Réinitialiser
         </button>
       ) : null}
-      {open ? (
-        <div className="stable-date-picker-popover">
+      {open && popoverStyle ? createPortal(
+        <div className="stable-date-picker-popover" style={popoverStyle}>
           <DayPicker
             mode="single"
             selected={selected || undefined}
@@ -97,7 +111,8 @@ export function StableDatePicker({
               <button type="button" className="ghost-btn small-btn" onClick={() => setOpen(false)}>Valider</button>
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   )
