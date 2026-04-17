@@ -5,6 +5,7 @@ import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fle
 const STATIC_REPORT_TYPES = [
   { value: 'reco-k1', label: 'ETAT RECONCILIATION K1' },
   { value: 'reco-caderac', label: 'ETAT RECONCILIATION CADERAC ABIDJAN' },
+  { value: 'reco-lafarge', label: 'ETAT RECONCILIATION LAFARGE' },
   { value: 'fuel', label: 'SUIVI BON DE CARBURANT' },
 ]
 
@@ -304,6 +305,11 @@ export function ReportsPage() {
     return target?.rows || []
   }, [clientGroups])
 
+  const lafargeRows = useMemo(() => {
+    const target = clientGroups.find((group) => group.clientKey.includes('LAFARGE'))
+    return target?.rows || []
+  }, [clientGroups])
+
   const caderacByDestination = useMemo(() => {
     const map = new Map()
     caderacRows.forEach((r) => {
@@ -314,6 +320,17 @@ export function ReportsPage() {
   }, [caderacRows])
 
   const caderacGeneralTotal = useMemo(() => caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0), [caderacRows])
+
+  const lafargeByDestination = useMemo(() => {
+    const map = new Map()
+    lafargeRows.forEach((r) => {
+      const key = r.destination || 'Non renseignée'
+      map.set(key, (map.get(key) || 0) + toQtyNumber(r.quantity))
+    })
+    return Array.from(map.entries()).map(([destination, quantity]) => ({ destination, quantity }))
+  }, [lafargeRows])
+
+  const lafargeGeneralTotal = useMemo(() => lafargeRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0), [lafargeRows])
 
   const fuelRows = useMemo(() => sortByReference(fuel.filter((r) => inRange(r.dateTime, from, to)), (row) => row.voucherNumber || row.reference), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
@@ -378,6 +395,27 @@ export function ReportsPage() {
             headers: ['DESTINATION', 'TOTAL QUANTITE'],
             rows: caderacByDestination.map((row) => [row.destination, formatQty(row.quantity)]),
             footerRows: [['TOTAL GENERAL', formatQtyPlain(caderacGeneralTotal)]],
+          },
+        ],
+      }
+    }
+
+    if (type === 'reco-lafarge') {
+      return {
+        title: 'ETAT DE RECONCILIATION LAFARGE',
+        clientName: 'LAFARGE',
+        sections: [
+          {
+            title: 'Détail',
+            headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR', 'DESTINATION'],
+            rows: lafargeRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver, r.destination || '-']),
+            footerRows: [],
+          },
+          {
+            title: 'Totaux par destination',
+            headers: ['DESTINATION', 'TOTAL QUANTITE'],
+            rows: lafargeByDestination.map((row) => [row.destination, formatQty(row.quantity)]),
+            footerRows: [['TOTAL GENERAL', formatQtyPlain(lafargeGeneralTotal)]],
           },
         ],
       }
@@ -585,6 +623,24 @@ export function ReportsPage() {
             { key: 'destination', label: 'DESTINATION' },
           ]} />
           <Table title="CADERAC ABIDJAN – Totaux par destination" subtitle={`${caderacByDestination.length} destination(s)`} rows={caderacByDestination} footerRows={[[`TOTAL GENERAL`, formatQtyPlain(caderacGeneralTotal)]]} columns={[
+            { key: 'destination', label: 'DESTINATION' },
+            { key: 'quantity', label: 'TOTAL QUANTITE', render: (v) => formatQty(v) },
+          ]} />
+        </>
+      )}
+
+      {type === 'reco-lafarge' && (
+        <>
+          <Table title="ETAT DE RECONCILIATION LAFARGE" subtitle={`${lafargeRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={lafargeRows} columns={[
+            { key: 'reference', label: 'NUMERO BL' },
+            { key: 'goods', label: 'TYPE DE PRODUIT' },
+            { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
+            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
+            { key: 'truckLabel', label: 'IMMATRICULATION' },
+            { key: 'driver', label: 'NOM DU CHAUFFEUR' },
+            { key: 'destination', label: 'DESTINATION' },
+          ]} />
+          <Table title="LAFARGE – Totaux par destination" subtitle={`${lafargeByDestination.length} destination(s)`} rows={lafargeByDestination} footerRows={[[`TOTAL GENERAL`, formatQtyPlain(lafargeGeneralTotal)]]} columns={[
             { key: 'destination', label: 'DESTINATION' },
             { key: 'quantity', label: 'TOTAL QUANTITE', render: (v) => formatQty(v) },
           ]} />
