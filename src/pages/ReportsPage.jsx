@@ -166,12 +166,28 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
-  doc.text(titleText, textX, 22, { align: 'left' })
+  doc.text(titleText, textX, 21, { align: 'left' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
-  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 33, { align: 'left' })
-  doc.text(`Édité le: ${now}`, textX, 41, { align: 'left' })
+  doc.text(`Période: ${formatPeriodLabel(from, to)}`, 280, 22, { align: 'right' })
+  doc.text(`Édité le: ${now}`, 280, 31, { align: 'right' })
+}
+
+function drawPdfFooter(doc) {
+  const pages = doc.getNumberOfPages()
+  const brandBrown = [120, 72, 32]
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page)
+    doc.setDrawColor(...brandBrown)
+    doc.setLineWidth(0.4)
+    doc.line(14, 200, 283, 200)
+    doc.setTextColor(...brandBrown)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('Teliman Logistique', 14, 206)
+    doc.text(`Page ${page}/${pages}`, 283, 206, { align: 'right' })
+  }
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -373,6 +389,11 @@ export function ReportsPage() {
       if (index > 0) {
         cursorY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 14 : cursorY + 14
       }
+      if (cursorY > 172) {
+        doc.addPage('a4', 'landscape')
+        await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
+        cursorY = 56
+      }
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(13)
       doc.setTextColor(...brandBrown)
@@ -412,13 +433,19 @@ export function ReportsPage() {
       }
     }
     const grandTotal = report.sections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + toQtyNumber(row[2]), 0), 0)
-    const summaryY = (doc.lastAutoTable?.finalY || cursorY) + 10
+    let summaryY = (doc.lastAutoTable?.finalY || cursorY) + 10
+    if (summaryY > 186) {
+      doc.addPage('a4', 'landscape')
+      await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
+      summaryY = 64
+    }
     doc.setFillColor(...softBrown)
     doc.roundedRect(190, summaryY, 92, 16, 3, 3, 'F')
     doc.setTextColor(...brandBrown)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
     doc.text(`Total général: ${formatQtyPlain(grandTotal)}`, 278, summaryY + 10, { align: 'right' })
+    drawPdfFooter(doc)
     doc.save(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.pdf`)
   }
 
