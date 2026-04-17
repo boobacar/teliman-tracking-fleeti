@@ -138,6 +138,8 @@ async function loadLogoDataUrl() {
 }
 
 async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
+  const brandGreen = [22, 101, 52]
+  const brandBrown = [120, 72, 32]
   const now = new Date().toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   try {
     const logo = await loadLogoDataUrl()
@@ -147,15 +149,21 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
   const textX = 96
   const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
 
-  doc.setTextColor(18, 18, 18)
+  doc.setFillColor(...brandGreen)
+  doc.roundedRect(12, 8, 273, 40, 4, 4, 'F')
+  doc.setDrawColor(...brandBrown)
+  doc.setLineWidth(1.2)
+  doc.line(14, 50, 283, 50)
+
+  doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(19)
-  doc.text(titleText, textX, 20, { align: 'left' })
+  doc.setFontSize(18)
+  doc.text(titleText, textX, 22, { align: 'left' })
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(13)
-  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 32, { align: 'left' })
-  doc.text(`Date: ${now}`, textX, 42, { align: 'left' })
+  doc.setFontSize(11)
+  doc.text(`Période: ${formatPeriodLabel(from, to)}`, textX, 33, { align: 'left' })
+  doc.text(`Édité le: ${now}`, textX, 41, { align: 'left' })
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -344,18 +352,26 @@ export function ReportsPage() {
     const { jsPDF } = await import('jspdf')
     const autoTableModule = await import('jspdf-autotable')
     const autoTable = autoTableModule.default
+    const brandGreen = [22, 101, 52]
+    const brandBrown = [120, 72, 32]
+    const softBrown = [244, 236, 226]
     const report = getCurrentReportForExport()
     const doc = new jsPDF({ orientation: 'landscape', format: 'a4' })
     const purchaseOrderNumber = includePurchaseOrder ? (currentClientPurchaseOrder || masterData.purchaseOrders?.[report.clientName || ''] || '') : ''
     await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
     let cursorY = 56
-    report.sections.forEach((section, index) => {
+    for (let index = 0; index < report.sections.length; index += 1) {
+      const section = report.sections[index]
       if (index > 0) {
         cursorY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 14 : cursorY + 14
       }
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(13)
+      doc.setTextColor(...brandBrown)
       doc.text(section.title, 14, cursorY)
+      doc.setDrawColor(...brandBrown)
+      doc.setLineWidth(0.5)
+      doc.line(14, cursorY + 2, 120, cursorY + 2)
       const bodyRows = [...section.rows]
       const footerCount = Array.isArray(section.footerRows) ? section.footerRows.length : 0
       if (footerCount) {
@@ -367,13 +383,15 @@ export function ReportsPage() {
         head: [section.headers],
         body: bodyRows,
         styles: { fontSize: 9, cellPadding: 2.6 },
-        headStyles: { fillColor: [0, 153, 102], textColor: [255, 255, 255], fontSize: 10 },
+        headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 10 },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        bodyStyles: { textColor: [30, 41, 59] },
         didParseCell: (data) => {
           if (data.section !== 'body' || !footerCount) return
           const footerStart = bodyRows.length - footerCount
           if (data.row.index >= footerStart) {
-            data.cell.styles.fillColor = [240, 253, 244]
-            data.cell.styles.textColor = [20, 83, 45]
+            data.cell.styles.fillColor = softBrown
+            data.cell.styles.textColor = brandBrown
             data.cell.styles.fontStyle = 'bold'
           }
         }
@@ -381,9 +399,18 @@ export function ReportsPage() {
       cursorY = doc.lastAutoTable?.finalY || cursorY
       if (cursorY > 180 && index < report.sections.length - 1) {
         doc.addPage('a4', 'landscape')
-        cursorY = 20
+        await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
+        cursorY = 56
       }
-    })
+    }
+    const grandTotal = report.sections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + toQtyNumber(row[2]), 0), 0)
+    const summaryY = (doc.lastAutoTable?.finalY || cursorY) + 10
+    doc.setFillColor(...softBrown)
+    doc.roundedRect(190, summaryY, 92, 16, 3, 3, 'F')
+    doc.setTextColor(...brandBrown)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.text(`Total général: ${formatQtyPlain(grandTotal)}`, 278, summaryY + 10, { align: 'right' })
     doc.save(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.pdf`)
   }
 
