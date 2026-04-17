@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { fr } from 'date-fns/locale'
 import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fleeti'
 
-const REPORT_TYPES = [
-  { value: 'k1', label: 'HIGH LEVEL K1' },
-  { value: 'caderac', label: 'HIGH LEVEL CADERAC' },
+const STATIC_REPORT_TYPES = [
   { value: 'reco-k1', label: 'ETAT RECONCILIATION K1' },
   { value: 'fuel', label: 'SUIVI BON DE CARBURANT' },
 ]
@@ -53,13 +50,6 @@ function dateToYmd(date) {
   return `${y}-${m}-${d}`
 }
 
-function formatPeriodDate(value, endOfDay = false) {
-  if (!value) return '...'
-  const base = new Date(`${value}T${endOfDay ? '23:59:59' : '00:00:00'}`)
-  if (Number.isNaN(base.getTime())) return '...'
-  return base.toLocaleString('fr-FR')
-}
-
 function formatPeriodLabel(from, to) {
   const formatShort = (value) => {
     if (!value) return '...'
@@ -84,16 +74,6 @@ function inRange(value, from, to) {
   return true
 }
 
-function sortByReportDate(rows = [], selector) {
-  return [...rows].sort((a, b) => {
-    const left = toDate(selector(a))
-    const right = toDate(selector(b))
-    const leftTs = left ? left.getTime() : 0
-    const rightTs = right ? right.getTime() : 0
-    return leftTs - rightTs
-  })
-}
-
 function parseReferenceNumber(value) {
   const raw = String(value || '').trim()
   if (!raw) return Number.POSITIVE_INFINITY
@@ -113,12 +93,12 @@ function sortByReference(rows = [], selector) {
   })
 }
 
-function isK1Client(client = '') {
-  return String(client).toUpperCase().includes('K1 MINE') || String(client).toUpperCase().includes('K1')
+function normalizeClientName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ')
 }
 
-function isCaderacClient(client = '') {
-  return String(client).toUpperCase().includes('CADERAC')
+function getClientKey(value) {
+  return normalizeClientName(value).toUpperCase()
 }
 
 function groupRowsByGoods(rows = []) {
@@ -128,7 +108,9 @@ function groupRowsByGoods(rows = []) {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(row)
   })
-  return Array.from(groups.entries()).map(([goods, items]) => ({ goods, items: sortByReference(items, (row) => row.reference) }))
+  return Array.from(groups.entries())
+    .map(([goods, items]) => ({ goods, items: sortByReference(items, (row) => row.reference) }))
+    .sort((a, b) => a.goods.localeCompare(b.goods, 'fr', { sensitivity: 'base' }))
 }
 
 function downloadCsv(filename, rows, from, to) {
@@ -203,7 +185,7 @@ function Table({ title, subtitle, columns, rows, footerRows = [] }) {
 }
 
 export function ReportsPage() {
-  const [type, setType] = useState('k1')
+  const [type, setType] = useState('fuel')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [loading, setLoading] = useState(false)
@@ -241,10 +223,52 @@ export function ReportsPage() {
     if (goodsFilter && String(r.goods || '').trim() !== goodsFilter) return false
     return true
   }), (row) => row.reference), [deliveries, from, to, goodsFilter])
-  const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
-  const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
-  const k1GoodsGroups = useMemo(() => groupRowsByGoods(k1Rows), [k1Rows])
-  const caderacGoodsGroups = useMemo(() => groupRowsByGoods(caderacRows), [caderacRows])
+
+  const clientGroups = useMemo(() => {
+    const groups = new Map()
+    rowsInRange.forEach((row) => {
+      const clientName = normalizeClientName(row.client || 'Client non renseigné') || 'Client non renseigné'
+      const clientKey = getClientKey(clientName)
+      if (!groups.has(clientKey)) groups.set(clientKey, { clientKey, clientName, rows: [] })
+      groups.get(clientKey).rows.push(row)
+    })
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        rows: sortByReference(group.rows, (row) => row.reference),
+        goodsGroups: groupRowsByGoods(group.rows),
+      }))
+      .sort((a, b) => a.clientName.localeCompare(b.clientName, 'fr', { sensitivity: 'base' }))
+  }, [rowsInRange])
+
+  const dynamicReportTypes = useMemo(() => clientGroups.map((group) => ({
+    value: `client:${group.clientKey}`,
+    label: `HIGH LEVEL ${group.clientName.toUpperCase()}`,
+  })), [clientGroups])
+
+  const reportTypes = useMemo(() => [...dynamicReportTypes, ...STATIC_REPORT_TYPES], [dynamicReportTypes])
+
+  useEffect(() => {
+    if (!reportTypes.length) return
+    if (!reportTypes.some((item) => item.value === type)) {
+      setType(reportTypes[0].value)
+    }
+  }, [reportTypes, type])
+
+  const selectedClientGroup = useMemo(() => (
+    type.startsWith('client:') ? clientGroups.find((group) => `client:${group.clientKey}` === type) || null : null
+  ), [type, clientGroups])
+
+  const k1Rows = useMemo(() => {
+    const target = clientGroups.find((group) => group.clientKey.includes('K1'))
+    return target?.rows || []
+  }, [clientGroups])
+
+  const caderacRows = useMemo(() => {
+    const target = clientGroups.find((group) => group.clientKey.includes('CADERAC'))
+    return target?.rows || []
+  }, [clientGroups])
+
   const caderacByDestination = useMemo(() => {
     const map = new Map()
     caderacRows.forEach((r) => {
@@ -253,46 +277,35 @@ export function ReportsPage() {
     })
     return Array.from(map.entries()).map(([destination, quantity]) => ({ destination, quantity }))
   }, [caderacRows])
+
   const fuelRows = useMemo(() => sortByReference(fuel.filter((r) => inRange(r.dateTime, from, to)), (row) => row.voucherNumber || row.reference), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
   const fuelQtyTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.quantityLiters), 0), [fuelRows])
 
+  const currentClientPurchaseOrder = selectedClientGroup ? (masterData.purchaseOrders?.[selectedClientGroup.clientName] || masterData.purchaseOrders?.[selectedClientGroup.clientKey] || '') : ''
+
   const getCurrentReportForExport = () => {
-    if (type === 'k1') {
+    if (selectedClientGroup) {
       return {
-        title: 'HIGH LEVEL K1',
-        clientName: 'K1',
-        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
-        footerRows: [[
-          'TOTAL K1 MINE',
-          '',
-          formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
-          '',
-          '',
-        ]],
-      }
-    }
-    if (type === 'caderac') {
-      return {
-        title: 'HIGH LEVEL CADERAC',
-        clientName: 'CADERAC',
+        title: `HIGH LEVEL ${selectedClientGroup.clientName.toUpperCase()}`,
+        clientName: selectedClientGroup.clientName,
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
-        rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination]),
+        rows: selectedClientGroup.rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination || '-']),
         footerRows: [[
-          'TOTAL CADERAC',
+          `TOTAL ${selectedClientGroup.clientName.toUpperCase()}`,
           '',
-          formatQtyPlain(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+          formatQtyPlain(selectedClientGroup.rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
           '',
           '',
           '',
         ]],
       }
     }
+
     if (type === 'reco-k1') {
       return {
         title: 'ETAT DE RECONCILIATION K1',
-        clientName: 'K1',
+        clientName: 'K1 MINE',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
         rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
         footerRows: [[
@@ -305,6 +318,7 @@ export function ReportsPage() {
         ]],
       }
     }
+
     return {
       title: 'SUIVI BON DE CARBURANT',
       clientName: '',
@@ -323,7 +337,7 @@ export function ReportsPage() {
     const autoTable = autoTableModule.default
     const report = getCurrentReportForExport()
     const doc = new jsPDF({ orientation: 'landscape' })
-    const purchaseOrderNumber = includePurchaseOrder ? (masterData.purchaseOrders?.[type === 'caderac' ? 'CADERAC' : 'K1'] || masterData.purchaseOrders?.[report.clientName || ''] || '') : ''
+    const purchaseOrderNumber = includePurchaseOrder ? (currentClientPurchaseOrder || masterData.purchaseOrders?.[report.clientName || ''] || '') : ''
     await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
     const bodyRows = [...report.rows]
     const footerCount = Array.isArray(report.footerRows) ? report.footerRows.length : 0
@@ -341,95 +355,33 @@ export function ReportsPage() {
         if (data.section !== 'body' || !footerCount) return
         const footerStart = bodyRows.length - footerCount
         if (data.row.index >= footerStart) {
-          data.cell.styles.fillColor = [224, 247, 239]
-          data.cell.styles.textColor = [6, 78, 59]
+          data.cell.styles.fillColor = [240, 253, 244]
+          data.cell.styles.textColor = [20, 83, 45]
           data.cell.styles.fontStyle = 'bold'
-          data.cell.styles.lineWidth = 0.2
         }
       },
     })
-    doc.save(`${report.title.replaceAll(' ', '_')}_${from || 'NA'}_${to || 'NA'}.pdf`)
+    doc.save(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.pdf`)
   }
 
   const exportCurrent = () => {
-    if (type === 'k1') {
-      return downloadCsv('HIGH_LEVEL_K1.csv', [
-        ['HIGH LEVEL K1 - PRODUIT 0/5'],
-        ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
-        ['TOTAL 0/5', '', formatQtyPlain(k1_05.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
-        [],
-        ['HIGH LEVEL K1 - PRODUIT 10/14'],
-        ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
-        ['TOTAL 10/14', '', formatQtyPlain(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
-        ['TOTAL K1', '', formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', ''],
-      ], from, to)
-    }
-
-    if (type === 'caderac') {
-      return downloadCsv('HIGH_LEVEL_CADERAC.csv', [
-        ['HIGH LEVEL CADERAC - DETAIL'],
-        ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
-        ...caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination]),
-        [],
-        ['AGREGAT QUANTITE PAR DESTINATION'],
-        ['DESTINATION', 'QTE'],
-        ...caderacByDestination.map((r) => [r.destination, formatQty(r.quantity)]),
-        [],
-        ['QUANTITE TOTALE', formatQtyPlain(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0))],
-      ], from, to)
-    }
-
-    if (type === 'reco-k1') {
-      return downloadCsv('RECONCILIATION_K1.csv', [
-        ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM CHAUFFEUR'],
-        ...k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
-        [],
-        ['TOTAL K1', '', formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', ''],
-      ], from, to)
-    }
-
-    return downloadCsv('SUIVI_BON_CARBURANT.csv', [
-      ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
-      ...fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
-      [],
-      ['QUANTITE TOTALE', '', '', '', formatQtyPlain(fuelQtyTotal), '', ''],
-      ['MONTANT TOTAL', '', '', '', '', '', formatQtyPlain(fuelTotal, 0)],
-    ], from, to)
+    const report = getCurrentReportForExport()
+    downloadCsv(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.csv`, [report.headers, ...report.rows, ...(report.footerRows || [])], from, to)
   }
 
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
         <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><div className="table-actions"><button className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div></div>
-        <div className="filters filter-row">{REPORT_TYPES.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
+        <div className="filters filter-row">{reportTypes.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack">
             <span>Du</span>
-            <StableDatePicker
-              selected={ymdToDate(from)}
-              onChange={(value) => setFrom(dateToYmd(value))}
-              dateFormat="dd/MM/yyyy"
-              locale={fr}
-              placeholderText="Date début"
-              isClearable
-              className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-            />
+            <StableDatePicker value={ymdToDate(from)} onChange={(value) => setFrom(dateToYmd(value))} placeholder="Date début" clearable className="filter-control modern-date-input" />
           </label>
           <label className="field-stack">
             <span>Au</span>
-            <StableDatePicker
-              selected={ymdToDate(to)}
-              onChange={(value) => setTo(dateToYmd(value))}
-              dateFormat="dd/MM/yyyy"
-              locale={fr}
-              placeholderText="Date fin"
-              isClearable
-              className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-            />
+            <StableDatePicker value={ymdToDate(to)} onChange={(value) => setTo(dateToYmd(value))} placeholder="Date fin" clearable className="filter-control modern-date-input" />
           </label>
           <label className="field-stack">
             <span>Type de produit</span>
@@ -446,12 +398,7 @@ export function ReportsPage() {
                 <span style={{ fontSize: 12, color: '#cbd5e1' }}>Ajoute le numéro dans l’en-tête du PDF exporté</span>
               </div>
               <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={includePurchaseOrder}
-                  onChange={(e) => setIncludePurchaseOrder(e.target.checked)}
-                  style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-                />
+                <input type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
                 <span style={{ width: 44, height: 24, borderRadius: 999, background: includePurchaseOrder ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
                   <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: includePurchaseOrder ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
                 </span>
@@ -463,54 +410,26 @@ export function ReportsPage() {
         {error && <div className="error-banner">{error}</div>}
       </section>
 
-      {type === 'k1' && (
+      {selectedClientGroup && (
         <>
-          {k1GoodsGroups.map((group) => (
+          {selectedClientGroup.goodsGroups.map((group) => (
             <Table
               key={group.goods}
-              title={`HIGH LEVEL K1 MINE – ${group.goods}`}
+              title={`HIGH LEVEL ${selectedClientGroup.clientName.toUpperCase()} – ${group.goods}`}
               subtitle={`${group.items.length} ligne(s) • ${formatPeriodLabel(from, to)}`}
               rows={group.items}
-              footerRows={[[`TOTAL`, '', formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]}
+              footerRows={[[`TOTAL`, '', formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]}
               columns={[
                 { key: 'reference', label: 'NUMERO BL' },
                 { key: 'goods', label: 'TYPE DE PRODUIT' },
                 { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
                 { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
                 { key: 'truckLabel', label: 'IMMATRICULATION' },
+                { key: 'destination', label: 'DESTINATION' },
               ]}
             />
           ))}
-          {k1GoodsGroups.length === 0 && (
-            <Table
-              title="HIGH LEVEL K1 MINE"
-              subtitle={`0 ligne • ${formatPeriodLabel(from, to)}`}
-              rows={[]}
-              columns={[
-                { key: 'reference', label: 'NUMERO BL' },
-                { key: 'goods', label: 'TYPE DE PRODUIT' },
-                { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-                { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
-                { key: 'truckLabel', label: 'IMMATRICULATION' },
-              ]}
-            />
-          )}
-        </>
-      )}
-
-      {type === 'caderac' && (
-        <>
-          {caderacGoodsGroups.map((group) => (
-            <Table key={group.goods} title={`HIGH LEVEL CADERAC – ${group.goods}`} subtitle={`${group.items.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={group.items} footerRows={[[`TOTAL`, '', formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]} columns={[
-              { key: 'reference', label: 'NUMERO BL' },
-              { key: 'goods', label: 'TYPE DE PRODUIT' },
-              { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-              { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
-              { key: 'truckLabel', label: 'IMMATRICULATION' },
-              { key: 'destination', label: 'DESTINATION' },
-            ]} />
-          ))}
-          {caderacGoodsGroups.length === 0 && <Table title="HIGH LEVEL CADERAC" subtitle={`0 ligne • ${formatPeriodLabel(from, to)}`} rows={[]} columns={[
+          {selectedClientGroup.goodsGroups.length === 0 && <Table title={`HIGH LEVEL ${selectedClientGroup.clientName.toUpperCase()}`} subtitle={`0 ligne • ${formatPeriodLabel(from, to)}`} rows={[]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
@@ -518,11 +437,7 @@ export function ReportsPage() {
             { key: 'truckLabel', label: 'IMMATRICULATION' },
             { key: 'destination', label: 'DESTINATION' },
           ]} />}
-          <Table title="CADERAC – Agrégat quantité par destination" subtitle={`${caderacByDestination.length} destination(s)`} rows={caderacByDestination} columns={[
-            { key: 'destination', label: 'DESTINATION' },
-            { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-          ]} />
-          <section className="panel panel-large"><div className="panel-header"><div><h3>Quantité totale</h3></div></div><div className="mini-kpi"><strong>{formatQty(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0))}</strong></div></section>
+          <section className="panel panel-large"><div className="panel-header"><div><h3>Quantité totale</h3></div></div><div className="mini-kpi"><strong>{formatQty(selectedClientGroup.rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0))}</strong></div></section>
         </>
       )}
 
@@ -538,17 +453,15 @@ export function ReportsPage() {
       )}
 
       {type === 'fuel' && (
-        <>
-          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`QUANTITE TOTALE`, '', '', '', formatQtyPlain(fuelQtyTotal), '', ''], [`MONTANT TOTAL`, '', '', '', '', '', formatQtyPlain(fuelTotal, 0)]]} columns={[
-            { key: 'supplier', label: 'FOURNISSEUR' },
-            { key: 'voucherNumber', label: 'NUMERO BL/BON' },
-            { key: 'truckLabel', label: 'IMMATRICULATION' },
-            { key: 'dateTime', label: 'DATE ET HEURE DE PRISE', render: (v) => formatDateTime(v) },
-            { key: 'quantityLiters', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatQty(v, 0) },
-            { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v, 0) },
-          ]} />
-        </>
+        <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`QUANTITE TOTALE`, '', '', '', formatQtyPlain(fuelQtyTotal), '', ''], [`MONTANT TOTAL`, '', '', '', '', '', formatQtyPlain(fuelTotal, 0)]]} columns={[
+          { key: 'supplier', label: 'FOURNISSEUR' },
+          { key: 'voucherNumber', label: 'NUMERO BL/BON' },
+          { key: 'truckLabel', label: 'IMMATRICULATION' },
+          { key: 'dateTime', label: 'DATE ET HEURE DE PRISE', render: (v) => formatDateTime(v) },
+          { key: 'quantityLiters', label: 'QTE', render: (v) => formatQty(v) },
+          { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatQty(v, 0) },
+          { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v, 0) },
+        ]} />
       )}
     </div>
   )
