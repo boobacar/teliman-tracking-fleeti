@@ -38,6 +38,11 @@ function formatQtyPlain(value, digits = 2) {
   return n.toFixed(digits).replace('.', ',')
 }
 
+function formatMoney(value) {
+  const n = toQtyNumber(value)
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
 function ymdToDate(value) {
   if (!value) return null
   const d = new Date(`${value}T00:00:00`)
@@ -427,10 +432,10 @@ export function ReportsPage() {
       sections: [{
         title: 'Détail',
         headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
-        rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
+        rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatMoney(r.unitPrice), formatMoney(r.amount)]),
         footerRows: [
           ['QUANTITE TOTALE', '', '', '', formatQtyPlain(fuelQtyTotal), '', ''],
-          ['MONTANT TOTAL', '', '', '', '', '', formatQtyPlain(fuelTotal, 0)],
+          ['MONTANT TOTAL', '', '', '', '', '', formatMoney(fuelTotal)],
         ],
       }],
     }
@@ -499,7 +504,9 @@ export function ReportsPage() {
         cursorY = 56
       }
     }
-    const grandTotal = report.sections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + toQtyNumber(row[2]), 0), 0)
+    const grandTotal = type === 'fuel'
+      ? fuelTotal
+      : report.sections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + toQtyNumber(row[2]), 0), 0)
     let summaryY = (doc.lastAutoTable?.finalY || cursorY) + 10
     if (summaryY > 186) {
       doc.addPage('a4', 'landscape')
@@ -511,7 +518,7 @@ export function ReportsPage() {
     doc.setTextColor(...brandBrown)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
-    doc.text(`Total général: ${formatQtyPlain(grandTotal)}`, 278, summaryY + 10, { align: 'right' })
+    doc.text(`Total général: ${type === 'fuel' ? formatMoney(grandTotal) : formatQtyPlain(grandTotal)}`, 278, summaryY + 10, { align: 'right' })
     drawPdfFooter(doc)
     doc.save(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.pdf`)
   }
