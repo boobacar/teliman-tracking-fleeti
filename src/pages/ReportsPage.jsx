@@ -114,21 +114,21 @@ function sortByReference(rows = [], selector) {
 }
 
 function isK1Client(client = '') {
-  return String(client).toUpperCase().includes('K1')
+  return String(client).toUpperCase().includes('K1 MINE') || String(client).toUpperCase().includes('K1')
 }
 
 function isCaderacClient(client = '') {
   return String(client).toUpperCase().includes('CADERAC')
 }
 
-function isBatch05(goods = '') {
-  const g = String(goods).toLowerCase()
-  return g.includes('0/5') || g.includes('0x5')
-}
-
-function isBatch1014(goods = '') {
-  const g = String(goods).toLowerCase()
-  return g.includes('10/14') || g.includes('10x14')
+function groupRowsByGoods(rows = []) {
+  const groups = new Map()
+  rows.forEach((row) => {
+    const key = String(row.goods || 'Produit non renseigné').trim() || 'Produit non renseigné'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  })
+  return Array.from(groups.entries()).map(([goods, items]) => ({ goods, items: sortByReference(items, (row) => row.reference) }))
 }
 
 function downloadCsv(filename, rows, from, to) {
@@ -243,8 +243,7 @@ export function ReportsPage() {
   }), (row) => row.reference), [deliveries, from, to, goodsFilter])
   const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
   const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
-  const k1_05 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch05(r.goods)), (row) => row.reference), [k1Rows])
-  const k1_1014 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch1014(r.goods)), (row) => row.reference), [k1Rows])
+  const k1GoodsGroups = useMemo(() => groupRowsByGoods(k1Rows), [k1Rows])
   const caderacByDestination = useMemo(() => {
     const map = new Map()
     caderacRows.forEach((r) => {
@@ -263,12 +262,9 @@ export function ReportsPage() {
         title: 'HIGH LEVEL K1',
         clientName: 'K1',
         headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION'],
-        rows: [
-          ...k1_05.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
-          ...k1_1014.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
-        ],
+        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel]),
         footerRows: [[
-          'TOTAL K1',
+          'TOTAL K1 MINE',
           '',
           formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
           '',
@@ -468,20 +464,36 @@ export function ReportsPage() {
 
       {type === 'k1' && (
         <>
-          <Table title="HIGH LEVEL K1 – Tableau produit 0/5" subtitle={`${k1_05.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_05} footerRows={[[`TOTAL`, '', formatQtyPlain(k1_05.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]} columns={[
-            { key: 'reference', label: 'NUMERO BL' },
-            { key: 'goods', label: 'TYPE DE PRODUIT' },
-            { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
-            { key: 'truckLabel', label: 'IMMATRICULATION' },
-          ]} />
-          <Table title="HIGH LEVEL K1 – Tableau produit 10/14" subtitle={`${k1_1014.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={k1_1014} footerRows={[[`TOTAL`, '', formatQtyPlain(k1_1014.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]} columns={[
-            { key: 'reference', label: 'NUMERO BL' },
-            { key: 'goods', label: 'TYPE DE PRODUIT' },
-            { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
-            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
-            { key: 'truckLabel', label: 'IMMATRICULATION' },
-          ]} />
+          {k1GoodsGroups.map((group) => (
+            <Table
+              key={group.goods}
+              title={`HIGH LEVEL K1 MINE – ${group.goods}`}
+              subtitle={`${group.items.length} ligne(s) • ${formatPeriodLabel(from, to)}`}
+              rows={group.items}
+              footerRows={[[`TOTAL`, '', formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '']]}
+              columns={[
+                { key: 'reference', label: 'NUMERO BL' },
+                { key: 'goods', label: 'TYPE DE PRODUIT' },
+                { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
+                { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
+                { key: 'truckLabel', label: 'IMMATRICULATION' },
+              ]}
+            />
+          ))}
+          {k1GoodsGroups.length === 0 && (
+            <Table
+              title="HIGH LEVEL K1 MINE"
+              subtitle={`0 ligne • ${formatPeriodLabel(from, to)}`}
+              rows={[]}
+              columns={[
+                { key: 'reference', label: 'NUMERO BL' },
+                { key: 'goods', label: 'TYPE DE PRODUIT' },
+                { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
+                { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
+                { key: 'truckLabel', label: 'IMMATRICULATION' },
+              ]}
+            />
+          )}
         </>
       )}
 
