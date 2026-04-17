@@ -52,6 +52,17 @@ function formatQty(value) {
   return `${num.toLocaleString('fr-FR')} t`
 }
 
+async function loadLogoDataUrl() {
+  const response = await fetch('/teliman-logistique-logo.jpg')
+  const blob = await response.blob()
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Impossible de charger le logo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
 export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }) {
   const today = new Date().toISOString().slice(0, 10)
   const [from, setFrom] = useState(today)
@@ -92,13 +103,24 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
 
   const selectedSummary = driverSummaries.find((item) => item.driver === selectedDriver) || null
 
-  function exportPdf() {
+  async function exportPdf() {
     const brandBrown = [120, 72, 32]
     const brandGreen = [22, 101, 52]
     const softBrown = [248, 244, 236]
     const doc = new jsPDF({ orientation: 'landscape', format: 'a4' })
     doc.setFillColor(...brandBrown)
     doc.roundedRect(12, 8, 273, 40, 4, 4, 'F')
+    doc.setFillColor(...softBrown)
+    doc.roundedRect(16, 13, 66, 20, 3, 3, 'F')
+    try {
+      const logo = await loadLogoDataUrl()
+      doc.addImage(logo, 'JPEG', 19, 15, 60, 13)
+    } catch {
+      doc.setTextColor(...brandBrown)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(14)
+      doc.text('TELIMAN', 24, 25)
+    }
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(18)
