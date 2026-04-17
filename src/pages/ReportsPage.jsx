@@ -138,19 +138,27 @@ async function loadLogoDataUrl() {
 }
 
 async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
-  const brandGreen = [22, 101, 52]
   const brandBrown = [120, 72, 32]
+  const logoPanel = [248, 244, 236]
   const now = new Date().toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+  doc.setFillColor(...brandBrown)
+  doc.roundedRect(12, 8, 273, 40, 4, 4, 'F')
+  doc.setFillColor(...logoPanel)
+  doc.roundedRect(16, 13, 66, 20, 3, 3, 'F')
+
   try {
     const logo = await loadLogoDataUrl()
-    doc.addImage(logo, 'JPEG', 14, 10, 60, 24)
-  } catch {}
+    doc.addImage(logo, 'JPEG', 19, 15, 60, 13)
+  } catch {
+    doc.setTextColor(...brandBrown)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.text('TELIMAN', 24, 25)
+  }
 
   const textX = 96
   const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
-
-  doc.setFillColor(...brandGreen)
-  doc.roundedRect(12, 8, 273, 40, 4, 4, 'F')
   doc.setDrawColor(...brandBrown)
   doc.setLineWidth(1.2)
   doc.line(14, 50, 283, 50)
