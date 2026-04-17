@@ -40,7 +40,7 @@ function formatQtyPlain(value, digits = 2) {
 
 function formatMoney(value) {
   const n = toQtyNumber(value)
-  return n.toFixed(0).replace('.', ',')
+  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 function ymdToDate(value) {
@@ -483,19 +483,21 @@ export function ReportsPage() {
         startY: cursorY + (showSectionTitle ? 4 : 0),
         head: [section.headers],
         body: bodyRows,
+        margin: { left: 14, right: 14 },
+        tableWidth: 269,
         styles: { fontSize: 10.5, cellPadding: 3, halign: 'center', valign: 'middle' },
         headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 11, halign: 'center', valign: 'middle' },
         alternateRowStyles: { fillColor: [249, 250, 251] },
         bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
         columnStyles: type === 'fuel'
           ? {
-              0: { cellWidth: 34 },
+              0: { cellWidth: 42 },
               1: { cellWidth: 28 },
-              2: { cellWidth: 34 },
-              3: { cellWidth: 42 },
+              2: { cellWidth: 36 },
+              3: { cellWidth: 54 },
               4: { cellWidth: 18 },
-              5: { cellWidth: 22, halign: 'center' },
-              6: { cellWidth: 24, halign: 'center' },
+              5: { cellWidth: 28, halign: 'center' },
+              6: { cellWidth: 32, halign: 'center' },
             }
           : undefined,
         didParseCell: (data) => {
@@ -669,16 +671,16 @@ export function ReportsPage() {
       )}
 
       {type === 'fuel' && (
-        <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`QUANTITE TOTALE`, '', '', '', formatQtyPlain(fuelQtyTotal), '', ''], [`MONTANT TOTAL`, '', '', '', '', '', formatQtyPlain(fuelTotal, 0)]]} columns={[
-          { key: 'supplier', label: 'FOURNISSEUR' },
-          { key: 'voucherNumber', label: 'NUMERO BL/BON' },
-          { key: 'truckLabel', label: 'IMMATRICULATION' },
-          { key: 'dateTime', label: 'DATE ET HEURE DE PRISE', render: (v) => formatDateTime(v) },
-          { key: 'quantityLiters', label: 'QTE', render: (v) => formatQty(v) },
-          { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatQty(v, 0) },
-          { key: 'amount', label: 'MONTANT', render: (v) => formatQty(v, 0) },
-        ]} />
-      )}
+          <Table title="SUIVI BON DE CARBURANT (par fournisseur)" subtitle={`${fuelRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={fuelRows} footerRows={[[`QUANTITE TOTALE`, '', '', '', formatQtyPlain(fuelQtyTotal), '', ''], [`MONTANT TOTAL`, '', '', '', '', '', formatMoney(fuelTotal)]]} columns={[
+            { key: 'supplier', label: 'FOURNISSEUR' },
+            { key: 'voucherNumber', label: 'NUMERO BL/BON' },
+            { key: 'truckLabel', label: 'IMMATRICULATION' },
+            { key: 'dateTime', label: 'DATE ET HEURE DE PRISE', render: (v) => formatDateTime(v) },
+            { key: 'quantityLiters', label: 'QTE', render: (v) => formatQty(v) },
+            { key: 'unitPrice', label: 'PRIX UNITAIRE', render: (v) => formatMoney(v) },
+            { key: 'amount', label: 'MONTANT', render: (v) => formatMoney(v) },
+          ]} />
+        )}
     </div>
   )
 }
