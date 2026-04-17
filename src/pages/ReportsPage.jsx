@@ -411,10 +411,10 @@ export function ReportsPage() {
         startY: cursorY + 4,
         head: [section.headers],
         body: bodyRows,
-        styles: { fontSize: 9, cellPadding: 2.6 },
-        headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 10 },
+        styles: { fontSize: 10.5, cellPadding: 3, halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 11, halign: 'center', valign: 'middle' },
         alternateRowStyles: { fillColor: [249, 250, 251] },
-        bodyStyles: { textColor: [30, 41, 59] },
+        bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
         didParseCell: (data) => {
           if (data.section !== 'body' || !footerCount) return
           const footerStart = bodyRows.length - footerCount
