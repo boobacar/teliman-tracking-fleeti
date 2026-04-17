@@ -491,13 +491,13 @@ export function ReportsPage() {
         bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
         columnStyles: type === 'fuel'
           ? {
-              0: { cellWidth: 42 },
-              1: { cellWidth: 28 },
-              2: { cellWidth: 36 },
-              3: { cellWidth: 54 },
-              4: { cellWidth: 18 },
-              5: { cellWidth: 28, halign: 'center' },
-              6: { cellWidth: 32, halign: 'center' },
+              0: { cellWidth: 48 },
+              1: { cellWidth: 30 },
+              2: { cellWidth: 40 },
+              3: { cellWidth: 62 },
+              4: { cellWidth: 20 },
+              5: { cellWidth: 32, halign: 'center' },
+              6: { cellWidth: 37, halign: 'center' },
             }
           : undefined,
         didParseCell: (data) => {
