@@ -289,16 +289,19 @@ export function ReportsPage() {
       return {
         title: `HIGH LEVEL ${selectedClientGroup.clientName.toUpperCase()}`,
         clientName: selectedClientGroup.clientName,
-        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
-        rows: selectedClientGroup.rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination || '-']),
-        footerRows: [[
-          `TOTAL ${selectedClientGroup.clientName.toUpperCase()}`,
-          '',
-          formatQtyPlain(selectedClientGroup.rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
-          '',
-          '',
-          '',
-        ]],
+        sections: selectedClientGroup.goodsGroups.map((group) => ({
+          title: group.goods,
+          headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'DESTINATION'],
+          rows: group.items.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.destination || '-']),
+          footerRows: [[
+            `TOTAL ${group.goods}`,
+            '',
+            formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+            '',
+            '',
+            '',
+          ]],
+        })),
       }
     }
 
@@ -306,28 +309,34 @@ export function ReportsPage() {
       return {
         title: 'ETAT DE RECONCILIATION K1',
         clientName: 'K1 MINE',
-        headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
-        rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
-        footerRows: [[
-          'TOTAL K1',
-          '',
-          formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
-          '',
-          '',
-          '',
-        ]],
+        sections: [{
+          title: 'Détail',
+          headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR'],
+          rows: k1Rows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver]),
+          footerRows: [[
+            'TOTAL K1',
+            '',
+            formatQtyPlain(k1Rows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)),
+            '',
+            '',
+            '',
+          ]],
+        }],
       }
     }
 
     return {
       title: 'SUIVI BON DE CARBURANT',
       clientName: '',
-      headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
-      rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
-      footerRows: [
-        ['QUANTITE TOTALE', '', '', '', formatQtyPlain(fuelQtyTotal), '', ''],
-        ['MONTANT TOTAL', '', '', '', '', '', formatQtyPlain(fuelTotal, 0)],
-      ],
+      sections: [{
+        title: 'Détail',
+        headers: ['FOURNISSEUR', 'NUMERO BL/BON', 'IMMATRICULATION', 'DATE ET HEURE DE PRISE', 'QTE', 'PRIX UNITAIRE', 'MONTANT'],
+        rows: fuelRows.map((r) => [r.supplier || '-', r.voucherNumber || '-', r.truckLabel || '-', formatDateTime(r.dateTime), formatQty(r.quantityLiters), formatQty(r.unitPrice, 0), formatQty(r.amount, 0)]),
+        footerRows: [
+          ['QUANTITE TOTALE', '', '', '', formatQtyPlain(fuelQtyTotal), '', ''],
+          ['MONTANT TOTAL', '', '', '', '', '', formatQtyPlain(fuelTotal, 0)],
+        ],
+      }],
     }
   }
 
@@ -336,37 +345,58 @@ export function ReportsPage() {
     const autoTableModule = await import('jspdf-autotable')
     const autoTable = autoTableModule.default
     const report = getCurrentReportForExport()
-    const doc = new jsPDF({ orientation: 'landscape' })
+    const doc = new jsPDF({ orientation: 'landscape', format: 'a4' })
     const purchaseOrderNumber = includePurchaseOrder ? (currentClientPurchaseOrder || masterData.purchaseOrders?.[report.clientName || ''] || '') : ''
     await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
-    const bodyRows = [...report.rows]
-    const footerCount = Array.isArray(report.footerRows) ? report.footerRows.length : 0
-    if (footerCount) {
-      bodyRows.push([])
-      bodyRows.push(...report.footerRows)
-    }
-    autoTable(doc, {
-      startY: 56,
-      head: [report.headers],
-      body: bodyRows,
-      styles: { fontSize: 11, cellPadding: 3 },
-      headStyles: { fillColor: [0, 153, 102], textColor: [255, 255, 255], fontSize: 11 },
-      didParseCell: (data) => {
-        if (data.section !== 'body' || !footerCount) return
-        const footerStart = bodyRows.length - footerCount
-        if (data.row.index >= footerStart) {
-          data.cell.styles.fillColor = [240, 253, 244]
-          data.cell.styles.textColor = [20, 83, 45]
-          data.cell.styles.fontStyle = 'bold'
+    let cursorY = 56
+    report.sections.forEach((section, index) => {
+      if (index > 0) {
+        cursorY = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 14 : cursorY + 14
+      }
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(13)
+      doc.text(section.title, 14, cursorY)
+      const bodyRows = [...section.rows]
+      const footerCount = Array.isArray(section.footerRows) ? section.footerRows.length : 0
+      if (footerCount) {
+        bodyRows.push([])
+        bodyRows.push(...section.footerRows)
+      }
+      autoTable(doc, {
+        startY: cursorY + 4,
+        head: [section.headers],
+        body: bodyRows,
+        styles: { fontSize: 9, cellPadding: 2.6 },
+        headStyles: { fillColor: [0, 153, 102], textColor: [255, 255, 255], fontSize: 10 },
+        didParseCell: (data) => {
+          if (data.section !== 'body' || !footerCount) return
+          const footerStart = bodyRows.length - footerCount
+          if (data.row.index >= footerStart) {
+            data.cell.styles.fillColor = [240, 253, 244]
+            data.cell.styles.textColor = [20, 83, 45]
+            data.cell.styles.fontStyle = 'bold'
+          }
         }
-      },
+      })
+      cursorY = doc.lastAutoTable?.finalY || cursorY
+      if (cursorY > 180 && index < report.sections.length - 1) {
+        doc.addPage('a4', 'landscape')
+        cursorY = 20
+      }
     })
     doc.save(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.pdf`)
   }
 
   const exportCurrent = () => {
     const report = getCurrentReportForExport()
-    downloadCsv(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.csv`, [report.headers, ...report.rows, ...(report.footerRows || [])], from, to)
+    const rows = report.sections.flatMap((section) => ([
+      [section.title],
+      section.headers,
+      ...section.rows,
+      ...(section.footerRows || []),
+      [],
+    ]))
+    downloadCsv(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.csv`, rows, from, to)
   }
 
   return (
