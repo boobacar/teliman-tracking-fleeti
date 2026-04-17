@@ -212,6 +212,7 @@ export function ReportsPage() {
   const [fuel, setFuel] = useState([])
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
   const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
+  const [goodsFilter, setGoodsFilter] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -235,7 +236,11 @@ export function ReportsPage() {
     return () => { cancelled = true }
   }, [])
 
-  const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => inRange(r.date, from, to)), (row) => row.reference), [deliveries, from, to])
+  const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => {
+    if (!inRange(r.date, from, to)) return false
+    if (goodsFilter && String(r.goods || '').trim() !== goodsFilter) return false
+    return true
+  }), (row) => row.reference), [deliveries, from, to, goodsFilter])
   const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
   const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
   const k1_05 = useMemo(() => sortByReference(k1Rows.filter((r) => isBatch05(r.goods)), (row) => row.reference), [k1Rows])
@@ -428,6 +433,13 @@ export function ReportsPage() {
               className="filter-control modern-date-input"
               popperClassName="modern-date-popper"
             />
+          </label>
+          <label className="field-stack">
+            <span>Type de produit</span>
+            <select value={goodsFilter} onChange={(e) => setGoodsFilter(e.target.value)}>
+              <option value="">Tous les produits</option>
+              {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
+            </select>
           </label>
           <div className="field-stack" style={{ alignSelf: 'end' }}>
             <span>Options PDF</span>
