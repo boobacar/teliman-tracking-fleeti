@@ -124,7 +124,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(18)
-    doc.text('Rapport Chauffeurs', 14, 22)
+    doc.text('Rapport Chauffeurs', 150, 24, { align: 'center' })
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(11)
     doc.text(`Période: du ${from || 'début'} au ${to || 'fin'}`, 280, 22, { align: 'right' })

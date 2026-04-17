@@ -289,7 +289,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(18)
-    doc.text('Rapport Trajets Teliman', 14, 22)
+    doc.text('Rapport Trajets Teliman', 150, 24, { align: 'center' })
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(11)
     doc.text(`Période: du ${from} au ${to}`, 280, 22, { align: 'right' })

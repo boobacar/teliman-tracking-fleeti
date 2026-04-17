@@ -157,7 +157,7 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
     doc.text('TELIMAN', 24, 25)
   }
 
-  const textX = 96
+  const titleCenterX = 150
   const titleText = purchaseOrderNumber ? `${title} - BC: ${purchaseOrderNumber}` : title
   doc.setDrawColor(...brandBrown)
   doc.setLineWidth(1.2)
@@ -166,7 +166,7 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
-  doc.text(titleText, textX, 21, { align: 'left' })
+  doc.text(titleText, titleCenterX, 24, { align: 'center' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
