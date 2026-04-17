@@ -40,7 +40,7 @@ function formatQtyPlain(value, digits = 2) {
 
 function formatMoney(value) {
   const n = toQtyNumber(value)
-  return n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return n.toFixed(0).replace('.', ',')
 }
 
 function ymdToDate(value) {
@@ -487,6 +487,17 @@ export function ReportsPage() {
         headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 11, halign: 'center', valign: 'middle' },
         alternateRowStyles: { fillColor: [249, 250, 251] },
         bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
+        columnStyles: type === 'fuel'
+          ? {
+              0: { cellWidth: 34 },
+              1: { cellWidth: 28 },
+              2: { cellWidth: 34 },
+              3: { cellWidth: 42 },
+              4: { cellWidth: 18 },
+              5: { cellWidth: 22, halign: 'center' },
+              6: { cellWidth: 24, halign: 'center' },
+            }
+          : undefined,
         didParseCell: (data) => {
           if (data.section !== 'body' || !footerCount) return
           const footerStart = bodyRows.length - footerCount
@@ -494,6 +505,9 @@ export function ReportsPage() {
             data.cell.styles.fillColor = softBrown
             data.cell.styles.textColor = brandBrown
             data.cell.styles.fontStyle = 'bold'
+          }
+          if (type === 'fuel' && data.column.index >= 5) {
+            data.cell.styles.fontSize = 9.5
           }
         }
       })
@@ -514,7 +528,7 @@ export function ReportsPage() {
       summaryY = 64
     }
     doc.setFillColor(...softBrown)
-    doc.roundedRect(190, summaryY, 92, 16, 3, 3, 'F')
+    doc.roundedRect(170, summaryY, 112, 16, 3, 3, 'F')
     doc.setTextColor(...brandBrown)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
