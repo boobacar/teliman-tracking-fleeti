@@ -4,6 +4,7 @@ import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fle
 
 const STATIC_REPORT_TYPES = [
   { value: 'reco-k1', label: 'ETAT RECONCILIATION K1' },
+  { value: 'reco-caderac', label: 'ETAT RECONCILIATION CADERAC ABIDJAN' },
   { value: 'fuel', label: 'SUIVI BON DE CARBURANT' },
 ]
 
@@ -310,6 +311,8 @@ export function ReportsPage() {
     return Array.from(map.entries()).map(([destination, quantity]) => ({ destination, quantity }))
   }, [caderacRows])
 
+  const caderacGeneralTotal = useMemo(() => caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0), [caderacRows])
+
   const fuelRows = useMemo(() => sortByReference(fuel.filter((r) => inRange(r.dateTime, from, to)), (row) => row.voucherNumber || row.reference), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
   const fuelQtyTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.quantityLiters), 0), [fuelRows])
@@ -354,6 +357,27 @@ export function ReportsPage() {
             '',
           ]],
         }],
+      }
+    }
+
+    if (type === 'reco-caderac') {
+      return {
+        title: 'ETAT DE RECONCILIATION CADERAC ABIDJAN',
+        clientName: 'CADERAC ABIDJAN',
+        sections: [
+          {
+            title: 'Détail',
+            headers: ['NUMERO BL', 'TYPE DE PRODUIT', 'QTE', 'DATE ET HEURE DE DECHARGEMENT', 'IMMATRICULATION', 'NOM DU CHAUFFEUR', 'DESTINATION'],
+            rows: caderacRows.map((r) => [r.reference, r.goods, formatQty(r.quantity), formatDateTime(r.date), r.truckLabel, r.driver, r.destination || '-']),
+            footerRows: [],
+          },
+          {
+            title: 'Totaux par destination',
+            headers: ['DESTINATION', 'TOTAL QUANTITE'],
+            rows: caderacByDestination.map((row) => [row.destination, formatQty(row.quantity)]),
+            footerRows: [['TOTAL GENERAL', formatQtyPlain(caderacGeneralTotal)]],
+          },
+        ],
       }
     }
 
@@ -542,6 +566,24 @@ export function ReportsPage() {
           { key: 'truckLabel', label: 'IMMATRICULATION' },
           { key: 'driver', label: 'NOM DU CHAUFFEUR' },
         ]} />
+      )}
+
+      {type === 'reco-caderac' && (
+        <>
+          <Table title="ETAT DE RECONCILIATION CADERAC ABIDJAN" subtitle={`${caderacRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={caderacRows} columns={[
+            { key: 'reference', label: 'NUMERO BL' },
+            { key: 'goods', label: 'TYPE DE PRODUIT' },
+            { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
+            { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
+            { key: 'truckLabel', label: 'IMMATRICULATION' },
+            { key: 'driver', label: 'NOM DU CHAUFFEUR' },
+            { key: 'destination', label: 'DESTINATION' },
+          ]} />
+          <Table title="CADERAC ABIDJAN – Totaux par destination" subtitle={`${caderacByDestination.length} destination(s)`} rows={caderacByDestination} footerRows={[[`TOTAL GENERAL`, formatQtyPlain(caderacGeneralTotal)]]} columns={[
+            { key: 'destination', label: 'DESTINATION' },
+            { key: 'quantity', label: 'TOTAL QUANTITE', render: (v) => formatQty(v) },
+          ]} />
+        </>
       )}
 
       {type === 'fuel' && (
