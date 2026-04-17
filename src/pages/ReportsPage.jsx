@@ -166,8 +166,10 @@ async function buildPdfHeader(doc, title, from, to, purchaseOrderNumber = '') {
 
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text(titleText, titleCenterX, 24, { align: 'center' })
+  const longTitle = titleText.length > 34
+  doc.setFontSize(longTitle ? 15 : 18)
+  const wrappedTitle = doc.splitTextToSize(titleText, 110)
+  doc.text(wrappedTitle, titleCenterX, wrappedTitle.length > 1 ? 19 : 24, { align: 'center' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
@@ -418,13 +420,16 @@ export function ReportsPage() {
         await buildPdfHeader(doc, report.title, from, to, purchaseOrderNumber)
         cursorY = 56
       }
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(13)
-      doc.setTextColor(...brandBrown)
-      doc.text(section.title, 14, cursorY)
-      doc.setDrawColor(...brandBrown)
-      doc.setLineWidth(0.5)
-      doc.line(14, cursorY + 2, 120, cursorY + 2)
+      const showSectionTitle = section.title && section.title.toLowerCase() !== 'détail'
+      if (showSectionTitle) {
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(13)
+        doc.setTextColor(...brandBrown)
+        doc.text(section.title, 14, cursorY)
+        doc.setDrawColor(...brandBrown)
+        doc.setLineWidth(0.5)
+        doc.line(14, cursorY + 2, 120, cursorY + 2)
+      }
       const bodyRows = [...section.rows]
       const footerCount = Array.isArray(section.footerRows) ? section.footerRows.length : 0
       if (footerCount) {
@@ -432,7 +437,7 @@ export function ReportsPage() {
         bodyRows.push(...section.footerRows)
       }
       autoTable(doc, {
-        startY: cursorY + 4,
+        startY: cursorY + (showSectionTitle ? 4 : 0),
         head: [section.headers],
         body: bodyRows,
         styles: { fontSize: 10.5, cellPadding: 3, halign: 'center', valign: 'middle' },
