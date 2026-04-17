@@ -244,6 +244,7 @@ export function ReportsPage() {
   const k1Rows = useMemo(() => sortByReference(rowsInRange.filter((r) => isK1Client(r.client)), (row) => row.reference), [rowsInRange])
   const caderacRows = useMemo(() => sortByReference(rowsInRange.filter((r) => isCaderacClient(r.client)), (row) => row.reference), [rowsInRange])
   const k1GoodsGroups = useMemo(() => groupRowsByGoods(k1Rows), [k1Rows])
+  const caderacGoodsGroups = useMemo(() => groupRowsByGoods(caderacRows), [caderacRows])
   const caderacByDestination = useMemo(() => {
     const map = new Map()
     caderacRows.forEach((r) => {
@@ -499,14 +500,24 @@ export function ReportsPage() {
 
       {type === 'caderac' && (
         <>
-          <Table title="HIGH LEVEL CADERAC – Détail" subtitle={`${caderacRows.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={caderacRows} footerRows={[[`TOTAL`, '', formatQtyPlain(caderacRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]} columns={[
+          {caderacGoodsGroups.map((group) => (
+            <Table key={group.goods} title={`HIGH LEVEL CADERAC – ${group.goods}`} subtitle={`${group.items.length} ligne(s) • ${formatPeriodLabel(from, to)}`} rows={group.items} footerRows={[[`TOTAL`, '', formatQtyPlain(group.items.reduce((a, r) => a + toQtyNumber(r.quantity), 0)), '', '', '']]} columns={[
+              { key: 'reference', label: 'NUMERO BL' },
+              { key: 'goods', label: 'TYPE DE PRODUIT' },
+              { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
+              { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
+              { key: 'truckLabel', label: 'IMMATRICULATION' },
+              { key: 'destination', label: 'DESTINATION' },
+            ]} />
+          ))}
+          {caderacGoodsGroups.length === 0 && <Table title="HIGH LEVEL CADERAC" subtitle={`0 ligne • ${formatPeriodLabel(from, to)}`} rows={[]} columns={[
             { key: 'reference', label: 'NUMERO BL' },
             { key: 'goods', label: 'TYPE DE PRODUIT' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
             { key: 'date', label: 'DATE ET HEURE DE DECHARGEMENT', render: (v) => formatDateTime(v) },
             { key: 'truckLabel', label: 'IMMATRICULATION' },
             { key: 'destination', label: 'DESTINATION' },
-          ]} />
+          ]} />}
           <Table title="CADERAC – Agrégat quantité par destination" subtitle={`${caderacByDestination.length} destination(s)`} rows={caderacByDestination} columns={[
             { key: 'destination', label: 'DESTINATION' },
             { key: 'quantity', label: 'QTE', render: (v) => formatQty(v) },
