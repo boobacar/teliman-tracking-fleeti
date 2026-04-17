@@ -258,16 +258,25 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   }), [filteredTrips])
 
   function exportPdf() {
-    const doc = new jsPDF({ orientation: 'landscape' })
+    const brandBrown = [120, 72, 32]
+    const brandGreen = [22, 101, 52]
+    const softBrown = [248, 244, 236]
+    const doc = new jsPDF({ orientation: 'landscape', format: 'a4' })
+    doc.setFillColor(...brandBrown)
+    doc.roundedRect(12, 8, 273, 40, 4, 4, 'F')
+    doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(20)
-    doc.text('Rapport Trajets Teliman', 14, 18)
+    doc.setFontSize(18)
+    doc.text('Rapport Trajets Teliman', 14, 22)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(11)
-    doc.text(`Période : du ${from} au ${to}`, 14, 27)
+    doc.text(`Période: du ${from} au ${to}`, 280, 22, { align: 'right' })
+    doc.text(`Édité le: ${new Date().toLocaleString('fr-FR')}`, 280, 31, { align: 'right' })
+    doc.setDrawColor(...brandBrown)
+    doc.line(14, 50, 283, 50)
 
     autoTable(doc, {
-      startY: 36,
+      startY: 56,
       head: [['Camion', 'Chauffeur', 'Trajets', 'Distance', 'Durée', 'Événements']],
       body: summaryByTruck.map((item) => [
         item.truckLabel,
@@ -277,8 +286,10 @@ export function TripsReportPage({ filteredTrackers = [] }) {
         formatDurationMinutes(item.durationMinutes),
         item.eventCount,
       ]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [0, 153, 102] },
+      styles: { fontSize: 10.5, cellPadding: 3, halign: 'center', valign: 'middle' },
+      headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 11, halign: 'center', valign: 'middle' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
     })
 
     autoTable(doc, {
@@ -295,9 +306,26 @@ export function TripsReportPage({ filteredTrackers = [] }) {
         `${trip.maxSpeed || 0} km/h`,
         trip.eventCount,
       ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [15, 23, 42] },
+      styles: { fontSize: 10, cellPadding: 2.8, halign: 'center', valign: 'middle' },
+      headStyles: { fillColor: brandGreen, textColor: [255, 255, 255], fontSize: 10.5, halign: 'center', valign: 'middle' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      bodyStyles: { textColor: [30, 41, 59], halign: 'center', valign: 'middle' },
     })
+
+    const summaryY = (doc.lastAutoTable?.finalY || 56) + 10
+    doc.setFillColor(...softBrown)
+    doc.roundedRect(190, summaryY, 92, 16, 3, 3, 'F')
+    doc.setTextColor(...brandBrown)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.text(`Total trajets: ${filteredTrips.length}`, 278, summaryY + 10, { align: 'right' })
+
+    doc.setLineWidth(0.4)
+    doc.line(14, 200, 283, 200)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text('Teliman Logistique', 14, 206)
+    doc.text('Page 1/1', 283, 206, { align: 'right' })
 
     doc.save(`rapport-trajets-fleeti-${Date.now()}.pdf`)
   }
