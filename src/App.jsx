@@ -67,7 +67,7 @@ function App() {
   const [reports, setReports] = useState({ summary: {}, rows: [] })
   const [deliveryOrders, setDeliveryOrders] = useState([])
   const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
-  const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [] })
+  const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], manualTrackers: [] })
   const [authLoading, setAuthLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
 
@@ -83,17 +83,17 @@ function App() {
           module.loadReports().catch(() => ({ summary: {}, rows: [] })),
           module.loadDeliveryOrders().catch(() => ({ items: [] })),
           module.loadDeliveryOrdersSummary().catch(() => ({ total: 0, active: 0, delivered: 0, byTruck: {} })),
-          module.loadMasterData().catch(() => ({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })),
+          module.loadMasterData().catch(() => ({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })),
         ])
         setReports(reportsPayload)
         setDeliveryOrders(ordersPayload?.items || [])
         setDeliveryOrdersSummary(ordersSummaryPayload || { total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData(masterDataPayload || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+        setMasterData(masterDataPayload || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
       } catch {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
         setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
       }
     } catch (err) {
       const message = err?.message || 'Chargement impossible. Veuillez vérifier votre session.'
@@ -148,6 +148,40 @@ function App() {
       return base
     })
   }, [dataset])
+
+  const operationalTrackers = useMemo(() => {
+    const manualTrackers = Array.isArray(masterData?.manualTrackers)
+      ? masterData.manualTrackers
+      : []
+
+    const normalizedManual = manualTrackers
+      .map((item, index) => {
+        const id = Number(item?.id)
+        const label = String(item?.label || '').trim()
+        const driver = String(item?.driver || '').trim()
+        if (!label || !driver) return null
+        return {
+          id: Number.isInteger(id) && id > 0 ? id : (9000000 + index + 1),
+          label,
+          employeeName: driver,
+          employeePhone: 'N/A',
+          state: {},
+          mileage: {},
+          latestDayMileage: 0,
+          events: [],
+          eventCounts: {},
+          statusColor: statusColor('unknown'),
+          source: 'manual',
+        }
+      })
+      .filter(Boolean)
+
+    const byId = new Map(enrichedTrackers.map((tracker) => [String(tracker.id), tracker]))
+    for (const tracker of normalizedManual) {
+      if (!byId.has(String(tracker.id))) byId.set(String(tracker.id), tracker)
+    }
+    return Array.from(byId.values())
+  }, [enrichedTrackers, masterData])
 
   const filteredTrackers = useMemo(() => enrichedTrackers.filter((tracker) => {
     const text = `${tracker.label} ${tracker.employeeName}`.toLowerCase()
@@ -229,11 +263,11 @@ function App() {
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
           <Route path="/trips-report" element={<TripsReportPage filteredTrackers={filteredTrackers} />} />
-          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
-          <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={enrichedTrackers} />} />
-          <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={enrichedTrackers} />} />
+          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
+          <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={operationalTrackers} />} />
+          <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
-          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
+          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />} />
           <Route path="/data" element={<DataPage />} />
           <Route path="/admin-users" element={<AdminUsersPage />} />
         </Routes>

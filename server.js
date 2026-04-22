@@ -319,6 +319,25 @@ function normalizePurchaseOrdersMap(value) {
   )
 }
 
+function normalizeManualTrackers(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item, index) => {
+      const id = Number(item?.id)
+      const label = String(item?.label || '').trim()
+      const driver = String(item?.driver || '').trim()
+      const normalizedId = Number.isInteger(id) && id > 0 ? id : (9000000 + index + 1)
+      if (!label || !driver) return null
+      return { id: normalizedId, label, driver }
+    })
+    .filter(Boolean)
+    .reduce((acc, item) => {
+      if (acc.some((entry) => Number(entry.id) === Number(item.id))) return acc
+      return [...acc, item]
+    }, [])
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
 function readMasterData() {
   try {
     const payload = JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8'))
@@ -328,9 +347,10 @@ function readMasterData() {
       destinations: Array.isArray(payload.destinations) ? payload.destinations : [],
       suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
       purchaseOrders: normalizePurchaseOrdersMap(payload.purchaseOrders),
+      manualTrackers: normalizeManualTrackers(payload.manualTrackers),
     }
   } catch {
-    return { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} }
+    return { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] }
   }
 }
 
@@ -341,6 +361,7 @@ function writeMasterData(data) {
     destinations: Array.from(new Set((data.destinations || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     suppliers: Array.from(new Set((data.suppliers || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     purchaseOrders: normalizePurchaseOrdersMap(data.purchaseOrders),
+    manualTrackers: normalizeManualTrackers(data.manualTrackers),
   }
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
 }
@@ -1504,7 +1525,7 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -1513,6 +1534,19 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     const purchaseOrderNumber = String(req.body?.purchaseOrderNumber || req.body?.value || '').trim()
     if (!client || !purchaseOrderNumber) return res.status(400).json({ ok: false, error: 'Client et numéro de bon de commande obligatoires' })
     data.purchaseOrders = { ...(data.purchaseOrders || {}), [client]: purchaseOrderNumber }
+    writeMasterData(data)
+    return res.status(201).json({ ok: true, data })
+  }
+
+  if (listName === 'manualTrackers') {
+    const label = String(req.body?.label || req.body?.value || '').trim()
+    const driver = String(req.body?.driver || '').trim()
+    if (!label || !driver) return res.status(400).json({ ok: false, error: 'Camion et chauffeur obligatoires' })
+    const current = normalizeManualTrackers(data.manualTrackers)
+    const duplicate = current.find((item) => item.label.toLowerCase() === label.toLowerCase() && item.driver.toLowerCase() === driver.toLowerCase())
+    if (duplicate) return res.status(409).json({ ok: false, error: 'Ce camion/chauffeur existe déjà' })
+    const nextId = current.length ? Math.max(...current.map((item) => Number(item.id) || 9000000)) + 1 : 9000001
+    data.manualTrackers = [...current, { id: nextId, label, driver }]
     writeMasterData(data)
     return res.status(201).json({ ok: true, data })
   }
@@ -1527,7 +1561,7 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
 
 app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -1537,6 +1571,14 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
     const next = { ...(data.purchaseOrders || {}) }
     delete next[client]
     data.purchaseOrders = next
+    writeMasterData(data)
+    return res.json({ ok: true, data })
+  }
+
+  if (listName === 'manualTrackers') {
+    const targetId = Number(req.query.id || req.query.value)
+    if (!Number.isInteger(targetId) || targetId <= 0) return res.status(400).json({ ok: false, error: 'Identifiant camion invalide' })
+    data.manualTrackers = normalizeManualTrackers(data.manualTrackers).filter((item) => Number(item.id) !== targetId)
     writeMasterData(data)
     return res.json({ ok: true, data })
   }

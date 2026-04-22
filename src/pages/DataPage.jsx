@@ -23,11 +23,13 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
 }
 
 export function DataPage() {
-  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
   const [destinationValue, setDestinationValue] = useState('')
   const [supplierValue, setSupplierValue] = useState('')
+  const [manualTruckLabel, setManualTruckLabel] = useState('')
+  const [manualDriverName, setManualDriverName] = useState('')
   const [purchaseOrderClient, setPurchaseOrderClient] = useState('')
   const [purchaseOrderValue, setPurchaseOrderValue] = useState('')
   const [loading, setLoading] = useState(false)
@@ -59,11 +61,28 @@ export function DataPage() {
     await refresh()
   }
 
+  async function addManualTracker() {
+    const label = manualTruckLabel.trim()
+    const driver = manualDriverName.trim()
+    if (!label || !driver) return
+    await addMasterDataItem('manualTrackers', label, { label, driver })
+    setManualTruckLabel('')
+    setManualDriverName('')
+    await refresh()
+  }
+
+  async function removeManualTracker(id) {
+    await deleteMasterDataItem('manualTrackers', String(id))
+    await refresh()
+  }
+
   const summaryCards = useMemo(() => ([
     { label: 'Clients', value: data.clients?.length || 0, helper: 'listes déroulantes BL' },
     { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
     { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
     { label: 'Fournisseurs', value: data.suppliers?.length || 0, helper: 'bons carburant' },
+    { label: 'Camions manuels', value: data.manualTrackers?.length || 0, helper: 'hors API Fleeti' },
+    { label: 'Chauffeurs manuels', value: new Set((data.manualTrackers || []).map((item) => item.driver).filter(Boolean)).size, helper: 'hors API Fleeti' },
     { label: 'N° bons commande', value: Object.keys(data.purchaseOrders || {}).length || 0, helper: 'affectation par client' },
   ]), [data])
 
@@ -134,6 +153,30 @@ export function DataPage() {
         onAdd={addItem}
         onRemove={removeItem}
       />
+
+      <section className="panel panel-large data-card-panel">
+        <div className="panel-header">
+          <div>
+            <h3>Camions & chauffeurs manuels</h3>
+            <p>Ajoutez des unités hors API Fleeti pour les utiliser dans les bons de livraison et de carburant.</p>
+          </div>
+          <div className="stat-icon"><Truck size={18} /></div>
+        </div>
+        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
+          <input placeholder="Nom du camion" value={manualTruckLabel} onChange={(e) => setManualTruckLabel(e.target.value)} />
+          <input placeholder="Nom du chauffeur" value={manualDriverName} onChange={(e) => setManualDriverName(e.target.value)} />
+          <button className="primary-btn" onClick={addManualTracker}>Ajouter</button>
+        </div>
+        <div className="data-list-grid">
+          {(data.manualTrackers || []).length === 0 && <div className="empty-banner">Aucun camion manuel enregistré.</div>}
+          {(data.manualTrackers || []).map((item) => (
+            <div key={item.id} className="driver-rank-row static-row data-row-card">
+              <div><span>{item.label}</span><small>{item.driver}</small></div>
+              <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="panel panel-large data-card-panel">
         <div className="panel-header">
