@@ -21,6 +21,7 @@ const TripsReportPage = lazy(() => import('./pages/TripsReportPage').then((modul
 const DeliveryOrdersPage = lazy(() => import('./pages/DeliveryOrdersPage').then((module) => ({ default: module.DeliveryOrdersPage })))
 const DeliveryOrderDetailPage = lazy(() => import('./pages/DeliveryOrderDetailPage').then((module) => ({ default: module.DeliveryOrderDetailPage })))
 const FuelVouchersPage = lazy(() => import('./pages/FuelVouchersPage').then((module) => ({ default: module.FuelVouchersPage })))
+const FuelVoucherDetailPage = lazy(() => import('./pages/FuelVoucherDetailPage').then((module) => ({ default: module.FuelVoucherDetailPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ default: module.DataPage })))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
@@ -230,6 +231,7 @@ function App() {
           <Route path="/trips-report" element={<TripsReportPage filteredTrackers={filteredTrackers} />} />
           <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={enrichedTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
           <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={enrichedTrackers} />} />
+          <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={enrichedTrackers} />} />
           <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
           <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={enrichedTrackers} deliveryOrders={deliveryOrders} />} />
           <Route path="/data" element={<DataPage />} />

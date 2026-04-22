@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { fr } from 'date-fns/locale'
-import { Camera, Pencil, Trash2 } from 'lucide-react'
+import { Camera, Trash2 } from 'lucide-react'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
@@ -31,15 +31,20 @@ function fileToDataUrl(file) {
 
 function exportCsv(rows) {
   const headers = ['Camion', 'Numéro bon', 'Date', 'Quantité (L)', 'Prix/L', 'Montant', 'Photo']
-  const csvRows = rows.map((item) => [
-    item.truckLabel || '',
-    item.voucherNumber || '',
-    item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR') : '',
-    item.quantityLiters || 0,
-    item.unitPrice || 0,
-    item.amount || 0,
-    item.proofPhotoDataUrl ? 'Oui' : 'Non',
-  ])
+  const csvRows = rows.map((item) => {
+    const photos = Array.isArray(item.proofPhotoDataUrls)
+      ? item.proofPhotoDataUrls
+      : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
+    return [
+      item.truckLabel || '',
+      item.voucherNumber || '',
+      item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR') : '',
+      item.quantityLiters || 0,
+      item.unitPrice || 0,
+      item.amount || 0,
+      photos.length ? `Oui (${photos.length})` : 'Non',
+    ]
+  })
   const csv = [headers, ...csvRows]
     .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(';'))
     .join('\n')
@@ -53,6 +58,7 @@ function exportCsv(rows) {
 }
 
 export function FuelVouchersPage({ enrichedTrackers = [] }) {
+  const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [items, setItems] = useState([])
@@ -141,19 +147,17 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     await reload()
   }
 
-  const edit = async (item) => {
-    const quantityLiters = window.prompt('Nouvelle quantité (L)', String(item.quantityLiters || ''))
-    if (quantityLiters === null) return
-    const unitPrice = window.prompt('Nouveau prix unitaire', String(item.unitPrice || ''))
-    if (unitPrice === null) return
-    await updateFuelVoucher(item.id, { quantityLiters: toNumber(quantityLiters), unitPrice: toNumber(unitPrice) })
-    await reload()
-  }
-
   const uploadPhoto = async (item, file) => {
     if (!file) return
     const proofPhotoDataUrl = await fileToDataUrl(file)
-    await updateFuelVoucher(item.id, { proofPhotoDataUrl })
+    const currentPhotos = Array.isArray(item.proofPhotoDataUrls)
+      ? item.proofPhotoDataUrls
+      : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
+    const nextPhotos = [...currentPhotos, proofPhotoDataUrl].filter(Boolean).slice(0, 10)
+    await updateFuelVoucher(item.id, {
+      proofPhotoDataUrls: nextPhotos,
+      proofPhotoDataUrl: nextPhotos[0] || '',
+    })
     await reload()
   }
 
@@ -202,16 +206,12 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <label className="field-stack">
             <span>Date et heure</span>
             <StableDatePicker
-              selected={form.dateTime ? new Date(form.dateTime) : null}
+              value={form.dateTime ? new Date(form.dateTime) : null}
               onChange={(value) => setForm((c) => ({ ...c, dateTime: value ? value.toISOString() : '' }))}
-              showTimeSelect
-              timeIntervals={5}
-              dateFormat="dd/MM/yyyy HH:mm"
-              locale={fr}
-              placeholderText="Choisir date et heure"
+              withTime
+              placeholder="Choisir date et heure"
+              clearable
               className="filter-control modern-date-input"
-              popperClassName="modern-date-popper"
-              required
             />
           </label>
           <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
@@ -237,26 +237,23 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
           <StableDatePicker
-            selected={dateFilter}
+            value={dateFilter}
             onChange={(value) => setDateFilter(value)}
-            dateFormat="dd/MM/yyyy"
-            locale={fr}
-            placeholderText="Filtrer par date"
-            isClearable
+            placeholder="Filtrer par date"
+            clearable
             className="filter-control modern-date-input"
-            popperClassName="modern-date-popper"
           />
           <button className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
         {loading ? <div className="info-banner">Chargement…</div> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
-              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Prix/L</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Prix/L</th><th>Montant</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map((item) => {
                   const pickerId = `fuel-photo-${item.id}`
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.id} className="clickable-row" onClick={() => navigate(`/fuel-voucher/${item.id}`)}>
                       <td>{item.truckLabel || '-'}</td>
                       <td>{item.voucherNumber || '-'}</td>
                       <td>{item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
@@ -264,11 +261,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                       <td>{Number(item.unitPrice || 0).toLocaleString('fr-FR')}</td>
                       <td>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</td>
                       <td>
-                        {item.proofPhotoDataUrl ? <a className="link-row" href={item.proofPhotoDataUrl} target="_blank" rel="noreferrer">Voir</a> : '-'}
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button className="ghost-btn small-btn icon-btn" onClick={() => edit(item)} title="Modifier" aria-label="Modifier"><Pencil size={15} /></button>
+                        <div className="table-actions" onClick={(e) => e.stopPropagation()}>
                           <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
                           <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
                           <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
@@ -277,7 +270,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                     </tr>
                   )
                 })}
-                {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun bon carburant enregistré.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun bon carburant enregistré.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -287,7 +280,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           {filtered.map((item) => {
             const pickerId = `fuel-photo-mobile-${item.id}`
             return (
-              <article key={`mobile-fuel-${item.id}`} className="mobile-voucher-card">
+              <article key={`mobile-fuel-${item.id}`} className="mobile-voucher-card" onClick={() => navigate(`/fuel-voucher/${item.id}`)}>
                 <div className="mobile-voucher-head">
                   <strong>{item.voucherNumber || '-'}</strong>
                   <span>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</span>
@@ -296,11 +289,10 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                 <p><b>Date:</b> {item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
                 <p><b>Quantité:</b> {Number(item.quantityLiters || 0).toLocaleString('fr-FR')} L</p>
                 <p><b>Prix/L:</b> {Number(item.unitPrice || 0).toLocaleString('fr-FR')}</p>
-                <div className="table-actions">
-                  <button className="ghost-btn small-btn icon-btn" onClick={() => edit(item)} title="Modifier" aria-label="Modifier"><Pencil size={15} /></button>
+                <div className="table-actions" onClick={(e) => e.stopPropagation()}>
                   <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
                   <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                  <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
+                  <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={15} /></button>
                 </div>
               </article>
             )

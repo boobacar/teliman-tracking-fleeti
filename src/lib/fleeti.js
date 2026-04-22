@@ -160,6 +160,10 @@ export const loadDeliveryOrder = async (id) => {
 }
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
 export const loadFuelVouchers = () => getJson('/api/fuel-vouchers')
+export const loadFuelVoucher = async (id) => {
+  const data = await getJson(`/api/fuel-voucher/${id}`)
+  return data?.item || null
+}
 export const loadLiveFuelLevels = () => getJson('/api/fuel-live')
 export const loadCameras = () => getJson('/api/cameras')
 export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', payload)

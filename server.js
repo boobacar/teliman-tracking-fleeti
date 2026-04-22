@@ -402,6 +402,14 @@ function sanitizeFuelPhotoDataUrl(value, fallback = '') {
   return raw
 }
 
+function sanitizeFuelPhotoList(value, fallback = []) {
+  const input = Array.isArray(value) ? value : (Array.isArray(fallback) ? fallback : [])
+  return input
+    .map((item) => sanitizeFuelPhotoDataUrl(item, ''))
+    .filter(Boolean)
+    .slice(0, 10)
+}
+
 function sanitizeFuelVoucherPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) throw new Error('trackerId invalide')
@@ -412,6 +420,8 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
   if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('Prix unitaire invalide')
 
   const amount = Number((quantityLiters * unitPrice).toFixed(2))
+  const proofPhotoDataUrls = sanitizeFuelPhotoList(body.proofPhotoDataUrls, current?.proofPhotoDataUrls)
+  const proofPhotoDataUrl = sanitizeFuelPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl)
 
   return {
     id: current?.id || Date.now(),
@@ -426,7 +436,8 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
     unitPrice,
     amount,
     createdAt: current?.createdAt || new Date().toISOString(),
-    proofPhotoDataUrl: sanitizeFuelPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl),
+    proofPhotoDataUrl: proofPhotoDataUrl || proofPhotoDataUrls[0] || '',
+    proofPhotoDataUrls: proofPhotoDataUrls.length ? proofPhotoDataUrls : (proofPhotoDataUrl ? [proofPhotoDataUrl] : []),
   }
 }
 
@@ -1623,6 +1634,14 @@ app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders
 
 app.get('/api/fuel-vouchers', (_req, res) => {
   res.json({ items: readFuelVouchers() })
+})
+
+app.get('/api/fuel-voucher/:id', (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+  const item = readFuelVouchers().find((entry) => Number(entry.id) === id)
+  if (!item) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
+  res.json({ item })
 })
 
 app.get('/api/fuel-live', async (_req, res) => {
