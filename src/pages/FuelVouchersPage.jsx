@@ -248,17 +248,20 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
         {loading ? <div className="info-banner">Chargement…</div> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
-              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Prix/L</th><th>Montant</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Photo</th><th>Montant</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map((item) => {
                   const pickerId = `fuel-photo-${item.id}`
+                  const hasPhoto = Array.isArray(item.proofPhotoDataUrls)
+                    ? item.proofPhotoDataUrls.some(Boolean)
+                    : Boolean(item.proofPhotoDataUrl)
                   return (
                     <tr key={item.id} className="clickable-row" onClick={() => navigate(`/fuel-voucher/${item.id}`)}>
                       <td>{item.truckLabel || '-'}</td>
                       <td>{item.voucherNumber || '-'}</td>
                       <td>{item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                       <td>{Number(item.quantityLiters || 0).toLocaleString('fr-FR')}</td>
-                      <td>{Number(item.unitPrice || 0).toLocaleString('fr-FR')}</td>
+                      <td>{hasPhoto ? 'Oui' : 'Non'}</td>
                       <td>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</td>
                       <td>
                         <div className="table-actions" onClick={(e) => e.stopPropagation()}>
