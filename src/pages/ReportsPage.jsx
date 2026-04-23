@@ -554,8 +554,8 @@ export function ReportsPage() {
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
       <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><div className="table-actions"><button className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div></div>
-        <div className="filters filter-row">{reportTypes.map((item) => <button key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
+        <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><div className="table-actions"><button type="button" className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button type="button" className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div></div>
+        <div className="filters filter-row">{reportTypes.map((item) => <button type="button" key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid" style={{ marginTop: 12 }}>
           <label className="field-stack">
             <span>Du</span>

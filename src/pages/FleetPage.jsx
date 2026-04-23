@@ -15,8 +15,8 @@ export function FleetPage({ filteredTrackers, setSelectedTrackerId }) {
           </div>
         </div>
         <div className="filters filter-row">
-          <button className={`chip ${mode === 'trackers' ? 'selected' : ''}`} onClick={() => setMode('trackers')}>Par camion</button>
-          <button className={`chip ${mode === 'drivers' ? 'selected' : ''}`} onClick={() => setMode('drivers')}>Par chauffeur</button>
+          <button type="button" className={`chip ${mode === 'trackers' ? 'selected' : ''}`} onClick={() => setMode('trackers')}>Par camion</button>
+          <button type="button" className={`chip ${mode === 'drivers' ? 'selected' : ''}`} onClick={() => setMode('drivers')}>Par chauffeur</button>
         </div>
       </section>
 

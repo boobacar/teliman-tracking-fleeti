@@ -178,7 +178,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             <h3>Niveau carburant live par camion</h3>
             <p>Lecture instantanée Fleeti depuis les capteurs CAN publiés.</p>
           </div>
-          <button className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>
+          <button type="button" className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>
         </div>
         <div className="reports-table-wrap live-fuel-table-wrap">
           <table className="reports-table">
@@ -202,7 +202,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-form-panel">
         <div className="panel-header"><div><h3>Nouveau bon de carburant</h3></div></div>
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <input value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
+          <input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
           <label className="field-stack">
             <span>Date et heure</span>
             <StableDatePicker
@@ -214,18 +214,18 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
               className="filter-control modern-date-input"
             />
           </label>
-          <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
+          <select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
             <option value="">Sélection Camion</option>
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
           </select>
-          <select value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
+          <select aria-label="Fournisseur" value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
             <option value="">Fournisseur</option>
             {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
           </select>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
-          <button className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
+          <button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
         </form>
       </section>
 
@@ -243,7 +243,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             clearable
             className="filter-control modern-date-input"
           />
-          <button className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
+          <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
         {loading ? <div className="info-banner">Chargement…</div> : (
           <div className="reports-table-wrap">
@@ -265,9 +265,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                       <td>{hasPhoto ? 'Oui' : 'Non'}</td>
                       <td>
                         <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                          <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
+                          <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
                           <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                          <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
+                          <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
                         </div>
                       </td>
                     </tr>
@@ -293,9 +293,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                 <p><b>Quantité:</b> {Number(item.quantityLiters || 0).toLocaleString('fr-FR')} L</p>
                 <p><b>Prix/L:</b> {Number(item.unitPrice || 0).toLocaleString('fr-FR')}</p>
                 <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                  <button className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
+                  <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
                   <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                  <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={15} /></button>
+                  <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={15} /></button>
                 </div>
               </article>
             )

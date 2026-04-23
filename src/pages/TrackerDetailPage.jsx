@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertTriangle, Battery, Gauge, MapPin, Users, Wifi, Route } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { EmptyBanner } from '../components/FeedbackBanners'
 
 function statusLabel(status) {
   if (status === 'active') return { label: 'Active', color: '#22c55e' }
@@ -17,7 +18,7 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
   if (!tracker) return (
     <section className="panel">
       <div className="panel-header"><div><h3>Fiche unité</h3><p>Sélectionnez une unité dans la liste trackers</p></div></div>
-      <p style={{ color: '#94a3b8', padding: '12px 0' }}>Aucune unité trouvée pour l'identifiant demandé.</p>
+      <EmptyBanner message="Aucune unité trouvée pour l'identifiant demandé." />
     </section>
   )
 
@@ -52,7 +53,7 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
           <div className="panel-header"><div><h3>Alertes dominantes</h3><p>Lecture rapide des signaux</p></div></div>
           <div className="driver-ranking">
             {Object.entries(tracker.eventCounts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([label, value]) => <div key={label} className="driver-rank-row static-row"><strong>{value}</strong><div><span>{label}</span><small>type d'événement</small></div></div>)}
-            {Object.keys(tracker.eventCounts).length === 0 && <p style={{ color: '#94a3b8' }}>Aucune alerte dominante.</p>}
+            {Object.keys(tracker.eventCounts).length === 0 && <EmptyBanner message="Aucune alerte dominante." />}
           </div>
         </div>
         <div className="panel">
@@ -68,11 +69,11 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
       <section className="dashboard-grid premium-grid phase2-grid">
         <div className="panel">
           <div className="panel-header"><div><h3>Mission active</h3><p>Bon de livraison en cours</p></div></div>
-          {activeOrder ? <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{activeOrder.reference}</strong><div><span>{activeOrder.client}</span><small>{activeOrder.destination}</small></div></div><div className="driver-rank-row static-row"><strong>March.</strong><div><span>{activeOrder.goods || '-'}</span><small>{activeOrder.quantity || '-'}</small></div></div><div className="driver-rank-row static-row"><strong>Statut</strong><div><span>{activeOrder.status}</span><small>{activeOrder.date ? new Date(activeOrder.date).toLocaleString() : '-'}</small></div></div></div> : <p style={{ color: '#94a3b8' }}>Aucune mission active sur ce camion.</p>}
+          {activeOrder ? <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{activeOrder.reference}</strong><div><span>{activeOrder.client}</span><small>{activeOrder.destination}</small></div></div><div className="driver-rank-row static-row"><strong>March.</strong><div><span>{activeOrder.goods || '-'}</span><small>{activeOrder.quantity || '-'}</small></div></div><div className="driver-rank-row static-row"><strong>Statut</strong><div><span>{activeOrder.status}</span><small>{activeOrder.date ? new Date(activeOrder.date).toLocaleString() : '-'}</small></div></div></div> : <EmptyBanner message="Aucune mission active sur ce camion." />}
         </div>
         <div className="panel">
           <div className="panel-header"><div><h3>Historique missions</h3><p>Derniers bons liés à l'unité</p></div></div>
-          <div className="driver-ranking">{trackerOrders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}{trackerOrders.length === 0 && <p style={{ color: '#94a3b8' }}>Aucun bon de livraison lié à ce camion.</p>}</div>
+          <div className="driver-ranking">{trackerOrders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}{trackerOrders.length === 0 && <EmptyBanner message="Aucun bon de livraison lié à ce camion." />}</div>
         </div>
       </section>
 
@@ -126,7 +127,7 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
               <div><strong>{event.message}</strong><p>{event.address}</p><span>{new Date(event.time).toLocaleString()}</span></div>
             </div>
           ))}
-          {tracker.events.length === 0 && <p style={{ color: '#94a3b8' }}>Aucun événement récent.</p>}
+          {tracker.events.length === 0 && <EmptyBanner message="Aucun événement récent." />}
         </div>
       </section>
     </div>

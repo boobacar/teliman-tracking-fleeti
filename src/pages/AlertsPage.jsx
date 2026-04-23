@@ -91,7 +91,7 @@ export function AlertsPage({ importantEvents }) {
 
       <div className="filters filter-row">
         {types.map((type) => (
-          <button key={type} className={`chip ${typeFilter === type ? 'selected' : ''}`} onClick={() => setTypeFilter(type)}>
+          <button type="button" key={type} className={`chip ${typeFilter === type ? 'selected' : ''}`} onClick={() => setTypeFilter(type)}>
             {type === 'all' ? 'Toutes' : getAlertTypeLabel(type)}
           </button>
         ))}
@@ -99,7 +99,7 @@ export function AlertsPage({ importantEvents }) {
 
       <div className="filters filter-row">
         {['all', 'high', 'medium', 'normal'].map((level) => (
-          <button key={level} className={`chip ${priorityFilter === level ? 'selected' : ''}`} onClick={() => setPriorityFilter(level)}>
+          <button type="button" key={level} className={`chip ${priorityFilter === level ? 'selected' : ''}`} onClick={() => setPriorityFilter(level)}>
             {getPriorityLabel(level)}
           </button>
         ))}
@@ -107,7 +107,7 @@ export function AlertsPage({ importantEvents }) {
 
       <div className="filters filter-row" style={{ marginTop: -6 }}>
         {truckTabs.map((truck) => (
-          <button
+          <button type="button"
             key={truck.id}
             className={`chip ${truckFilter === truck.id ? 'selected' : ''}`}
             onClick={() => setTruckFilter(truck.id)}
@@ -132,7 +132,7 @@ export function AlertsPage({ importantEvents }) {
               {group.events.slice(0, 10).map((event) => {
                 const priority = getPriority(event.event)
                 return (
-                  <button
+                  <button type="button"
                     key={`${event.tracker_id}-${event.time}-${event.event}`}
                     className={`event-row event-button priority-${priority}`}
                     onClick={() => navigate(`/tracker/${event.tracker_id}`)}

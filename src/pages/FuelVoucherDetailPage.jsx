@@ -3,6 +3,7 @@ import { ArrowLeft, Camera, Save, Trash2 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { deleteFuelVoucher, loadFuelVoucher, loadMasterData, resolveMediaUrl, updateFuelVoucher } from '../lib/fleeti'
+import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 
 function toNumber(value) {
   const parsed = Number(String(value ?? '').replace(',', '.'))
@@ -169,11 +170,11 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
   }
 
   if (loading) {
-    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Chargement...</p></div></div></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Chargement...</p></div></div><LoadingBanner message="Chargement du bon carburant…" /></section>
   }
 
   if (!item || !form) {
-    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Bon introuvable</p></div></div></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Bon introuvable</p></div></div><EmptyBanner message="Bon carburant introuvable." /></section>
   }
 
   return (
@@ -185,8 +186,8 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
             <p>{item.truckLabel || '-'} — {item.driver || '-'}</p>
           </div>
           <div className="table-actions">
-            <button className="ghost-btn small-btn" onClick={() => navigate('/fuel-vouchers')}><ArrowLeft size={16} /> Retour</button>
-            <button className="primary-btn" onClick={saveForm} disabled={saving}><Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}</button>
+            <button type="button" className="ghost-btn small-btn" onClick={() => navigate('/fuel-vouchers')}><ArrowLeft size={16} /> Retour</button>
+            <button type="button" className="primary-btn" onClick={saveForm} disabled={saving}><Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}</button>
           </div>
         </div>
         <div className="mission-highlight-grid compact-mission-grid">
@@ -209,15 +210,15 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
           <div className="proof-photos-grid">
             {proofPhotos.map((photo, index) => (
               <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
-                <button className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
-                <button className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
+                <button type="button" className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
+                <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
                   <img src={resolveMediaUrl(photo)} alt={`Photo bon carburant ${item.voucherNumber} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
                 </button>
               </div>
             ))}
           </div>
         ) : (
-          <p style={{ color: '#94a3b8' }}>Aucune photo uploadée pour ce bon.</p>
+          <EmptyBanner message="Aucune photo uploadée pour ce bon." />
         )}
       </section>
 
@@ -249,8 +250,8 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((current) => ({ ...current, unitPrice: e.target.value }))} disabled={saving} /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="ghost-btn danger-btn" onClick={removeVoucher} disabled={saving}><Trash2 size={15} /> Supprimer le bon</button>
-            <button className="primary-btn" onClick={saveForm} disabled={saving}><Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}</button>
+            <button type="button" className="ghost-btn danger-btn" onClick={removeVoucher} disabled={saving}><Trash2 size={15} /> Supprimer le bon</button>
+            <button type="button" className="primary-btn" onClick={saveForm} disabled={saving}><Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}</button>
           </div>
         </div>
       </section>

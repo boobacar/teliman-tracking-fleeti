@@ -5,6 +5,7 @@ import { fr } from 'date-fns/locale'
 import { useNavigate, useParams } from 'react-router-dom'
 import { deleteDeliveryOrder, loadDeliveryOrder, resolveMediaUrl, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
+import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 
 function formatFrenchQuantity(value, digits = 3) {
   const normalized = Number(String(value ?? '').replace(',', '.'))
@@ -70,11 +71,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   }, [order])
 
   if (!order && loadingOrder) {
-    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Chargement du bon...</p></div></div></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Chargement du bon...</p></div></div><LoadingBanner message="Chargement du bon de livraison…" /></section>
   }
 
   if (!order) {
-    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div><EmptyBanner message="Bon de livraison introuvable." /></section>
   }
 
   const proofPhotos = Array.isArray(order.proofPhotoDataUrls)
@@ -160,7 +161,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
-      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
+      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button type="button" className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button type="button" className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
       <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{formatFrenchQuantity(order.quantity)}</small></div></div>
     </section>
 
@@ -170,15 +171,15 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="proof-photos-grid">
           {proofPhotos.map((photo, index) => (
             <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
-              <button className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
-              <button className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
+              <button type="button" className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
+              <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
                 <img src={resolveMediaUrl(photo)} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
               </button>
             </div>
           ))}
         </div>
       ) : (
-        <p style={{ color: '#94a3b8' }}>Aucune photo uploadée pour ce bon.</p>
+        <EmptyBanner message="Aucune photo uploadée pour ce bon." />
       )}
     </section>
 
@@ -203,7 +204,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
             <option>Reçue</option>
             <option>Validée</option>
           </select>
-          <button className="ghost-btn danger-btn" onClick={remove} disabled={saving}>Supprimer le bon</button>
+          <button type="button" className="ghost-btn danger-btn" onClick={remove} disabled={saving}>Supprimer le bon</button>
         </div>
       </section>
 
@@ -251,7 +252,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           </label>
           <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="primary-btn" onClick={saveForm} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</button>
+            <button type="button" className="primary-btn" onClick={saveForm} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</button>
           </div>
         </div>
       </section>

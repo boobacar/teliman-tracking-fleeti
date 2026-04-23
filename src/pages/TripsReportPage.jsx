@@ -384,7 +384,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           </label>
           <div className="field-stack" style={{ alignSelf: 'start', justifySelf: 'stretch' }}>
             <span>Export</span>
-            <button className="primary-btn" onClick={exportPdf} style={{ width: '100%', minHeight: 48 }} disabled={loading || !filteredTrips.length}><Download size={16} />Exporter PDF</button>
+            <button type="button" className="primary-btn" onClick={exportPdf} style={{ width: '100%', minHeight: 48 }} disabled={loading || !filteredTrips.length}><Download size={16} />Exporter PDF</button>
           </div>
         </div>
       </section>

@@ -29,9 +29,15 @@ export function LoginPage({ onLoggedIn }) {
           <h2 style={{ margin: '6px 0 0 0' }}>Connexion administrateur</h2>
           <p style={{ margin: '8px 0 0 0', color: '#64748b' }}>Accès réservé aux administrateurs autorisés.</p>
         </div>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" autoComplete="username" required style={{ padding: 14, borderRadius: 12, border: '1px solid #cbd5e1' }} />
-        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="password" autoComplete="current-password" required style={{ padding: 14, borderRadius: 12, border: '1px solid #cbd5e1' }} />
-        {error ? <div style={{ color: '#b91c1c', fontWeight: 600, background: '#fef2f2', border: '1px solid #fecaca', padding: '10px 12px', borderRadius: 10 }}>{error}</div> : null}
+        <label className="field-stack" style={{ gap: 6 }}>
+          <span style={{ color: '#475569', fontWeight: 600 }}>Adresse email</span>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" autoComplete="username" required style={{ padding: 14, borderRadius: 12, border: '1px solid #cbd5e1' }} />
+        </label>
+        <label className="field-stack" style={{ gap: 6 }}>
+          <span style={{ color: '#475569', fontWeight: 600 }}>Mot de passe</span>
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="password" autoComplete="current-password" required style={{ padding: 14, borderRadius: 12, border: '1px solid #cbd5e1' }} />
+        </label>
+        {error ? <div style={{ color: '#b91c1c', fontWeight: 600, background: '#fef2f2', border: '1px solid #fecaca', padding: '10px 12px', borderRadius: 10 }} role="alert">{error}</div> : null}
         <button className="primary-btn" type="submit" disabled={loading}>{loading ? 'Connexion...' : 'Se connecter'}</button>
       </form>
     </div>

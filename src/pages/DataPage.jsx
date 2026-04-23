@@ -16,7 +16,7 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
     </div>
     <div className="delivery-form delivery-form-premium data-card-form">
       <input placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
-      <button className="primary-btn" onClick={() => onAdd(listName, value, setValue)}>{addLabel}</button>
+      <button type="button" className="primary-btn" onClick={() => onAdd(listName, value, setValue)}>{addLabel}</button>
     </div>
     <div className="data-list-grid">
       {items.length === 0 && <div className="empty-banner">Aucune donnée enregistrée pour le moment.</div>}
@@ -28,7 +28,7 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
           </div>
           <div className="data-item-actions">
             <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-            <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer">
+            <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer">
               <Trash2 size={16} />
             </button>
           </div>
@@ -181,7 +181,7 @@ export function DataPage() {
         <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
           <input placeholder="Nom du camion" value={manualTruckLabel} onChange={(e) => setManualTruckLabel(e.target.value)} />
           <input placeholder="Nom du chauffeur" value={manualDriverName} onChange={(e) => setManualDriverName(e.target.value)} />
-          <button className="primary-btn" onClick={addManualTracker}>Ajouter</button>
+          <button type="button" className="primary-btn" onClick={addManualTracker}>Ajouter</button>
         </div>
         <div className="data-list-grid">
           {(data.manualTrackers || []).length === 0 && <div className="empty-banner">Aucun camion manuel enregistré.</div>}
@@ -193,7 +193,7 @@ export function DataPage() {
               </div>
               <div className="data-item-actions">
                 <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-                <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
+                <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
               </div>
             </article>
           ))}
@@ -214,7 +214,7 @@ export function DataPage() {
             {(data.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
           </select>
           <input placeholder="Numéro bon de commande" value={purchaseOrderValue} onChange={(e) => setPurchaseOrderValue(e.target.value)} />
-          <button className="primary-btn" onClick={async () => {
+          <button type="button" className="primary-btn" onClick={async () => {
             if (!purchaseOrderClient.trim() || !purchaseOrderValue.trim()) return
             await addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), { client: purchaseOrderClient.trim(), purchaseOrderNumber: purchaseOrderValue.trim() })
             setPurchaseOrderClient('')
@@ -232,7 +232,7 @@ export function DataPage() {
               </div>
               <div className="data-item-actions">
                 <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-                <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
+                <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
               </div>
             </article>
           ))}

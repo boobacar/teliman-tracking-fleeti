@@ -128,9 +128,9 @@ export function AdminUsersPage() {
       <section className="panel panel-large data-card-panel" style={{ minHeight: 'unset', alignContent: 'start' }}>
         <div className="panel-header" style={{ marginBottom: 12 }}><div><h3><UserPlus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Ajouter un utilisateur</h3></div></div>
         <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto', marginBottom: 0, alignItems: 'center' }} onSubmit={submit}>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
-          <select value={role} onChange={(e) => {
+          <input aria-label="Adresse email utilisateur" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
+          <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
+          <select aria-label="Rôle utilisateur" value={role} onChange={(e) => {
             const nextRole = e.target.value
             setRole(nextRole)
             setSelectedPermissions(getDefaultPermissions(nextRole))
@@ -188,8 +188,8 @@ export function AdminUsersPage() {
                   <td>{Array.isArray(user.permissions) ? user.permissions.join(', ') || 'Aucune' : 'Aucune'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="ghost-btn small-btn" onClick={() => startEdit(user)}><UserCog size={14} />Modifier</button>
-                      <button className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
+                      <button type="button" className="ghost-btn small-btn" onClick={() => startEdit(user)}><UserCog size={14} />Modifier</button>
+                      <button type="button" className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
                     </div>
                   </td>
                 </tr>
@@ -204,16 +204,16 @@ export function AdminUsersPage() {
         <section className="panel panel-large data-card-panel">
           <div className="panel-header"><div><h3><UserCog size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
           <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto auto' }}>
-            <select value={editingRole} onChange={(e) => {
+            <select aria-label="Modifier rôle" value={editingRole} onChange={(e) => {
               const nextRole = e.target.value
               setEditingRole(nextRole)
               setEditingPermissions(getDefaultPermissions(nextRole))
             }}>
               {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <input value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
-            <button className="primary-btn" onClick={saveEdit}>Enregistrer</button>
-            <button className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
+            <input aria-label="Nouveau mot de passe" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
+            <button type="button" className="primary-btn" onClick={saveEdit}>Enregistrer</button>
+            <button type="button" className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
           </div>
           {editingRole !== 'admin' && (
             <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
