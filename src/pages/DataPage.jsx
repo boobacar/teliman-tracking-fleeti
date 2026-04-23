@@ -4,12 +4,15 @@ import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/
 
 function DataCard({ title, description, icon, items, value, setValue, addLabel, placeholder, listName, onAdd, onRemove }) {
   return <section className="panel panel-large data-card-panel">
-    <div className="panel-header">
+    <div className="panel-header data-card-header">
       <div>
         <h3>{title}</h3>
         <p>{description}</p>
       </div>
-      <div className="stat-icon">{icon}</div>
+      <div className="data-card-head-side">
+        <span className="data-count-badge">{items.length}</span>
+        <div className="stat-icon">{icon}</div>
+      </div>
     </div>
     <div className="delivery-form delivery-form-premium data-card-form">
       <input placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
@@ -90,9 +93,9 @@ export function DataPage() {
     {loading && <div className="info-banner">Chargement des données…</div>}
     {error && <div className="error-banner">{error}</div>}
 
-    <section className="panel panel-large reports-v2-hero">
-      <div className="panel-header"><div><h3>Centre de données de référence</h3><p>Clients, destinations et marchandises utilisés dans les formulaires métier</p></div></div>
-      <section className="reports-summary-grid reports-v2-kpis">
+    <section className="panel panel-large reports-v2-hero data-hero-panel">
+      <div className="panel-header"><div><h3>Centre de données de référence</h3><p>Clients, destinations, marchandises et référentiels opérationnels.</p></div></div>
+      <section className="reports-summary-grid reports-v2-kpis data-kpis-grid">
         {summaryCards.map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
       </section>
     </section>
