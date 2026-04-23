@@ -1309,6 +1309,26 @@ textarea:focus-visible,
   grid-column: span 6;
 }
 
+.data-page-stack {
+  gap: 18px;
+}
+
+.data-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(37, 99, 235, 0.22);
+  color: #dbeafe;
+  white-space: nowrap;
+}
+
 .data-hero-panel {
   background:
     radial-gradient(circle at 8% -20%, rgba(59, 130, 246, 0.2), transparent 40%),
@@ -1322,9 +1342,11 @@ textarea:focus-visible,
   gap: 10px;
 }
 
-.data-kpis-grid .overview-card {
+.data-kpis-grid .ui-stat-card {
   min-height: 112px;
   padding: 14px;
+  background: linear-gradient(150deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.68));
+  border-color: rgba(148, 163, 184, 0.16);
 }
 
 .data-card-panel {
@@ -1335,6 +1357,13 @@ textarea:focus-visible,
   padding: 16px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.78) 100%);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.data-card-panel:hover {
+  border-color: rgba(96, 165, 250, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.24);
 }
 
 .data-card-header {
@@ -2210,6 +2239,27 @@ textarea:focus-visible,
   display: block;
   margin-top: 6px;
   color: #64748b;
+}
+
+.dashboard-phase3-stack {
+  gap: 18px;
+}
+
+.stat-card-phase3 {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.82));
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.24);
+}
+
+.executive-card-phase3 {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.82));
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.24);
+}
+
+.driver-rank-row-phase3 {
+  border-color: rgba(96, 165, 250, 0.16);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.82));
 }
 
 .phase2-shell .panel,

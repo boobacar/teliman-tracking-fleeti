@@ -1,45 +1,86 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapPin, Package2, Truck, Trash2, Users } from 'lucide-react'
+import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
 
-function DataCard({ title, description, icon, items, value, setValue, addLabel, placeholder, listName, onAdd, onRemove }) {
-  return <section className="panel panel-large data-card-panel">
-    <div className="panel-header data-card-header">
-      <div>
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-      <div className="data-card-head-side">
-        <span className="data-count-badge">{items.length}</span>
-        <div className="stat-icon">{icon}</div>
-      </div>
-    </div>
-    <div className="delivery-form delivery-form-premium data-card-form">
-      <input placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
-      <button type="button" className="primary-btn" onClick={() => onAdd(listName, value, setValue)}>{addLabel}</button>
-    </div>
-    <div className="data-list-grid">
-      {items.length === 0 && <div className="empty-banner">Aucune donnée enregistrée pour le moment.</div>}
-      {items.map((item, index) => (
-        <article key={item} className="data-item-card">
-          <div className="data-item-main">
-            <span className="data-item-title">{item}</span>
-            <small>{title} disponible</small>
+function DataCard({
+  title,
+  description,
+  icon,
+  items,
+  value,
+  setValue,
+  addLabel,
+  placeholder,
+  listName,
+  onAdd,
+  onRemove,
+}) {
+  return (
+    <section className="panel panel-large data-card-panel">
+      <SectionHeader
+        title={title}
+        description={description}
+        right={(
+          <div className="data-card-head-side">
+            <span className="data-count-badge">{items.length}</span>
+            <div className="stat-icon">{icon}</div>
           </div>
-          <div className="data-item-actions">
-            <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-            <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer">
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </article>
-      ))}
-    </div>
-  </section>
+        )}
+      />
+
+      <div className="delivery-form delivery-form-premium data-card-form">
+        <input
+          aria-label={placeholder}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button
+          type="button"
+          className="primary-btn"
+          onClick={() => onAdd(listName, value, setValue)}
+        >
+          {addLabel}
+        </button>
+      </div>
+
+      <div className="data-list-grid">
+        {items.length === 0 && <div className="empty-banner">Aucune donnée enregistrée pour le moment.</div>}
+        {items.map((item, index) => (
+          <article key={item} className="data-item-card">
+            <div className="data-item-main">
+              <span className="data-item-title">{item}</span>
+              <small>{title} disponible</small>
+            </div>
+            <div className="data-item-actions">
+              <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+              <button
+                type="button"
+                className="ghost-btn small-btn danger-btn icon-btn"
+                onClick={() => onRemove(listName, item)}
+                aria-label="Supprimer"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 export function DataPage() {
-  const [data, setData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+  const [data, setData] = useState({
+    clients: [],
+    goods: [],
+    destinations: [],
+    suppliers: [],
+    purchaseOrders: {},
+    manualTrackers: [],
+  })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
   const [destinationValue, setDestinationValue] = useState('')
@@ -63,7 +104,9 @@ export function DataPage() {
     }
   }
 
-  useEffect(() => { refresh() }, [])
+  useEffect(() => {
+    refresh()
+  }, [])
 
   async function addItem(listName, value, reset) {
     if (!value.trim()) return
@@ -92,152 +135,216 @@ export function DataPage() {
     await refresh()
   }
 
-  const summaryCards = useMemo(() => ([
-    { label: 'Clients', value: data.clients?.length || 0, helper: 'listes déroulantes BL' },
-    { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
-    { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
-    { label: 'Fournisseurs', value: data.suppliers?.length || 0, helper: 'bons carburant' },
-    { label: 'Camions manuels', value: data.manualTrackers?.length || 0, helper: 'hors API Fleeti' },
-    { label: 'Chauffeurs manuels', value: new Set((data.manualTrackers || []).map((item) => item.driver).filter(Boolean)).size, helper: 'hors API Fleeti' },
-    { label: 'N° bons commande', value: Object.keys(data.purchaseOrders || {}).length || 0, helper: 'affectation par client' },
-  ]), [data])
+  const summaryCards = useMemo(
+    () => [
+      { label: 'Clients', value: data.clients?.length || 0, helper: 'listes déroulantes BL' },
+      { label: 'Destinations', value: data.destinations?.length || 0, helper: 'zones de livraison' },
+      { label: 'Marchandises', value: data.goods?.length || 0, helper: 'catalogue d’exploitation' },
+      { label: 'Fournisseurs', value: data.suppliers?.length || 0, helper: 'bons carburant' },
+      { label: 'Camions manuels', value: data.manualTrackers?.length || 0, helper: 'hors API Fleeti' },
+      {
+        label: 'Chauffeurs manuels',
+        value: new Set((data.manualTrackers || []).map((item) => item.driver).filter(Boolean)).size,
+        helper: 'hors API Fleeti',
+      },
+      {
+        label: 'N° bons commande',
+        value: Object.keys(data.purchaseOrders || {}).length || 0,
+        helper: 'affectation par client',
+      },
+    ],
+    [data],
+  )
 
-  return <div style={{ display: 'grid', gap: 20 }}>
-    {loading && <div className="info-banner">Chargement des données…</div>}
-    {error && <div className="error-banner">{error}</div>}
+  return (
+    <PageStack className="data-page-stack">
+      {loading && <LoadingBanner message="Chargement des données…" />}
+      <ErrorBanner message={error} />
 
-    <section className="panel panel-large reports-v2-hero data-hero-panel">
-      <div className="panel-header"><div><h3>Centre de données de référence</h3><p>Clients, destinations, marchandises et référentiels opérationnels.</p></div></div>
-      <section className="reports-summary-grid reports-v2-kpis data-kpis-grid">
-        {summaryCards.map((card) => <div key={card.label} className="overview-card"><span>{card.label}</span><strong>{card.value}</strong><small>{card.helper}</small></div>)}
-      </section>
-    </section>
+      <section className="panel panel-large reports-v2-hero data-hero-panel">
+        <SectionHeader
+          title="Centre de données de référence"
+          description="Clients, destinations, marchandises et référentiels opérationnels."
+          right={<span className="data-phase-chip">Phase 3 UI</span>}
+        />
 
-    <section className="dashboard-grid premium-grid phase2-grid data-page-grid">
-      <DataCard
-        title="Données clients"
-        description="Valeurs utilisées dans les listes déroulantes"
-        icon={<Users size={18} />}
-        items={data.clients || []}
-        value={clientValue}
-        setValue={setClientValue}
-        addLabel="Ajouter client"
-        placeholder="Ajouter un client"
-        listName="clients"
-        onAdd={addItem}
-        onRemove={removeItem}
-      />
-
-      <DataCard
-        title="Données destinations"
-        description="Destinations disponibles pour les bons de livraison"
-        icon={<MapPin size={18} />}
-        items={data.destinations || []}
-        value={destinationValue}
-        setValue={setDestinationValue}
-        addLabel="Ajouter destination"
-        placeholder="Ajouter une destination"
-        listName="destinations"
-        onAdd={addItem}
-        onRemove={removeItem}
-      />
-
-      <DataCard
-        title="Données marchandises"
-        description="Valeurs utilisées dans les listes déroulantes"
-        icon={<Package2 size={18} />}
-        items={data.goods || []}
-        value={goodsValue}
-        setValue={setGoodsValue}
-        addLabel="Ajouter marchandise"
-        placeholder="Ajouter une marchandise"
-        listName="goods"
-        onAdd={addItem}
-        onRemove={removeItem}
-      />
-
-      <DataCard
-        title="Données fournisseurs"
-        description="Fournisseurs disponibles pour les bons de carburant"
-        icon={<Truck size={18} />}
-        items={data.suppliers || []}
-        value={supplierValue}
-        setValue={setSupplierValue}
-        addLabel="Ajouter fournisseur"
-        placeholder="Ajouter un fournisseur"
-        listName="suppliers"
-        onAdd={addItem}
-        onRemove={removeItem}
-      />
-
-      <section className="panel panel-large data-card-panel">
-        <div className="panel-header">
-          <div>
-            <h3>Camions & chauffeurs manuels</h3>
-            <p>Ajoutez des unités hors API Fleeti pour les utiliser dans les bons de livraison et de carburant.</p>
-          </div>
-          <div className="stat-icon"><Truck size={18} /></div>
-        </div>
-        <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
-          <input placeholder="Nom du camion" value={manualTruckLabel} onChange={(e) => setManualTruckLabel(e.target.value)} />
-          <input placeholder="Nom du chauffeur" value={manualDriverName} onChange={(e) => setManualDriverName(e.target.value)} />
-          <button type="button" className="primary-btn" onClick={addManualTracker}>Ajouter</button>
-        </div>
-        <div className="data-list-grid">
-          {(data.manualTrackers || []).length === 0 && <div className="empty-banner">Aucun camion manuel enregistré.</div>}
-          {(data.manualTrackers || []).map((item, index) => (
-            <article key={item.id} className="data-item-card">
-              <div className="data-item-main">
-                <span className="data-item-title">{item.label}</span>
-                <small>Chauffeur: {item.driver}</small>
-              </div>
-              <div className="data-item-actions">
-                <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-                <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
-              </div>
-            </article>
+        <StatGrid className="data-kpis-grid">
+          {summaryCards.map((card) => (
+            <StatCard key={card.label} label={card.label} value={card.value} helper={card.helper} />
           ))}
-        </div>
+        </StatGrid>
       </section>
 
-      <section className="panel panel-large data-card-panel">
-        <div className="panel-header">
-          <div>
-            <h3>Numéro bon de commande</h3>
-            <p>Associer un numéro de bon de commande à un client pour l’inclure dans les PDF exportés.</p>
+      <section className="dashboard-grid premium-grid phase2-grid data-page-grid">
+        <DataCard
+          title="Données clients"
+          description="Valeurs utilisées dans les listes déroulantes"
+          icon={<Users size={18} />}
+          items={data.clients || []}
+          value={clientValue}
+          setValue={setClientValue}
+          addLabel="Ajouter client"
+          placeholder="Ajouter un client"
+          listName="clients"
+          onAdd={addItem}
+          onRemove={removeItem}
+        />
+
+        <DataCard
+          title="Données destinations"
+          description="Destinations disponibles pour les bons de livraison"
+          icon={<MapPin size={18} />}
+          items={data.destinations || []}
+          value={destinationValue}
+          setValue={setDestinationValue}
+          addLabel="Ajouter destination"
+          placeholder="Ajouter une destination"
+          listName="destinations"
+          onAdd={addItem}
+          onRemove={removeItem}
+        />
+
+        <DataCard
+          title="Données marchandises"
+          description="Valeurs utilisées dans les listes déroulantes"
+          icon={<Package2 size={18} />}
+          items={data.goods || []}
+          value={goodsValue}
+          setValue={setGoodsValue}
+          addLabel="Ajouter marchandise"
+          placeholder="Ajouter une marchandise"
+          listName="goods"
+          onAdd={addItem}
+          onRemove={removeItem}
+        />
+
+        <DataCard
+          title="Données fournisseurs"
+          description="Fournisseurs disponibles pour les bons de carburant"
+          icon={<Truck size={18} />}
+          items={data.suppliers || []}
+          value={supplierValue}
+          setValue={setSupplierValue}
+          addLabel="Ajouter fournisseur"
+          placeholder="Ajouter un fournisseur"
+          listName="suppliers"
+          onAdd={addItem}
+          onRemove={removeItem}
+        />
+
+        <section className="panel panel-large data-card-panel">
+          <SectionHeader
+            title="Camions & chauffeurs manuels"
+            description="Ajoutez des unités hors API Fleeti pour les utiliser dans les bons de livraison et de carburant."
+            right={<div className="stat-icon"><Truck size={18} /></div>}
+          />
+
+          <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
+            <input
+              aria-label="Nom du camion"
+              placeholder="Nom du camion"
+              value={manualTruckLabel}
+              onChange={(e) => setManualTruckLabel(e.target.value)}
+            />
+            <input
+              aria-label="Nom du chauffeur"
+              placeholder="Nom du chauffeur"
+              value={manualDriverName}
+              onChange={(e) => setManualDriverName(e.target.value)}
+            />
+            <button type="button" className="primary-btn" onClick={addManualTracker}>Ajouter</button>
           </div>
-          <div className="stat-icon"><Users size={18} /></div>
-        </div>
-        <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
-          <select value={purchaseOrderClient} onChange={(e) => setPurchaseOrderClient(e.target.value)}>
-            <option value="">Sélectionner un client</option>
-            {(data.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
-          </select>
-          <input placeholder="Numéro bon de commande" value={purchaseOrderValue} onChange={(e) => setPurchaseOrderValue(e.target.value)} />
-          <button type="button" className="primary-btn" onClick={async () => {
-            if (!purchaseOrderClient.trim() || !purchaseOrderValue.trim()) return
-            await addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), { client: purchaseOrderClient.trim(), purchaseOrderNumber: purchaseOrderValue.trim() })
-            setPurchaseOrderClient('')
-            setPurchaseOrderValue('')
-            await refresh()
-          }}>Enregistrer</button>
-        </div>
-        <div className="data-list-grid">
-          {Object.keys(data.purchaseOrders || {}).length === 0 && <div className="empty-banner">Aucun numéro de bon de commande assigné.</div>}
-          {Object.entries(data.purchaseOrders || {}).map(([client, purchaseOrderNumber], index) => (
-            <article key={client} className="data-item-card">
-              <div className="data-item-main">
-                <span className="data-item-title">{client}</span>
-                <small>BC: {purchaseOrderNumber}</small>
-              </div>
-              <div className="data-item-actions">
-                <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
-                <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
-              </div>
-            </article>
-          ))}
-        </div>
+
+          <div className="data-list-grid">
+            {(data.manualTrackers || []).length === 0 && <div className="empty-banner">Aucun camion manuel enregistré.</div>}
+            {(data.manualTrackers || []).map((item, index) => (
+              <article key={item.id} className="data-item-card">
+                <div className="data-item-main">
+                  <span className="data-item-title">{item.label}</span>
+                  <small>Chauffeur: {item.driver}</small>
+                </div>
+                <div className="data-item-actions">
+                  <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn small-btn danger-btn icon-btn"
+                    onClick={() => removeManualTracker(item.id)}
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel panel-large data-card-panel">
+          <SectionHeader
+            title="Numéro bon de commande"
+            description="Associer un numéro de bon de commande à un client pour l’inclure dans les PDF exportés."
+            right={<div className="stat-icon"><Users size={18} /></div>}
+          />
+
+          <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
+            <select
+              aria-label="Client pour le numéro de bon de commande"
+              value={purchaseOrderClient}
+              onChange={(e) => setPurchaseOrderClient(e.target.value)}
+            >
+              <option value="">Sélectionner un client</option>
+              {(data.clients || []).map((client) => (
+                <option key={client} value={client}>{client}</option>
+              ))}
+            </select>
+            <input
+              aria-label="Numéro bon de commande"
+              placeholder="Numéro bon de commande"
+              value={purchaseOrderValue}
+              onChange={(e) => setPurchaseOrderValue(e.target.value)}
+            />
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={async () => {
+                if (!purchaseOrderClient.trim() || !purchaseOrderValue.trim()) return
+                await addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), {
+                  client: purchaseOrderClient.trim(),
+                  purchaseOrderNumber: purchaseOrderValue.trim(),
+                })
+                setPurchaseOrderClient('')
+                setPurchaseOrderValue('')
+                await refresh()
+              }}
+            >
+              Enregistrer
+            </button>
+          </div>
+
+          <div className="data-list-grid">
+            {Object.keys(data.purchaseOrders || {}).length === 0 && <div className="empty-banner">Aucun numéro de bon de commande assigné.</div>}
+            {Object.entries(data.purchaseOrders || {}).map(([client, purchaseOrderNumber], index) => (
+              <article key={client} className="data-item-card">
+                <div className="data-item-main">
+                  <span className="data-item-title">{client}</span>
+                  <small>BC: {purchaseOrderNumber}</small>
+                </div>
+                <div className="data-item-actions">
+                  <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn small-btn danger-btn icon-btn"
+                    onClick={() => removeItem('purchaseOrders', client)}
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       </section>
-    </section>
-  </div>
+    </PageStack>
+  )
 }
