@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
+import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fleeti'
 
 const STATIC_REPORT_TYPES = [
@@ -552,11 +554,14 @@ export function ReportsPage() {
   }
 
   return (
-    <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
-      <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>RAPPORTS TLM</h3></div><div className="table-actions"><button type="button" className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button type="button" className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div></div>
+    <PageStack className="reports-excel">
+      <section className="panel panel-large reports-v2-hero reports-excel">
+        <SectionHeader
+          title="RAPPORTS TLM"
+          right={<div className="table-actions"><button type="button" className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button type="button" className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div>}
+        />
         <div className="filters filter-row">{reportTypes.map((item) => <button type="button" key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
-        <div className="reports-filter-grid" style={{ marginTop: 12 }}>
+        <div className="reports-filter-grid reports-filter-grid-spaced">
           <label className="field-stack">
             <span>Du</span>
             <StableDatePicker value={ymdToDate(from)} onChange={(value) => setFrom(dateToYmd(value))} placeholder="Date début" clearable className="filter-control modern-date-input" />
@@ -572,24 +577,24 @@ export function ReportsPage() {
               {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
             </select>
           </label>
-          <div className="field-stack" style={{ alignSelf: 'end' }}>
+          <div className="field-stack reports-options-stack">
             <span>Options PDF</span>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '10px 16px', border: '1px solid rgba(148, 163, 184, 0.22)', borderRadius: 16, background: 'linear-gradient(180deg, rgba(15,23,42,0.42), rgba(15,23,42,0.28))', width: 'fit-content', boxShadow: '0 8px 18px rgba(15,23,42,0.12)' }}>
-              <div style={{ display: 'grid', gap: 2 }}>
-                <strong style={{ fontSize: 14, color: '#f8fafc' }}>Inclure le bon de commande</strong>
-                <span style={{ fontSize: 12, color: '#cbd5e1' }}>Ajoute le numéro dans l’en-tête du PDF exporté</span>
+            <div className="reports-options-box">
+              <div className="reports-options-copy">
+                <strong>Inclure le bon de commande</strong>
+                <span>Ajoute le numéro dans l’en-tête du PDF exporté</span>
               </div>
-              <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} />
-                <span style={{ width: 44, height: 24, borderRadius: 999, background: includePurchaseOrder ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
-                  <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: includePurchaseOrder ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
+              <label className="ui-toggle-wrap">
+                <input className="ui-toggle-input" type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} />
+                <span className={`ui-toggle-track ${includePurchaseOrder ? 'is-checked' : ''}`}>
+                  <span className={`ui-toggle-knob ${includePurchaseOrder ? 'is-checked' : ''}`} />
                 </span>
               </label>
             </div>
           </div>
         </div>
-        {loading && <div className="info-banner">Chargement des données…</div>}
-        {error && <div className="error-banner">{error}</div>}
+        {loading && <LoadingBanner message="Chargement des données…" />}
+        <ErrorBanner message={error} />
       </section>
 
       {selectedClientGroup && (
@@ -681,6 +686,6 @@ export function ReportsPage() {
             { key: 'amount', label: 'MONTANT', render: (v) => formatMoney(v) },
           ]} />
         )}
-    </div>
+    </PageStack>
   )
 }

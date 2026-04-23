@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search, Shield, UserCog, UserPlus, Users } from 'lucide-react'
 import { APP_VIEWS } from '../components/Layout'
+import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { createAdminUser, deleteAdminUser, loadAdminUsers, updateAdminUser } from '../lib/fleeti'
 
 const PAGE_PERMISSIONS = APP_VIEWS.map((view) => ({ permission: view.permission, label: view.label }))
@@ -14,6 +16,25 @@ const ROLE_OPTIONS = [
 function getDefaultPermissions(role) {
   const roleConfig = ROLE_OPTIONS.find((item) => item.value === role)
   return (roleConfig?.permissions || []).filter((entry) => entry !== '*')
+}
+
+function PermissionToggle({ label, checked, onChange }) {
+  return (
+    <label className="ui-permission-item">
+      <span>{label}</span>
+      <span className="ui-toggle-wrap">
+        <input
+          className="ui-toggle-input"
+          type="checkbox"
+          checked={checked}
+          onChange={onChange}
+        />
+        <span className={`ui-toggle-track ${checked ? 'is-checked' : ''}`}>
+          <span className={`ui-toggle-knob ${checked ? 'is-checked' : ''}`} />
+        </span>
+      </span>
+    </label>
+  )
 }
 
 export function AdminUsersPage() {
@@ -114,20 +135,20 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <PageStack>
       <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>Administration des utilisateurs</h3><p>Créer des comptes, définir un rôle et attribuer un mot de passe.</p></div></div>
-        <section className="reports-summary-grid reports-v2-kpis">
-          <div className="overview-card"><span>Total</span><strong>{roleStats.total}</strong><small>comptes configurés</small></div>
-          <div className="overview-card"><span>Admins</span><strong>{roleStats.admins}</strong><small>accès complet</small></div>
-          <div className="overview-card"><span>Exploitation</span><strong>{roleStats.ops}</strong><small>opérations terrain</small></div>
-          <div className="overview-card"><span>Lecture</span><strong>{roleStats.viewers}</strong><small>consultation simple</small></div>
-        </section>
+        <SectionHeader title="Administration des utilisateurs" description="Créer des comptes, définir un rôle et attribuer un mot de passe." />
+        <StatGrid className="reports-v2-kpis">
+          <StatCard label="Total" value={roleStats.total} helper="comptes configurés" />
+          <StatCard label="Admins" value={roleStats.admins} helper="accès complet" />
+          <StatCard label="Exploitation" value={roleStats.ops} helper="opérations terrain" />
+          <StatCard label="Lecture" value={roleStats.viewers} helper="consultation simple" />
+        </StatGrid>
       </section>
 
       <section className="panel panel-large data-card-panel" style={{ minHeight: 'unset', alignContent: 'start' }}>
-        <div className="panel-header" style={{ marginBottom: 12 }}><div><h3><UserPlus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Ajouter un utilisateur</h3></div></div>
-        <form className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1.2fr 1fr 0.8fr auto', marginBottom: 0, alignItems: 'center' }} onSubmit={submit}>
+        <SectionHeader title={<span className="ui-inline-icon"><UserPlus size={18} />Ajouter un utilisateur</span>} />
+        <form className="delivery-form delivery-form-premium data-card-form ui-admin-form-grid" onSubmit={submit}>
           <input aria-label="Adresse email utilisateur" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
           <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
           <select aria-label="Rôle utilisateur" value={role} onChange={(e) => {
@@ -139,62 +160,61 @@ export function AdminUsersPage() {
           </select>
           <button className="primary-btn" type="submit">Créer</button>
         </form>
+
         {role !== 'admin' && (
-          <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
+          <div className="delivery-form delivery-form-premium data-card-form ui-permissions-grid">
             {PAGE_PERMISSIONS.map((item) => {
               const checked = selectedPermissions.includes(item.permission)
               return (
-                <label key={item.permission} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12, background: 'rgba(15,23,42,0.18)' }}>
-                  <span>{item.label}</span>
-                  <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setSelectedPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
-                      style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-                    />
-                    <span style={{ width: 44, height: 24, borderRadius: 999, background: checked ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
-                      <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
-                    </span>
-                  </span>
-                </label>
+                <PermissionToggle
+                  key={item.permission}
+                  label={item.label}
+                  checked={checked}
+                  onChange={(e) => setSelectedPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                />
               )
             })}
           </div>
         )}
-        {error && <div className="error-banner" style={{ marginTop: 12 }}>{error}</div>}
+
+        <ErrorBanner message={error} />
       </section>
 
       <section className="panel panel-large">
-        <div className="panel-header"><div><h3><Users size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Utilisateurs existants</h3></div></div>
-        {loading && <div className="info-banner">Chargement des utilisateurs…</div>}
-        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr' }}>
+        <SectionHeader title={<span className="ui-inline-icon"><Users size={18} />Utilisateurs existants</span>} />
+        {loading && <LoadingBanner message="Chargement des utilisateurs…" />}
+
+        <div className="delivery-form delivery-form-premium data-card-form ui-admin-search-grid">
           <label className="field-stack">
             <span>Recherche</span>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: '#64748b' }} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par email, rôle ou permission" style={{ paddingLeft: 38 }} />
+            <div className="ui-search-icon-wrap">
+              <Search size={16} className="ui-search-icon" />
+              <input className="ui-search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher par email, rôle ou permission" />
             </div>
           </label>
         </div>
+
         <div className="reports-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Email</th><th>Rôle</th><th>Permissions</th><th>Actions</th></tr></thead>
             <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.email}>
-                  <td>{user.email}</td>
-                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: roleBadge(user.role).bg, color: roleBadge(user.role).color, fontWeight: 600, fontSize: 12 }}><Shield size={13} />{roleBadge(user.role).label}</span></td>
-                  <td>{Array.isArray(user.permissions) ? user.permissions.join(', ') || 'Aucune' : 'Aucune'}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" className="ghost-btn small-btn" onClick={() => startEdit(user)}><UserCog size={14} />Modifier</button>
-                      <button type="button" className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredUsers.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun utilisateur correspondant.</td></tr>}
+              {filteredUsers.map((user) => {
+                const badge = roleBadge(user.role)
+                return (
+                  <tr key={user.email}>
+                    <td>{user.email}</td>
+                    <td><span className="ui-role-badge" style={{ background: badge.bg, color: badge.color }}><Shield size={13} />{badge.label}</span></td>
+                    <td>{Array.isArray(user.permissions) ? user.permissions.join(', ') || 'Aucune' : 'Aucune'}</td>
+                    <td>
+                      <div className="ui-actions-inline">
+                        <button type="button" className="ghost-btn small-btn" onClick={() => startEdit(user)}><UserCog size={14} />Modifier</button>
+                        <button type="button" className="ghost-btn small-btn danger-btn" onClick={() => remove(user.email)}>Supprimer</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filteredUsers.length === 0 && <tr><td colSpan={4} className="ui-muted-cell">Aucun utilisateur correspondant.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -202,8 +222,9 @@ export function AdminUsersPage() {
 
       {editingEmail && (
         <section className="panel panel-large data-card-panel">
-          <div className="panel-header"><div><h3><UserCog size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Modifier un utilisateur</h3><p>{editingEmail}</p></div></div>
-          <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto auto' }}>
+          <SectionHeader title={<span className="ui-inline-icon"><UserCog size={18} />Modifier un utilisateur</span>} description={editingEmail} />
+
+          <div className="delivery-form delivery-form-premium data-card-form ui-edit-grid">
             <select aria-label="Modifier rôle" value={editingRole} onChange={(e) => {
               const nextRole = e.target.value
               setEditingRole(nextRole)
@@ -215,31 +236,24 @@ export function AdminUsersPage() {
             <button type="button" className="primary-btn" onClick={saveEdit}>Enregistrer</button>
             <button type="button" className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
           </div>
+
           {editingRole !== 'admin' && (
-            <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginTop: 14 }}>
+            <div className="delivery-form delivery-form-premium data-card-form ui-permissions-grid">
               {PAGE_PERMISSIONS.map((item) => {
                 const checked = editingPermissions.includes(item.permission)
                 return (
-                  <label key={item.permission} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 12, background: 'rgba(15,23,42,0.18)' }}>
-                    <span>{item.label}</span>
-                    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => setEditingPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
-                        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-                      />
-                      <span style={{ width: 44, height: 24, borderRadius: 999, background: checked ? '#2563eb' : '#475569', display: 'inline-flex', alignItems: 'center', padding: 3, transition: 'all 0.2s ease' }}>
-                        <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', transform: checked ? 'translateX(20px)' : 'translateX(0)', transition: 'all 0.2s ease', boxShadow: '0 2px 6px rgba(15,23,42,0.25)' }} />
-                      </span>
-                    </span>
-                  </label>
+                  <PermissionToggle
+                    key={item.permission}
+                    label={item.label}
+                    checked={checked}
+                    onChange={(e) => setEditingPermissions((prev) => e.target.checked ? Array.from(new Set([...prev, item.permission])) : prev.filter((entry) => entry !== item.permission))}
+                  />
                 )
               })}
             </div>
           )}
         </section>
       )}
-    </div>
+    </PageStack>
   )
 }

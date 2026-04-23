@@ -1,6 +1,24 @@
 :root {
-  color: #e2e8f0;
-  background: #020617;
+  --color-bg: #020617;
+  --color-surface: rgba(15, 23, 42, 0.78);
+  --color-surface-strong: #0f172a;
+  --color-text: #e2e8f0;
+  --color-muted: #94a3b8;
+  --color-primary: #2563eb;
+  --color-primary-strong: #1d4ed8;
+  --color-border: rgba(148, 163, 184, 0.12);
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 20px;
+  --shadow-card: 0 16px 40px rgba(2, 6, 23, 0.35);
+  --focus-ring: 0 0 0 4px rgba(96, 165, 250, 0.18);
+
+  color: var(--color-text);
+  background: var(--color-bg);
   font-family: Inter, system-ui, sans-serif;
 }
 
@@ -32,7 +50,202 @@ textarea:focus-visible,
 [role="button"]:focus-visible {
   outline: 2px solid #60a5fa;
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.18);
+  box-shadow: var(--focus-ring);
+}
+
+.page-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.ui-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.ui-section-header h3 {
+  margin: 0;
+}
+
+.ui-section-header p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+}
+
+.ui-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.ui-stat-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.72);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.ui-stat-card span,
+.ui-stat-card small {
+  color: var(--color-muted);
+}
+
+.ui-stat-card strong {
+  font-size: 22px;
+}
+
+.ui-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ui-admin-form-grid {
+  grid-template-columns: 1.2fr 1fr 0.8fr auto;
+  margin-bottom: 0;
+  align-items: center;
+}
+
+.ui-admin-search-grid {
+  grid-template-columns: 1fr;
+}
+
+.ui-permissions-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.ui-permission-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.ui-toggle-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.ui-toggle-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #475569;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  transition: all 0.2s ease;
+}
+
+.ui-toggle-track.is-checked {
+  background: var(--color-primary);
+}
+
+.ui-toggle-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  transform: translateX(0);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+}
+
+.ui-toggle-knob.is-checked {
+  transform: translateX(20px);
+}
+
+.ui-search-icon-wrap {
+  position: relative;
+}
+
+.ui-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  color: #64748b;
+}
+
+.ui-search-input {
+  padding-left: 38px;
+}
+
+.ui-actions-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ui-muted-cell {
+  text-align: center;
+  color: #94a3b8;
+}
+
+.ui-edit-grid {
+  grid-template-columns: 1fr 1fr auto auto;
+}
+
+.ui-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.reports-filter-grid-spaced {
+  margin-top: 12px;
+}
+
+.reports-options-stack {
+  align-self: end;
+}
+
+.reports-options-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(15,23,42,0.42), rgba(15,23,42,0.28));
+  width: fit-content;
+  box-shadow: 0 8px 18px rgba(15,23,42,0.12);
+}
+
+.reports-options-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.reports-options-copy strong {
+  font-size: 14px;
+  color: #f8fafc;
+}
+
+.reports-options-copy span {
+  font-size: 12px;
+  color: #cbd5e1;
 }
 
 .app-shell {

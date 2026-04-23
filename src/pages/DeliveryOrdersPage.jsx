@@ -4,6 +4,7 @@ import { StableDatePicker } from '../components/StableDatePicker'
 import { fr } from 'date-fns/locale'
 import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 
 function formatFrenchQuantity(value, digits = 3) {
   const normalized = Number(String(value ?? '').replace(',', '.'))
@@ -287,17 +288,16 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     planned: deliveryOrders.filter((item) => item.status === 'Prévu').length,
   }
 
-  const topTruckOrders = Object.entries(deliveryOrdersSummary?.byTruck || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
   const topClients = Object.entries(deliveryOrders.reduce((acc, item) => {
     acc[item.client] = (acc[item.client] || 0) + 1
     return acc
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 3)
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 3)
 
-  return <div style={{ display: 'grid', gap: 20 }}>
+  return <PageStack>
     {pageLoading && <div className="info-banner">Chargement des bons de livraison…</div>}
     <section className="panel panel-large delivery-hero-panel">
-      <div className="panel-header"><div><h3>Centre de missions & bons de livraison</h3></div><div className="mission-hero-badge">BL Ops</div></div>
+      <SectionHeader title="Centre de missions & bons de livraison" right={<div className="mission-hero-badge">BL Ops</div>} />
       <div className="mission-highlight-grid">
         <div className="mission-highlight-card"><span>Total bons</span><strong>{missionStats.total}</strong><small>missions enregistrées</small></div>
         <div className="mission-highlight-card"><span>Actifs</span><strong>{missionStats.active}</strong><small>en cours</small></div>
@@ -548,5 +548,5 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         {photoUploadNotice}
       </div>
     )}
-  </div>
+  </PageStack>
 }
