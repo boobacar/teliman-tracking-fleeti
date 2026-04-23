@@ -60,6 +60,7 @@ function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
 function App() {
   const [dataset, setDataset] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [refreshToastVisible, setRefreshToastVisible] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
@@ -122,6 +123,19 @@ function App() {
   useEffect(() => {
     if (currentUser) refreshData()
   }, [currentUser, refreshData])
+
+  useEffect(() => {
+    let hideTimer
+    if (loading) {
+      setRefreshToastVisible(true)
+    } else if (refreshToastVisible) {
+      hideTimer = setTimeout(() => setRefreshToastVisible(false), 700)
+    }
+    return () => {
+      if (hideTimer) clearTimeout(hideTimer)
+    }
+  }, [loading, refreshToastVisible])
+
   useAutoRefresh(currentUser ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
@@ -248,7 +262,7 @@ function App() {
   return (
     <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} dataset={dataset} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null) }}>
       {error && <div className="error-banner">{error}</div>}
-      {loading && <div className="info-banner">Actualisation des données flotte en cours...</div>}
+      {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
       <Suspense fallback={<div className="info-banner">Chargement de la vue…</div>}>
         <Routes>
