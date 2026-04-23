@@ -20,7 +20,20 @@ function DataCard({ title, description, icon, items, value, setValue, addLabel, 
     </div>
     <div className="data-list-grid">
       {items.length === 0 && <div className="empty-banner">Aucune donnée enregistrée pour le moment.</div>}
-      {items.map((item) => <div key={item} className="driver-rank-row static-row data-row-card"><div><span>{item}</span><small>{title} disponible</small></div><button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer"><Trash2 size={16} /></button></div>)}
+      {items.map((item, index) => (
+        <article key={item} className="data-item-card">
+          <div className="data-item-main">
+            <span className="data-item-title">{item}</span>
+            <small>{title} disponible</small>
+          </div>
+          <div className="data-item-actions">
+            <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+            <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => onRemove(listName, item)} aria-label="Supprimer">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </article>
+      ))}
     </div>
   </section>
 }
@@ -165,18 +178,24 @@ export function DataPage() {
           </div>
           <div className="stat-icon"><Truck size={18} /></div>
         </div>
-        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
+        <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
           <input placeholder="Nom du camion" value={manualTruckLabel} onChange={(e) => setManualTruckLabel(e.target.value)} />
           <input placeholder="Nom du chauffeur" value={manualDriverName} onChange={(e) => setManualDriverName(e.target.value)} />
           <button className="primary-btn" onClick={addManualTracker}>Ajouter</button>
         </div>
         <div className="data-list-grid">
           {(data.manualTrackers || []).length === 0 && <div className="empty-banner">Aucun camion manuel enregistré.</div>}
-          {(data.manualTrackers || []).map((item) => (
-            <div key={item.id} className="driver-rank-row static-row data-row-card">
-              <div><span>{item.label}</span><small>{item.driver}</small></div>
-              <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
-            </div>
+          {(data.manualTrackers || []).map((item, index) => (
+            <article key={item.id} className="data-item-card">
+              <div className="data-item-main">
+                <span className="data-item-title">{item.label}</span>
+                <small>Chauffeur: {item.driver}</small>
+              </div>
+              <div className="data-item-actions">
+                <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeManualTracker(item.id)} aria-label="Supprimer"><Trash2 size={16} /></button>
+              </div>
+            </article>
           ))}
         </div>
       </section>
@@ -189,7 +208,7 @@ export function DataPage() {
           </div>
           <div className="stat-icon"><Users size={18} /></div>
         </div>
-        <div className="delivery-form delivery-form-premium data-card-form" style={{ gridTemplateColumns: '1fr 1fr auto' }}>
+        <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
           <select value={purchaseOrderClient} onChange={(e) => setPurchaseOrderClient(e.target.value)}>
             <option value="">Sélectionner un client</option>
             {(data.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
@@ -205,11 +224,17 @@ export function DataPage() {
         </div>
         <div className="data-list-grid">
           {Object.keys(data.purchaseOrders || {}).length === 0 && <div className="empty-banner">Aucun numéro de bon de commande assigné.</div>}
-          {Object.entries(data.purchaseOrders || {}).map(([client, purchaseOrderNumber]) => (
-            <div key={client} className="driver-rank-row static-row data-row-card">
-              <div><span>{client}</span><small>{purchaseOrderNumber}</small></div>
-              <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
-            </div>
+          {Object.entries(data.purchaseOrders || {}).map(([client, purchaseOrderNumber], index) => (
+            <article key={client} className="data-item-card">
+              <div className="data-item-main">
+                <span className="data-item-title">{client}</span>
+                <small>BC: {purchaseOrderNumber}</small>
+              </div>
+              <div className="data-item-actions">
+                <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                <button className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeItem('purchaseOrders', client)} aria-label="Supprimer"><Trash2 size={16} /></button>
+              </div>
+            </article>
           ))}
         </div>
       </section>
