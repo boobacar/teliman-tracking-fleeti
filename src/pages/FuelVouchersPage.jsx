@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
+import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
@@ -162,9 +164,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <PageStack className="ops-page-stack">
       <section className="panel panel-large delivery-hero-panel">
-        <div className="panel-header"><div><h3>Centre des bons carburant</h3></div><div className="mission-hero-badge">Fuel Ops</div></div>
+        <SectionHeader title="Centre des bons carburant" right={<div className="mission-hero-badge">Fuel Ops</div>} />
         <div className="mission-highlight-grid compact-mission-grid">
           <div className="mission-highlight-card"><span>Total bons</span><strong>{items.length}</strong><small>bons carburant enregistrés</small></div>
           <div className="mission-highlight-card"><span>Total litres</span><strong>{items.reduce((acc, item) => acc + (Number(item.quantityLiters) || 0), 0).toLocaleString('fr-FR')}</strong><small>volume cumulé</small></div>
@@ -173,13 +175,11 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       </section>
 
       <section className="panel panel-large delivery-table-panel">
-        <div className="panel-header">
-          <div>
-            <h3>Niveau carburant live par camion</h3>
-            <p>Lecture instantanée Fleeti depuis les capteurs CAN publiés.</p>
-          </div>
-          <button type="button" className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>
-        </div>
+        <SectionHeader
+          title="Niveau carburant live par camion"
+          description="Lecture instantanée Fleeti depuis les capteurs CAN publiés."
+          right={<button type="button" className="ghost-btn small-btn" onClick={reloadLiveFuel} disabled={liveFuelLoading}>{liveFuelLoading ? 'Actualisation…' : 'Actualiser'}</button>}
+        />
         <div className="reports-table-wrap live-fuel-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Camion</th><th>Carburant live</th>{/* <th>Source</th> */}<th>Mise à jour</th><th>Statut</th></tr></thead>
@@ -193,14 +193,14 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                   <td>{item.isOnline ? 'En ligne' : 'Hors ligne'}</td>
                 </tr>
               ))}
-              {liveFuel.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8' }}>{liveFuelLoading ? 'Chargement…' : 'Aucune donnée carburant live disponible.'}</td></tr>}
+              {liveFuel.length === 0 && <tr><td colSpan={4} className="table-empty-cell">{liveFuelLoading ? 'Chargement…' : 'Aucune donnée carburant live disponible.'}</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
 
       <section className="panel panel-large delivery-form-panel">
-        <div className="panel-header"><div><h3>Nouveau bon de carburant</h3></div></div>
+        <SectionHeader title="Nouveau bon de carburant" />
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
           <input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
           <label className="field-stack">
@@ -230,8 +230,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       </section>
 
       <section className="panel panel-large delivery-table-panel">
-        <div className="panel-header"><div><h3>Historique bons carburant</h3></div></div>
-        <div className="filters filter-row" style={{ marginBottom: 12 }}>
+        <SectionHeader title="Historique bons carburant" />
+        <div className="filters filter-row ops-filter-row">
           <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
             <option value="all">Tous les camions</option>
             {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
@@ -245,7 +245,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           />
           <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
         </div>
-        {loading ? <div className="info-banner">Chargement…</div> : (
+        {loading ? <LoadingBanner message="Chargement…" /> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
               <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
@@ -256,7 +256,16 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                     ? item.proofPhotoDataUrls.some(Boolean)
                     : Boolean(item.proofPhotoDataUrl)
                   return (
-                    <tr key={item.id} className="clickable-row" onClick={() => navigate(`/fuel-voucher/${item.id}`)}>
+                    <tr
+                      key={item.id}
+                      className="clickable-row"
+                      onClick={() => navigate(`/fuel-voucher/${item.id}`)}
+                      role="link"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') navigate(`/fuel-voucher/${item.id}`)
+                      }}
+                    >
                       <td>{item.truckLabel || '-'}</td>
                       <td>{item.voucherNumber || '-'}</td>
                       <td>{item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
@@ -273,7 +282,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                     </tr>
                   )
                 })}
-                {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucun bon carburant enregistré.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={7} className="table-empty-cell">Aucun bon carburant enregistré.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -283,7 +292,16 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           {filtered.map((item) => {
             const pickerId = `fuel-photo-mobile-${item.id}`
             return (
-              <article key={`mobile-fuel-${item.id}`} className="mobile-voucher-card" onClick={() => navigate(`/fuel-voucher/${item.id}`)}>
+              <article
+                key={`mobile-fuel-${item.id}`}
+                className="mobile-voucher-card"
+                onClick={() => navigate(`/fuel-voucher/${item.id}`)}
+                role="link"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') navigate(`/fuel-voucher/${item.id}`)
+                }}
+              >
                 <div className="mobile-voucher-head">
                   <strong>{item.voucherNumber || '-'}</strong>
                   <span>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</span>
@@ -300,8 +318,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
               </article>
             )
           })}
+          {filtered.length === 0 && <EmptyBanner message="Aucun bon carburant enregistré." />}
         </div>
       </section>
-    </div>
+    </PageStack>
   )
 }

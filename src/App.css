@@ -1812,7 +1812,22 @@ textarea:focus-visible,
   border-radius: 14px;
   padding: 12px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+}
+
+.mobile-voucher-card p {
+  margin: 0;
+  color: #dbe2ee;
+  font-size: 13px;
+}
+
+.mobile-voucher-card b {
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.ops-page-stack {
+  gap: 20px;
 }
 
 .upload-progress-wrap {
@@ -2001,6 +2016,15 @@ textarea:focus-visible,
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
+}
+
+.table-empty-cell {
+  text-align: center;
+  color: #94a3b8;
+}
+
+.ops-filter-row {
+  margin-bottom: 12px;
 }
 
 .tracker-history-card {
@@ -2591,6 +2615,15 @@ textarea:focus-visible,
   .filter-row > .ghost-btn {
     flex: 1 1 100%;
     width: 100%;
+  }
+
+  .ops-filter-row {
+    gap: 8px;
+  }
+
+  .mobile-voucher-card .table-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .delivery-form,

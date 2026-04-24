@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { fr } from 'date-fns/locale'
 import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
@@ -396,7 +395,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <button type="button" className={`chip ${statusFilter === 'En cours' ? 'selected' : ''}`} onClick={() => setStatusFilter('En cours')}>En cours</button>
         <button type="button" className={`chip ${statusFilter === 'Livré' ? 'selected' : ''}`} onClick={() => setStatusFilter('Livré')}>Livré</button>
       </div>
-      <div className="filters filter-row">
+      <div className="filters filter-row ops-filter-row">
         <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
           <option value="all">Tous les camions</option>
           {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
@@ -406,14 +405,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
         </select>
         <StableDatePicker
-          selected={dateFilter}
+          value={dateFilter}
           onChange={(value) => setDateFilter(value)}
-          dateFormat="dd/MM/yyyy"
-          locale={fr}
-          placeholderText="Filtrer par date"
-          isClearable
+          placeholder="Filtrer par date"
+          clearable
           className="filter-control modern-date-input"
-          popperClassName="modern-date-popper"
         />
         <button type="button" className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
       </div>
