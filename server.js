@@ -32,6 +32,7 @@ const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60 * 1000)
 const ALLOWED_ORIGINS = parseCsv(process.env.ALLOWED_ORIGINS)
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || ''
 const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
+const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
 
 validateRequiredEnv()
 
@@ -60,10 +61,16 @@ function parseNumberList(value) {
 
 function validateRequiredEnv() {
   const missing = []
-  if (!API_BASE) missing.push('FLEETI_API_BASE')
-  if (!LOGIN) missing.push('FLEETI_LOGIN')
-  if (!PASSWORD) missing.push('FLEETI_PASSWORD')
-  if (!DEALER_ID) missing.push('FLEETI_DEALER_ID')
+  const privateMissing = []
+  if (!API_BASE) privateMissing.push('FLEETI_API_BASE')
+  if (!LOGIN) privateMissing.push('FLEETI_LOGIN')
+  if (!PASSWORD) privateMissing.push('FLEETI_PASSWORD')
+  if (!DEALER_ID) privateMissing.push('FLEETI_DEALER_ID')
+
+  if (privateMissing.length && !PUBLIC_API_KEY) {
+    missing.push(...privateMissing, 'FLEETI_PUBLIC_API_KEY')
+  }
+
   if (missing.length) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
   }
@@ -525,6 +532,9 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
 }
 
 async function apiCall(endpoint, payload = {}) {
+  if (!API_BASE) {
+    throw new Error('FLEETI_API_BASE non configuré')
+  }
   const response = await fetch(`${API_BASE}/${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'NVX-ISO-DateTime': 'true' },
@@ -738,6 +748,105 @@ function sanitizeHistory(history = []) {
     message: event.message || 'Événement sans description',
     address: event.address || 'Adresse indisponible',
   }))
+}
+
+function normalizeConnectionStatus(rawStatus, isOnline) {
+  const value = String(rawStatus || '').trim().toLowerCase()
+  if (value.includes('offline') || value.includes('disconnect')) return 'offline'
+  if (value.includes('online') || value.includes('active') || value.includes('connect')) return 'active'
+  if (typeof isOnline === 'boolean') return isOnline ? 'active' : 'offline'
+  return 'unknown'
+}
+
+function normalizeMovementStatus(rawStatus) {
+  const value = String(rawStatus || '').trim().toLowerCase()
+  if (value.includes('mov')) return 'moving'
+  if (value.includes('idle') || value.includes('stop') || value.includes('park')) return 'idle'
+  return 'unknown'
+}
+
+function pickFirstFinite(...values) {
+  for (const candidate of values) {
+    const num = Number(candidate)
+    if (Number.isFinite(num)) return num
+  }
+  return 0
+}
+
+function extractPublicMileageKm(asset = {}, gateway = {}) {
+  const state = gateway?.state || {}
+  return Math.max(0, pickFirstFinite(
+    state.mileageTodayKm,
+    state.dailyMileageKm,
+    state.distanceTodayKm,
+    state.distanceToday,
+    state.tripDistanceTodayKm,
+    asset.mileageTodayKm,
+    asset.dailyMileageKm,
+  ))
+}
+
+async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
+  const payload = await publicApiGet('/Asset/Search', { Take: 500 })
+  const rows = extractArrayPayload(payload, ['results', 'items', 'list', 'data'])
+  const fleetRows = rows.filter((asset) => {
+    if (asset?.assetType === 10) return true
+    if (asset?.assetType != null) return false
+    return Array.isArray(asset?.gateways) && asset.gateways.length > 0
+  })
+
+  const trackersMap = new Map()
+  const states = {}
+  const mileage = {}
+
+  for (const asset of fleetRows) {
+    const gateway = (asset?.gateways || []).find((item) => item?.provider?.gatewayId) || asset?.gateways?.[0] || {}
+    const trackerId = Number(gateway?.provider?.gatewayId ?? gateway?.id ?? asset?.id)
+    if (!Number.isFinite(trackerId)) continue
+
+    const label = String(asset?.name || gateway?.name || asset?.properties?.licensePlate || `Tracker ${trackerId}`).trim()
+    const model = String(gateway?.model || asset?.model || 'Modèle inconnu').trim()
+    const state = gateway?.state || {}
+    const location = state?.position?.location
+
+    trackersMap.set(trackerId, { id: trackerId, label: label || `Tracker ${trackerId}`, model })
+    states[trackerId] = {
+      connection_status: normalizeConnectionStatus(state?.connectionStatus, gateway?.isOnline),
+      movement_status: normalizeMovementStatus(state?.movementStatus),
+      gps: {
+        speed: pickFirstFinite(state?.speed, state?.position?.speed, state?.position?.location?.speed),
+        location: location ? { lat: Number(location.latitude), lng: Number(location.longitude) } : null,
+      },
+      last_update: state?.updatedAt || state?.lastUpdate || gateway?.updatedAt || null,
+    }
+
+    mileage[trackerId] = {
+      [todayKey]: { mileage: extractPublicMileageKm(asset, gateway) },
+      [yesterdayKey]: { mileage: 0 },
+    }
+  }
+
+  const availableTrackers = Array.from(trackersMap.values())
+  const availableIds = availableTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
+  const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableIds
+  const strictScopedIds = availableIds.filter((id) => configuredTrackerIds.includes(id))
+  const scopedIds = strictScopedIds.length ? strictScopedIds : availableIds
+
+  const scopedTrackers = availableTrackers.filter((tracker) => scopedIds.includes(Number(tracker.id)))
+  const scopedStates = Object.fromEntries(Object.entries(states).filter(([id]) => scopedIds.includes(Number(id))))
+  const scopedMileage = Object.fromEntries(Object.entries(mileage).filter(([id]) => scopedIds.includes(Number(id))))
+
+  return {
+    trackers: sanitizeTrackers(scopedTrackers),
+    states: scopedStates,
+    employees: [],
+    unreadCount: 0,
+    rules: [],
+    tariffs: [],
+    history: [],
+    mileage: scopedMileage,
+    dateKeys: { todayKey, yesterdayKey },
+  }
 }
 
 function parseReportFilters(query = {}) {
@@ -1226,54 +1335,75 @@ async function getDashboardData(forceRefresh = false) {
   }
 
   const { from, to, todayKey, yesterdayKey } = getDateRange('48h')
-  const hash = await authenticate()
 
-  const trackers = await apiCall('tracker/list', { hash })
-  const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
-  const sanitizedTrackers = sanitizeTrackers(trackerRows)
-  const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
-  const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
-  const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
-  const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
-
-  if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
-    console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
+  if (!PRIVATE_API_CONFIGURED) {
+    const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
+    dashboardCache = { data: publicPayload, ts: Date.now() }
+    return publicPayload
   }
 
-  const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
-    scopedTrackerIds.length
-      ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
-      : Promise.resolve({ states: {} }),
-    apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
-    apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
-    apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
-    apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
-    scopedTrackerIds.length
-      ? apiCall('history/tracker/list', { hash, trackers: scopedTrackerIds, from, to, limit: 200 }).catch(() => ({ list: [] }))
-      : Promise.resolve({ list: [] }),
-    scopedTrackerIds.length
-      ? apiCall('tracker/stats/mileage/read', { hash, trackers: scopedTrackerIds, from, to }).catch(() => ({ result: {} }))
-      : Promise.resolve({ result: {} }),
-  ])
+  try {
+    const hash = await authenticate()
 
-  const payload = {
-    trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
-    states: extractObjectPayload(states, ['states', 'result', 'data']),
-    employees: sanitizeEmployees(extractArrayPayload(employees)),
-    unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
-    rules: extractArrayPayload(rules),
-    tariffs: extractArrayPayload(tariffs),
-    history: sanitizeHistory(extractArrayPayload(history)),
-    mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
-    dateKeys: { todayKey, yesterdayKey },
+    const trackers = await apiCall('tracker/list', { hash })
+    const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
+    const sanitizedTrackers = sanitizeTrackers(trackerRows)
+    const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
+    const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
+    const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
+    const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
+
+    if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
+      console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
+    }
+
+    const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
+      scopedTrackerIds.length
+        ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
+        : Promise.resolve({ states: {} }),
+      apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+      apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
+      apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
+      apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
+      scopedTrackerIds.length
+        ? apiCall('history/tracker/list', { hash, trackers: scopedTrackerIds, from, to, limit: 200 }).catch(() => ({ list: [] }))
+        : Promise.resolve({ list: [] }),
+      scopedTrackerIds.length
+        ? apiCall('tracker/stats/mileage/read', { hash, trackers: scopedTrackerIds, from, to }).catch(() => ({ result: {} }))
+        : Promise.resolve({ result: {} }),
+    ])
+
+    const payload = {
+      trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
+      states: extractObjectPayload(states, ['states', 'result', 'data']),
+      employees: sanitizeEmployees(extractArrayPayload(employees)),
+      unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
+      rules: extractArrayPayload(rules),
+      tariffs: extractArrayPayload(tariffs),
+      history: sanitizeHistory(extractArrayPayload(history)),
+      mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
+      dateKeys: { todayKey, yesterdayKey },
+    }
+
+    dashboardCache = { data: payload, ts: Date.now() }
+    return payload
+  } catch (error) {
+    console.warn(`[dashboard] API privée Fleeti indisponible (${error.message}). Tentative via API publique.`)
+    const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
+    dashboardCache = { data: publicPayload, ts: Date.now() }
+    return publicPayload
   }
-
-  dashboardCache = { data: payload, ts: Date.now() }
-  return payload
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'teliman-tracking-fleeti-v3', cacheTtlMs: CACHE_TTL_MS, timestamp: new Date().toISOString() })
+  res.json({
+    ok: true,
+    service: 'teliman-tracking-fleeti-v3',
+    cacheTtlMs: CACHE_TTL_MS,
+    privateApiConfigured: PRIVATE_API_CONFIGURED,
+    publicApiConfigured: Boolean(PUBLIC_API_KEY),
+    timestamp: new Date().toISOString(),
+  })
 })
 
 app.get('/api/dashboard', async (req, res) => {
