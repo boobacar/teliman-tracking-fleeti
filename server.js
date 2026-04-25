@@ -688,6 +688,31 @@ async function loadLiveFuelLevels() {
   return { items, generatedAt: new Date().toISOString() }
 }
 
+function extractArrayPayload(payload, candidateKeys = ['list', 'items', 'results', 'data', 'result']) {
+  if (Array.isArray(payload)) return payload
+  if (!payload || typeof payload !== 'object') return []
+  for (const key of candidateKeys) {
+    if (Array.isArray(payload[key])) return payload[key]
+    if (payload[key] && typeof payload[key] === 'object') {
+      if (Array.isArray(payload[key].list)) return payload[key].list
+      if (Array.isArray(payload[key].items)) return payload[key].items
+      if (Array.isArray(payload[key].results)) return payload[key].results
+      if (Array.isArray(payload[key].data)) return payload[key].data
+    }
+  }
+  return []
+}
+
+function extractObjectPayload(payload, candidateKeys = ['states', 'result', 'data']) {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    for (const key of candidateKeys) {
+      const value = payload[key]
+      if (value && typeof value === 'object' && !Array.isArray(value)) return value
+    }
+  }
+  return {}
+}
+
 function sanitizeTrackers(trackers = []) {
   return trackers.filter(Boolean).map((tracker) => ({
     ...tracker,
@@ -1204,7 +1229,8 @@ async function getDashboardData(forceRefresh = false) {
   const hash = await authenticate()
 
   const trackers = await apiCall('tracker/list', { hash })
-  const sanitizedTrackers = sanitizeTrackers(trackers.list ?? [])
+  const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
+  const sanitizedTrackers = sanitizeTrackers(trackerRows)
   const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
   const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
   const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
@@ -1232,13 +1258,13 @@ async function getDashboardData(forceRefresh = false) {
 
   const payload = {
     trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
-    states: states.states ?? {},
-    employees: sanitizeEmployees(employees.list ?? []),
+    states: extractObjectPayload(states, ['states', 'result', 'data']),
+    employees: sanitizeEmployees(extractArrayPayload(employees)),
     unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
-    rules: rules.list ?? [],
-    tariffs: tariffs.list ?? [],
-    history: sanitizeHistory(history.list ?? []),
-    mileage: mileage.result ?? {},
+    rules: extractArrayPayload(rules),
+    tariffs: extractArrayPayload(tariffs),
+    history: sanitizeHistory(extractArrayPayload(history)),
+    mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
     dateKeys: { todayKey, yesterdayKey },
   }
 
