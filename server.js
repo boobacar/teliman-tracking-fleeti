@@ -178,7 +178,7 @@ function findAuthUser(email) {
 }
 
 function getSessionUser(req) {
-  const email = String(req.get('x-user-email') || '').trim().toLowerCase()
+  const email = String(req.get('x-user-email') || req.get('x-user_email') || '').trim().toLowerCase()
   const sessionToken = String(req.get('x-session-token') || '').trim()
   const user = findAuthUser(email)
   if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) return null
