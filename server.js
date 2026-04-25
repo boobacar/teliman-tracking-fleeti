@@ -1205,9 +1205,14 @@ async function getDashboardData(forceRefresh = false) {
 
   const trackers = await apiCall('tracker/list', { hash })
   const sanitizedTrackers = sanitizeTrackers(trackers.list ?? [])
-  const scopedTrackerIds = sanitizedTrackers
-    .map((tracker) => Number(tracker.id))
-    .filter((trackerId) => TRACKER_IDS.includes(trackerId))
+  const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
+  const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
+  const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
+  const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
+
+  if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
+    console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
+  }
 
   const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
     scopedTrackerIds.length
