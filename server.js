@@ -1202,19 +1202,31 @@ async function getDashboardData(forceRefresh = false) {
 
   const { from, to, todayKey, yesterdayKey } = getDateRange('48h')
   const hash = await authenticate()
-  const [trackers, states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
-    apiCall('tracker/list', { hash }),
-    apiCall('tracker/get_states', { hash, trackers: TRACKER_IDS }),
+
+  const trackers = await apiCall('tracker/list', { hash })
+  const sanitizedTrackers = sanitizeTrackers(trackers.list ?? [])
+  const scopedTrackerIds = sanitizedTrackers
+    .map((tracker) => Number(tracker.id))
+    .filter((trackerId) => TRACKER_IDS.includes(trackerId))
+
+  const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
+    scopedTrackerIds.length
+      ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
+      : Promise.resolve({ states: {} }),
     apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
     apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
     apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
     apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
-    apiCall('history/tracker/list', { hash, trackers: TRACKER_IDS, from, to, limit: 200 }).catch(() => ({ list: [] })),
-    apiCall('tracker/stats/mileage/read', { hash, trackers: TRACKER_IDS, from, to }).catch(() => ({ result: {} })),
+    scopedTrackerIds.length
+      ? apiCall('history/tracker/list', { hash, trackers: scopedTrackerIds, from, to, limit: 200 }).catch(() => ({ list: [] }))
+      : Promise.resolve({ list: [] }),
+    scopedTrackerIds.length
+      ? apiCall('tracker/stats/mileage/read', { hash, trackers: scopedTrackerIds, from, to }).catch(() => ({ result: {} }))
+      : Promise.resolve({ result: {} }),
   ])
 
   const payload = {
-    trackers: sanitizeTrackers(trackers.list ?? []).filter((tracker) => TRACKER_IDS.includes(Number(tracker.id))),
+    trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
     states: states.states ?? {},
     employees: sanitizeEmployees(employees.list ?? []),
     unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
