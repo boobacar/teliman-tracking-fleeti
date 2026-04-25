@@ -14,6 +14,7 @@ const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
 const FUEL_VOUCHERS_FILE = path.join(__dirname, 'fuel-vouchers.json')
 const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
 const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
+const PUBLIC_TELEMETRY_CACHE_FILE = path.join(__dirname, 'public-telemetry-cache.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -751,6 +752,12 @@ function sanitizeHistory(history = []) {
 }
 
 function normalizeConnectionStatus(rawStatus, isOnline) {
+  const numeric = Number(rawStatus)
+  if (Number.isFinite(numeric)) {
+    if (numeric === 50 || numeric === 20) return 'active'
+    if (numeric === 30 || numeric === 10) return 'offline'
+  }
+
   const value = String(rawStatus || '').trim().toLowerCase()
   if (value.includes('offline') || value.includes('disconnect')) return 'offline'
   if (value.includes('online') || value.includes('active') || value.includes('connect')) return 'active'
@@ -758,11 +765,20 @@ function normalizeConnectionStatus(rawStatus, isOnline) {
   return 'unknown'
 }
 
-function normalizeMovementStatus(rawStatus) {
+function normalizeMovementStatus(rawStatus, speed = 0, isOnline = true) {
+  const numeric = Number(rawStatus)
+  if (Number.isFinite(numeric)) {
+    if (numeric === 20) return 'moving'
+    if (numeric === 10) return isOnline ? 'idle' : 'offline'
+    if (numeric === 30) return isOnline ? 'idle' : 'offline'
+  }
+
   const value = String(rawStatus || '').trim().toLowerCase()
   if (value.includes('mov')) return 'moving'
   if (value.includes('idle') || value.includes('stop') || value.includes('park')) return 'idle'
-  return 'unknown'
+  if (!isOnline) return 'offline'
+  if (Number(speed) > 0) return 'moving'
+  return 'idle'
 }
 
 function pickFirstFinite(...values) {
@@ -773,17 +789,119 @@ function pickFirstFinite(...values) {
   return 0
 }
 
-function extractPublicMileageKm(asset = {}, gateway = {}) {
+function readPublicTelemetryCache() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(PUBLIC_TELEMETRY_CACHE_FILE, 'utf8'))
+    return {
+      trackers: payload?.trackers && typeof payload.trackers === 'object' ? payload.trackers : {},
+      events: Array.isArray(payload?.events) ? payload.events : [],
+    }
+  } catch {
+    return { trackers: {}, events: [] }
+  }
+}
+
+function writePublicTelemetryCache(payload = {}) {
+  const normalized = {
+    trackers: payload?.trackers && typeof payload.trackers === 'object' ? payload.trackers : {},
+    events: Array.isArray(payload?.events) ? payload.events : [],
+  }
+  fs.writeFileSync(PUBLIC_TELEMETRY_CACHE_FILE, JSON.stringify(normalized, null, 2))
+}
+
+function pickPublicOdometerKm(asset = {}, gateway = {}) {
   const state = gateway?.state || {}
-  return Math.max(0, pickFirstFinite(
-    state.mileageTodayKm,
-    state.dailyMileageKm,
-    state.distanceTodayKm,
-    state.distanceToday,
-    state.tripDistanceTodayKm,
-    asset.mileageTodayKm,
-    asset.dailyMileageKm,
-  ))
+  const providerSensors = Array.isArray(gateway?.providerSensors) ? gateway.providerSensors : []
+  const counterValues = (Array.isArray(gateway?.counters) ? gateway.counters : [])
+    .filter((counter) => String(counter?.unitType || '').toLowerCase() === 'km' || Number(counter?.counterType) === 1)
+    .map((counter) => Number(counter?.value))
+    .filter(Number.isFinite)
+
+  const sensorValues = providerSensors
+    .filter((sensor) => {
+      const name = String(sensor?.inputName || '').toLowerCase()
+      const units = String(sensor?.units || '').toLowerCase()
+      return units === 'km' || name.includes('mileage') || name.includes('odometer') || name.includes('distance')
+    })
+    .map((sensor) => Number(sensor?.value))
+    .filter(Number.isFinite)
+
+  const directCandidates = [
+    state.mileageKm,
+    state.mileage,
+    state.totalDistanceKm,
+    asset.mileageKm,
+    asset.totalDistanceKm,
+    ...sensorValues,
+    ...counterValues,
+  ]
+    .map((value) => Number(value))
+    .filter(Number.isFinite)
+
+  if (!directCandidates.length) return null
+  return Math.max(...directCandidates)
+}
+
+function buildPublicAddress(location = {}) {
+  const lat = Number(location?.lat)
+  const lng = Number(location?.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Position indisponible'
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+}
+
+function buildTrackBundleFromPublicCache(trackerId, from, to) {
+  const telemetryCache = readPublicTelemetryCache()
+  const trackerCache = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
+  const fromTs = Date.parse(from)
+  const toTs = Date.parse(to)
+
+  const points = (Array.isArray(trackerCache.points) ? trackerCache.points : [])
+    .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
+    .filter((point) => {
+      const ts = Date.parse(point.time)
+      if (!Number.isFinite(ts)) return true
+      if (Number.isFinite(fromTs) && ts < fromTs) return false
+      if (Number.isFinite(toTs) && ts > toTs) return false
+      return true
+    })
+    .map((point) => ({
+      lat: Number(point.lat),
+      lng: Number(point.lng),
+      speed: Number(point.speed || 0),
+      heading: Number(point.heading || 0),
+      time: point.time || null,
+    }))
+
+  const segmentLength = points.reduce((sum, point, index) => {
+    if (index === 0) return 0
+    const prev = points[index - 1]
+    const dLat = Number(point.lat) - Number(prev.lat)
+    const dLng = Number(point.lng) - Number(prev.lng)
+    const approxKm = Math.sqrt((dLat * 111) ** 2 + (dLng * 111) ** 2)
+    return sum + approxKm
+  }, 0)
+
+  const segments = points.length >= 2
+    ? [{
+      length: Number(segmentLength.toFixed(2)),
+      avg_speed: Number((points.reduce((sum, row) => sum + Number(row.speed || 0), 0) / Math.max(points.length, 1)).toFixed(1)),
+      max_speed: Math.max(...points.map((row) => Number(row.speed || 0))),
+      started_at: points[0]?.time || null,
+      ended_at: points[points.length - 1]?.time || null,
+    }]
+    : []
+
+  const events = (Array.isArray(telemetryCache.events) ? telemetryCache.events : [])
+    .filter((event) => Number(event?.tracker_id) === Number(trackerId))
+    .filter((event) => {
+      const ts = Date.parse(event.time)
+      if (!Number.isFinite(ts)) return true
+      if (Number.isFinite(fromTs) && ts < fromTs) return false
+      if (Number.isFinite(toTs) && ts > toTs) return false
+      return true
+    })
+
+  return { trackerId, from, to, segments, points, events }
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -795,9 +913,17 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     return Array.isArray(asset?.gateways) && asset.gateways.length > 0
   })
 
+  const telemetryCache = readPublicTelemetryCache()
   const trackersMap = new Map()
   const states = {}
   const mileage = {}
+  const retentionMs = 72 * 3600 * 1000
+  const now = Date.now()
+
+  telemetryCache.events = (Array.isArray(telemetryCache.events) ? telemetryCache.events : []).filter((event) => {
+    const ts = Date.parse(event?.time)
+    return Number.isFinite(ts) ? (now - ts) <= retentionMs : true
+  })
 
   for (const asset of fleetRows) {
     const gateway = (asset?.gateways || []).find((item) => item?.provider?.gatewayId) || asset?.gateways?.[0] || {}
@@ -807,22 +933,129 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     const label = String(asset?.name || gateway?.name || asset?.properties?.licensePlate || `Tracker ${trackerId}`).trim()
     const model = String(gateway?.model || asset?.model || 'Modèle inconnu').trim()
     const state = gateway?.state || {}
+    const speed = pickFirstFinite(state?.speed, state?.position?.speed, state?.position?.location?.speed)
     const location = state?.position?.location
+    const normalizedLocation = location ? { lat: Number(location.latitude), lng: Number(location.longitude) } : null
+    const lastUpdate = state?.updatedAt || state?.lastUpdate || gateway?.updatedAt || new Date().toISOString()
+    const connectionStatus = normalizeConnectionStatus(state?.connectionStatus, gateway?.isOnline)
+    const movementStatus = normalizeMovementStatus(state?.movementStatus, speed, connectionStatus !== 'offline')
 
     trackersMap.set(trackerId, { id: trackerId, label: label || `Tracker ${trackerId}`, model })
     states[trackerId] = {
-      connection_status: normalizeConnectionStatus(state?.connectionStatus, gateway?.isOnline),
-      movement_status: normalizeMovementStatus(state?.movementStatus),
+      connection_status: connectionStatus,
+      movement_status: movementStatus,
       gps: {
-        speed: pickFirstFinite(state?.speed, state?.position?.speed, state?.position?.location?.speed),
-        location: location ? { lat: Number(location.latitude), lng: Number(location.longitude) } : null,
+        speed,
+        location: normalizedLocation,
       },
-      last_update: state?.updatedAt || state?.lastUpdate || gateway?.updatedAt || null,
+      last_update: lastUpdate,
     }
 
+    const cacheEntry = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
+    const previousDayMileage = Number(cacheEntry?.todayMileage || 0)
+    const dayChanged = cacheEntry?.dayKey && cacheEntry.dayKey !== todayKey
+    const odometer = pickPublicOdometerKm(asset, gateway)
+
+    const hasPreviousDayStart = Number.isFinite(Number(cacheEntry?.dayStartOdometer)) && !dayChanged
+    let dayStartOdometer = Number(cacheEntry?.dayStartOdometer)
+    if (!Number.isFinite(dayStartOdometer) || dayChanged) {
+      dayStartOdometer = Number.isFinite(odometer) ? odometer : 0
+    }
+
+    const todayMileageFromState = Math.max(0, pickFirstFinite(
+      state?.mileageTodayKm,
+      state?.dailyMileageKm,
+      state?.distanceTodayKm,
+      state?.distanceToday,
+      state?.tripDistanceTodayKm,
+      asset?.mileageTodayKm,
+      asset?.dailyMileageKm,
+    ))
+
+    const todayMileageValue = Number.isFinite(odometer)
+      ? (hasPreviousDayStart
+        ? Math.max(0, Number((odometer - dayStartOdometer).toFixed(2)))
+        : Math.max(todayMileageFromState, odometer))
+      : Math.max(0, Number(cacheEntry?.todayMileage || 0), todayMileageFromState)
+
     mileage[trackerId] = {
-      [todayKey]: { mileage: extractPublicMileageKm(asset, gateway) },
-      [yesterdayKey]: { mileage: 0 },
+      [todayKey]: { mileage: todayMileageValue },
+      [yesterdayKey]: { mileage: dayChanged ? Math.max(0, previousDayMileage) : Math.max(0, Number(cacheEntry?.yesterdayMileage || 0)) },
+    }
+
+    const previousStatus = String(cacheEntry?.connection_status || '')
+    if (previousStatus && previousStatus !== connectionStatus) {
+      telemetryCache.events.push({
+        tracker_id: trackerId,
+        event: connectionStatus === 'offline' ? 'gateway_offline' : 'gateway_online',
+        speed,
+        location: normalizedLocation,
+        lat: normalizedLocation?.lat,
+        lng: normalizedLocation?.lng,
+        time: lastUpdate,
+        message: connectionStatus === 'offline' ? `${label} est hors ligne` : `${label} est reconnecté`,
+        address: buildPublicAddress(normalizedLocation),
+      })
+    }
+
+    const previousSpeed = Number(cacheEntry?.speed || 0)
+    if (speed >= 80 && previousSpeed < 80) {
+      telemetryCache.events.push({
+        tracker_id: trackerId,
+        event: 'speedup',
+        speed,
+        location: normalizedLocation,
+        lat: normalizedLocation?.lat,
+        lng: normalizedLocation?.lng,
+        time: lastUpdate,
+        message: `${label} dépasse 80 km/h`,
+        address: buildPublicAddress(normalizedLocation),
+      })
+    }
+
+    const previousMovement = String(cacheEntry?.movement_status || '')
+    if (movementStatus === 'idle' && previousMovement === 'moving' && connectionStatus === 'active') {
+      telemetryCache.events.push({
+        tracker_id: trackerId,
+        event: 'excessive_parking',
+        speed,
+        location: normalizedLocation,
+        lat: normalizedLocation?.lat,
+        lng: normalizedLocation?.lng,
+        time: lastUpdate,
+        message: `${label} vient de passer à l'arrêt`,
+        address: buildPublicAddress(normalizedLocation),
+      })
+    }
+
+    const existingPoints = Array.isArray(cacheEntry?.points) ? cacheEntry.points : []
+    const nextPoints = [...existingPoints]
+    if (Number.isFinite(normalizedLocation?.lat) && Number.isFinite(normalizedLocation?.lng)) {
+      const lastPoint = nextPoints[nextPoints.length - 1]
+      if (!lastPoint || Number(lastPoint.lat) !== Number(normalizedLocation.lat) || Number(lastPoint.lng) !== Number(normalizedLocation.lng) || String(lastPoint.time || '') !== String(lastUpdate || '')) {
+        nextPoints.push({ lat: normalizedLocation.lat, lng: normalizedLocation.lng, speed, time: lastUpdate })
+      }
+    }
+
+    telemetryCache.trackers[trackerId] = {
+      ...cacheEntry,
+      trackerId,
+      label,
+      model,
+      dayKey: todayKey,
+      odometer: Number.isFinite(odometer) ? odometer : (Number(cacheEntry?.odometer) || null),
+      dayStartOdometer,
+      todayMileage: todayMileageValue,
+      yesterdayMileage: dayChanged ? Math.max(0, previousDayMileage) : Math.max(0, Number(cacheEntry?.yesterdayMileage || 0)),
+      connection_status: connectionStatus,
+      movement_status: movementStatus,
+      speed,
+      location: normalizedLocation,
+      last_update: lastUpdate,
+      points: nextPoints.filter((point) => {
+        const ts = Date.parse(point.time)
+        return Number.isFinite(ts) ? (now - ts) <= retentionMs : true
+      }).slice(-2000),
     }
   }
 
@@ -835,6 +1068,12 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
   const scopedTrackers = availableTrackers.filter((tracker) => scopedIds.includes(Number(tracker.id)))
   const scopedStates = Object.fromEntries(Object.entries(states).filter(([id]) => scopedIds.includes(Number(id))))
   const scopedMileage = Object.fromEntries(Object.entries(mileage).filter(([id]) => scopedIds.includes(Number(id))))
+  const scopedHistory = telemetryCache.events
+    .filter((event) => scopedIds.includes(Number(event?.tracker_id)))
+    .sort((a, b) => Date.parse(b?.time || '') - Date.parse(a?.time || ''))
+    .slice(0, 400)
+
+  writePublicTelemetryCache(telemetryCache)
 
   return {
     trackers: sanitizeTrackers(scopedTrackers),
@@ -843,7 +1082,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     unreadCount: 0,
     rules: [],
     tariffs: [],
-    history: [],
+    history: sanitizeHistory(scopedHistory),
     mileage: scopedMileage,
     dateKeys: { todayKey, yesterdayKey },
   }
@@ -1929,7 +2168,7 @@ async function readTrackBundle(hash, trackerId, from, to) {
     apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
   ])
 
-  return {
+  const bundle = {
     trackerId,
     from,
     to,
@@ -1937,6 +2176,12 @@ async function readTrackBundle(hash, trackerId, from, to) {
     points: points.list ?? [],
     events: events.list ?? [],
   }
+
+  if (!bundle.segments.length && !bundle.points.length && !bundle.events.length) {
+    return buildTrackBundleFromPublicCache(trackerId, from, to)
+  }
+
+  return bundle
 }
 
 app.get('/api/tracks', async (req, res) => {
@@ -1945,8 +2190,17 @@ app.get('/api/tracks', async (req, res) => {
     if (!trackerId) return res.status(400).json({ ok: false, error: 'Tracker invalide' })
     const from = req.query.from || getDateRange('1h').from
     const to = req.query.to || getDateRange('1h').to
-    const hash = await authenticate()
-    res.json(await readTrackBundle(hash, trackerId, from, to))
+
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.json(buildTrackBundleFromPublicCache(trackerId, from, to))
+    }
+
+    try {
+      const hash = await authenticate()
+      return res.json(await readTrackBundle(hash, trackerId, from, to))
+    } catch {
+      return res.json(buildTrackBundleFromPublicCache(trackerId, from, to))
+    }
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
@@ -1961,9 +2215,21 @@ app.post('/api/tracks/batch', async (req, res) => {
     const range = getDateRange(period)
     const from = req.body.from || range.from
     const to = req.body.to || range.to
-    const hash = await authenticate()
+
+    let hash = null
+    if (PRIVATE_API_CONFIGURED) {
+      try {
+        hash = await authenticate()
+      } catch {
+        hash = null
+      }
+    }
+
     const items = await Promise.all(trackerIds.map(async (trackerId) => {
-      const bundle = await readTrackBundle(hash, trackerId, from, to).catch(() => ({ trackerId, from, to, segments: [], points: [], events: [] }))
+      const bundle = hash
+        ? await readTrackBundle(hash, trackerId, from, to).catch(() => buildTrackBundleFromPublicCache(trackerId, from, to))
+        : buildTrackBundleFromPublicCache(trackerId, from, to)
+
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
       return { ...bundle, lastTwoPoints }
