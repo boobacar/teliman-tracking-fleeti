@@ -1348,6 +1348,14 @@ async function getDashboardData(forceRefresh = false) {
     const trackers = await apiCall('tracker/list', { hash })
     const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
     const sanitizedTrackers = sanitizeTrackers(trackerRows)
+
+    if (!sanitizedTrackers.length) {
+      console.warn('[dashboard] tracker/list vide depuis API privée. Bascule automatique sur API publique Asset/Search.')
+      const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
+      dashboardCache = { data: publicPayload, ts: Date.now() }
+      return publicPayload
+    }
+
     const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
     const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
     const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
