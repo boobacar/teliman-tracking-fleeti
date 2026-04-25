@@ -397,6 +397,29 @@ textarea:focus-visible,
   gap: 10px;
   width: 100%;
   text-align: left;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.78) 100%);
+  color: #e2e8f0;
+  min-height: 42px;
+  padding: 10px 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 18px rgba(2, 6, 23, 0.25);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.stable-date-picker-trigger:hover {
+  border-color: rgba(96, 165, 250, 0.42);
+}
+
+.stable-date-picker-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.75);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 18px rgba(2, 6, 23, 0.25);
+}
+
+.stable-date-picker-trigger.is-placeholder span {
+  color: #94a3b8;
 }
 
 .stable-date-picker-inline-clear {
@@ -444,6 +467,19 @@ textarea:focus-visible,
 
 .stable-date-picker-time-row input {
   min-width: 120px;
+  border: 1px solid rgba(96, 165, 250, 0.26);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(15, 23, 42, 0.82) 100%);
+  color: #dbeafe;
+  min-height: 36px;
+  padding: 8px 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color-scheme: dark;
+}
+
+.stable-date-picker-time-row input::-webkit-calendar-picker-indicator {
+  filter: invert(84%) sepia(15%) saturate(609%) hue-rotate(181deg) brightness(103%) contrast(101%);
+  cursor: pointer;
 }
 
 

@@ -41,13 +41,26 @@ export function StableDatePicker({
 
   useEffect(() => {
     if (!open || !wrapperRef.current) return
-    const rect = wrapperRef.current.getBoundingClientRect()
-    setPopoverStyle({
-      position: 'fixed',
-      top: rect.bottom + 8,
-      left: rect.left,
-      zIndex: 2147483647,
-    })
+
+    function updatePopoverPosition() {
+      if (!wrapperRef.current) return
+      const rect = wrapperRef.current.getBoundingClientRect()
+      setPopoverStyle({
+        position: 'fixed',
+        top: rect.bottom + 8,
+        left: rect.left,
+        zIndex: 2147483647,
+      })
+    }
+
+    updatePopoverPosition()
+    window.addEventListener('resize', updatePopoverPosition)
+    window.addEventListener('scroll', updatePopoverPosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updatePopoverPosition)
+      window.removeEventListener('scroll', updatePopoverPosition, true)
+    }
   }, [open])
 
   useEffect(() => {
@@ -86,8 +99,14 @@ export function StableDatePicker({
 
   return (
     <div className="stable-date-picker-shell" ref={wrapperRef}>
-      <div className={`${className} stable-date-picker-trigger-wrap`}>
-        <button type="button" className="stable-date-picker-trigger" onClick={() => setOpen((prev) => !prev)}>
+      <div className="stable-date-picker-trigger-wrap">
+        <button
+          type="button"
+          className={`${className} stable-date-picker-trigger ${selected ? '' : 'is-placeholder'}`.trim()}
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+        >
           <span>{displayValue || placeholder}</span>
           <CalendarDays size={16} />
         </button>
