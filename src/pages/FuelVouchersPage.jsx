@@ -202,7 +202,10 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-form-panel">
         <SectionHeader title="Nouveau bon de carburant" />
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
+          <label className="field-stack">
+            <span>Numéro de bon carburant</span>
+            <input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
+          </label>
           <label className="field-stack">
             <span>Date et heure</span>
             <StableDatePicker
@@ -214,14 +217,20 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
               className="filter-control modern-date-input"
             />
           </label>
-          <select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
-            <option value="">Sélection Camion</option>
-            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
-          <select aria-label="Fournisseur" value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
-            <option value="">Fournisseur</option>
-            {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
-          </select>
+          <label className="field-stack">
+            <span>Camion</span>
+            <select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
+              <option value="">Sélection Camion</option>
+              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Fournisseur</span>
+            <select aria-label="Fournisseur" value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
+              <option value="">Fournisseur</option>
+              {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
+            </select>
+          </label>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
@@ -232,18 +241,27 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-table-panel">
         <SectionHeader title="Historique bons carburant" />
         <div className="filters filter-row ops-filter-row">
-          <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
-            <option value="all">Tous les camions</option>
-            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
-          <StableDatePicker
-            value={dateFilter}
-            onChange={(value) => setDateFilter(value)}
-            placeholder="Filtrer par date"
-            clearable
-            className="filter-control modern-date-input"
-          />
-          <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
+          <label className="field-stack">
+            <span>Camion</span>
+            <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
+              <option value="all">Tous les camions</option>
+              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Date</span>
+            <StableDatePicker
+              value={dateFilter}
+              onChange={(value) => setDateFilter(value)}
+              placeholder="Filtrer par date"
+              clearable
+              className="filter-control modern-date-input"
+            />
+          </label>
+          <div className="field-stack">
+            <span>Export</span>
+            <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
+          </div>
         </div>
         {loading ? <LoadingBanner message="Chargement…" /> : (
           <div className="reports-table-wrap">

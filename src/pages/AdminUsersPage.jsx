@@ -149,15 +149,24 @@ export function AdminUsersPage() {
       <section className="panel panel-large data-card-panel" style={{ minHeight: 'unset', alignContent: 'start' }}>
         <SectionHeader title={<span className="ui-inline-icon"><UserPlus size={18} />Ajouter un utilisateur</span>} />
         <form className="delivery-form delivery-form-premium data-card-form ui-admin-form-grid" onSubmit={submit}>
-          <input aria-label="Adresse email utilisateur" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
-          <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
-          <select aria-label="Rôle utilisateur" value={role} onChange={(e) => {
-            const nextRole = e.target.value
-            setRole(nextRole)
-            setSelectedPermissions(getDefaultPermissions(nextRole))
-          }}>
-            {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          <label className="field-stack">
+            <span>Adresse email</span>
+            <input aria-label="Adresse email utilisateur" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" type="text" required />
+          </label>
+          <label className="field-stack">
+            <span>Mot de passe</span>
+            <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
+          </label>
+          <label className="field-stack">
+            <span>Rôle</span>
+            <select aria-label="Rôle utilisateur" value={role} onChange={(e) => {
+              const nextRole = e.target.value
+              setRole(nextRole)
+              setSelectedPermissions(getDefaultPermissions(nextRole))
+            }}>
+              {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
           <button className="primary-btn" type="submit">Créer</button>
         </form>
 
@@ -225,14 +234,20 @@ export function AdminUsersPage() {
           <SectionHeader title={<span className="ui-inline-icon"><UserCog size={18} />Modifier un utilisateur</span>} description={editingEmail} />
 
           <div className="delivery-form delivery-form-premium data-card-form ui-edit-grid">
-            <select aria-label="Modifier rôle" value={editingRole} onChange={(e) => {
-              const nextRole = e.target.value
-              setEditingRole(nextRole)
-              setEditingPermissions(getDefaultPermissions(nextRole))
-            }}>
-              {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <input aria-label="Nouveau mot de passe" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
+            <label className="field-stack">
+              <span>Rôle</span>
+              <select aria-label="Modifier rôle" value={editingRole} onChange={(e) => {
+                const nextRole = e.target.value
+                setEditingRole(nextRole)
+                setEditingPermissions(getDefaultPermissions(nextRole))
+              }}>
+                {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="field-stack">
+              <span>Nouveau mot de passe</span>
+              <input aria-label="Nouveau mot de passe" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
+            </label>
             <button type="button" className="primary-btn" onClick={saveEdit}>Enregistrer</button>
             <button type="button" className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
           </div>

@@ -187,23 +187,29 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <section className="panel compact-side-panel">
         <div className="panel-header"><div><h3>Pilotage mission</h3><p>Statut, activité, POD</p></div></div>
         <div className="delivery-form compact-pilot-form">
-          <select value={order.status} onChange={(e) => updateMany({ status: e.target.value, active: e.target.value !== 'Livré' && e.target.value !== 'Annulé', completedAt: e.target.value === 'Livré' ? new Date().toISOString() : null })} disabled={saving}>
-            <option>Prévu</option>
-            <option>Validé</option>
-            <option>En chargement</option>
-            <option>En route</option>
-            <option>Arrivé site</option>
-            <option>Déchargement</option>
-            <option>En cours</option>
-            <option>Livré</option>
-            <option>Annulé</option>
-          </select>
+          <label className="field-stack">
+            <span>Statut mission</span>
+            <select value={order.status} onChange={(e) => updateMany({ status: e.target.value, active: e.target.value !== 'Livré' && e.target.value !== 'Annulé', completedAt: e.target.value === 'Livré' ? new Date().toISOString() : null })} disabled={saving}>
+              <option>Prévu</option>
+              <option>Validé</option>
+              <option>En chargement</option>
+              <option>En route</option>
+              <option>Arrivé site</option>
+              <option>Déchargement</option>
+              <option>En cours</option>
+              <option>Livré</option>
+              <option>Annulé</option>
+            </select>
+          </label>
           <label className="toggle-row"><input type="checkbox" checked={!!order.active} onChange={(e) => updateField('active', e.target.checked)} disabled={saving} />Bon actif</label>
-          <select value={order.proofStatus || 'En attente'} onChange={(e) => updateField('proofStatus', e.target.value)} disabled={saving}>
-            <option>En attente</option>
-            <option>Reçue</option>
-            <option>Validée</option>
-          </select>
+          <label className="field-stack">
+            <span>Statut POD</span>
+            <select value={order.proofStatus || 'En attente'} onChange={(e) => updateField('proofStatus', e.target.value)} disabled={saving}>
+              <option>En attente</option>
+              <option>Reçue</option>
+              <option>Validée</option>
+            </select>
+          </label>
           <button type="button" className="ghost-btn danger-btn" onClick={remove} disabled={saving}>Supprimer le bon</button>
         </div>
       </section>
@@ -211,12 +217,30 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       <section className="panel panel-large">
         <div className="panel-header"><div><h3>Informations mission</h3><p>Édition essentielle</p></div></div>
         <div className="delivery-form delivery-form-premium compact-detail-form">
-          <input value={form?.reference || ''} onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))} disabled={saving} placeholder="Référence" />
-          <input value={form?.client || ''} onChange={(e) => setForm((current) => ({ ...current, client: e.target.value }))} disabled={saving} placeholder="Client" />
-          <input value={form?.loadingPoint || ''} onChange={(e) => setForm((current) => ({ ...current, loadingPoint: e.target.value }))} disabled={saving} placeholder="Point de chargement" />
-          <input value={form?.destination || ''} onChange={(e) => setForm((current) => ({ ...current, destination: e.target.value }))} disabled={saving} placeholder="Destination" />
-          <input value={form?.goods || ''} onChange={(e) => setForm((current) => ({ ...current, goods: e.target.value }))} disabled={saving} placeholder="Marchandise" />
-          <input value={form?.quantity || ''} onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))} disabled={saving} placeholder="Quantité / tonnage" />
+          <label className="field-stack">
+            <span>Référence BL</span>
+            <input value={form?.reference || ''} onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))} disabled={saving} placeholder="Référence" />
+          </label>
+          <label className="field-stack">
+            <span>Client</span>
+            <input value={form?.client || ''} onChange={(e) => setForm((current) => ({ ...current, client: e.target.value }))} disabled={saving} placeholder="Client" />
+          </label>
+          <label className="field-stack">
+            <span>Point de chargement</span>
+            <input value={form?.loadingPoint || ''} onChange={(e) => setForm((current) => ({ ...current, loadingPoint: e.target.value }))} disabled={saving} placeholder="Point de chargement" />
+          </label>
+          <label className="field-stack">
+            <span>Destination</span>
+            <input value={form?.destination || ''} onChange={(e) => setForm((current) => ({ ...current, destination: e.target.value }))} disabled={saving} placeholder="Destination" />
+          </label>
+          <label className="field-stack">
+            <span>Marchandise</span>
+            <input value={form?.goods || ''} onChange={(e) => setForm((current) => ({ ...current, goods: e.target.value }))} disabled={saving} placeholder="Marchandise" />
+          </label>
+          <label className="field-stack">
+            <span>Quantité / tonnage</span>
+            <input value={form?.quantity || ''} onChange={(e) => setForm((current) => ({ ...current, quantity: e.target.value }))} disabled={saving} placeholder="Quantité / tonnage" />
+          </label>
           <label className="field-stack">
             <span>Départ</span>
             <StableDatePicker
@@ -250,7 +274,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
               className="filter-control modern-date-input"
             />
           </label>
-          <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
+          <label className="field-stack" style={{ gridColumn: '1 / -1' }}>
+            <span>Notes mission</span>
+            <textarea className="delivery-notes-box" value={form?.notes || ''} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={5} disabled={saving} placeholder="Notes mission" />
+          </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="button" className="primary-btn" onClick={saveForm} disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer'}</button>
           </div>

@@ -317,24 +317,42 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       <section className="panel panel-large delivery-form-panel">
         <div className="panel-header"><div><h3>Nouveau bon de livraison</h3></div></div>
         <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <select aria-label="Camion" value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
-            <option value="">Sélectionner un camion</option>
-            {trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}
-          </select>
-          <input aria-label="Référence BL" placeholder="Référence BL" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required />
-          <select aria-label="Client" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required>
-            <option value="">Sélectionner un client</option>
-            {(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
-          </select>
-          <select aria-label="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required>
-            <option value="">Sélectionner une destination</option>
-            {(masterData.destinations || []).map((destination) => <option key={destination} value={destination}>{destination}</option>)}
-          </select>
-          <select aria-label="Marchandise" value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}>
-            <option value="">Sélectionner une marchandise</option>
-            {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
-          </select>
-          <input aria-label="Quantité ou tonnage" placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          <label className="field-stack">
+            <span>Camion</span>
+            <select aria-label="Camion" value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
+              <option value="">Sélectionner un camion</option>
+              {trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Référence BL</span>
+            <input aria-label="Référence BL" placeholder="Référence BL" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required />
+          </label>
+          <label className="field-stack">
+            <span>Client</span>
+            <select aria-label="Client" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required>
+              <option value="">Sélectionner un client</option>
+              {(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Destination</span>
+            <select aria-label="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required>
+              <option value="">Sélectionner une destination</option>
+              {(masterData.destinations || []).map((destination) => <option key={destination} value={destination}>{destination}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Marchandise</span>
+            <select aria-label="Marchandise" value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}>
+              <option value="">Sélectionner une marchandise</option>
+              {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Quantité / tonnage</span>
+            <input aria-label="Quantité ou tonnage" placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          </label>
           <label className="field-stack">
             <span>Départ</span>
             <StableDatePicker
@@ -368,14 +386,20 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               className="filter-control modern-date-input"
             />
           </label>
-          <select aria-label="Statut de mission" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            <option>Prévu</option>
-            <option>En chargement</option>
-            <option>En cours</option>
-            <option>Livré</option>
-          </select>
+          <label className="field-stack">
+            <span>Statut de mission</span>
+            <select aria-label="Statut de mission" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option>Prévu</option>
+              <option>En chargement</option>
+              <option>En cours</option>
+              <option>Livré</option>
+            </select>
+          </label>
           <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />Bon actif</label>
-          <textarea aria-label="Notes de mission" placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={4} />
+          <label className="field-stack" style={{ gridColumn: '1 / -1' }}>
+            <span>Notes de mission</span>
+            <textarea aria-label="Notes de mission" placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={4} />
+          </label>
           <button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
         </form>
       </section>
@@ -396,22 +420,34 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <button type="button" className={`chip ${statusFilter === 'Livré' ? 'selected' : ''}`} onClick={() => setStatusFilter('Livré')}>Livré</button>
       </div>
       <div className="filters filter-row ops-filter-row">
-        <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
-          <option value="all">Tous les camions</option>
-          {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-        </select>
-        <select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-          <option value="all">Tous les clients</option>
-          {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
-        </select>
-        <StableDatePicker
-          value={dateFilter}
-          onChange={(value) => setDateFilter(value)}
-          placeholder="Filtrer par date"
-          clearable
-          className="filter-control modern-date-input"
-        />
-        <button type="button" className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
+        <label className="field-stack">
+          <span>Camion</span>
+          <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
+            <option value="all">Tous les camions</option>
+            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+          </select>
+        </label>
+        <label className="field-stack">
+          <span>Client</span>
+          <select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+            <option value="all">Tous les clients</option>
+            {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
+          </select>
+        </label>
+        <label className="field-stack">
+          <span>Date</span>
+          <StableDatePicker
+            value={dateFilter}
+            onChange={(value) => setDateFilter(value)}
+            placeholder="Filtrer par date"
+            clearable
+            className="filter-control modern-date-input"
+          />
+        </label>
+        <div className="field-stack">
+          <span>Export</span>
+          <button type="button" className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
+        </div>
       </div>
       {photoUploadProgress > 0 && (
         <div className="upload-progress-wrap" aria-label="Progression upload photo">

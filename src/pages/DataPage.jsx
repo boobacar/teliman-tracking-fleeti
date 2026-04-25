@@ -31,12 +31,15 @@ function DataCard({
       />
 
       <div className="delivery-form delivery-form-premium data-card-form">
-        <input
-          aria-label={placeholder}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
+        <label className="field-stack">
+          <span>{placeholder}</span>
+          <input
+            aria-label={placeholder}
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </label>
         <button
           type="button"
           className="primary-btn"
@@ -240,18 +243,24 @@ export function DataPage() {
           />
 
           <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
-            <input
-              aria-label="Nom du camion"
-              placeholder="Nom du camion"
-              value={manualTruckLabel}
-              onChange={(e) => setManualTruckLabel(e.target.value)}
-            />
-            <input
-              aria-label="Nom du chauffeur"
-              placeholder="Nom du chauffeur"
-              value={manualDriverName}
-              onChange={(e) => setManualDriverName(e.target.value)}
-            />
+            <label className="field-stack">
+              <span>Nom du camion</span>
+              <input
+                aria-label="Nom du camion"
+                placeholder="Nom du camion"
+                value={manualTruckLabel}
+                onChange={(e) => setManualTruckLabel(e.target.value)}
+              />
+            </label>
+            <label className="field-stack">
+              <span>Nom du chauffeur</span>
+              <input
+                aria-label="Nom du chauffeur"
+                placeholder="Nom du chauffeur"
+                value={manualDriverName}
+                onChange={(e) => setManualDriverName(e.target.value)}
+              />
+            </label>
             <button type="button" className="primary-btn" onClick={addManualTracker}>Ajouter</button>
           </div>
 
@@ -287,22 +296,28 @@ export function DataPage() {
           />
 
           <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
-            <select
-              aria-label="Client pour le numéro de bon de commande"
-              value={purchaseOrderClient}
-              onChange={(e) => setPurchaseOrderClient(e.target.value)}
-            >
-              <option value="">Sélectionner un client</option>
-              {(data.clients || []).map((client) => (
-                <option key={client} value={client}>{client}</option>
-              ))}
-            </select>
-            <input
-              aria-label="Numéro bon de commande"
-              placeholder="Numéro bon de commande"
-              value={purchaseOrderValue}
-              onChange={(e) => setPurchaseOrderValue(e.target.value)}
-            />
+            <label className="field-stack">
+              <span>Client</span>
+              <select
+                aria-label="Client pour le numéro de bon de commande"
+                value={purchaseOrderClient}
+                onChange={(e) => setPurchaseOrderClient(e.target.value)}
+              >
+                <option value="">Sélectionner un client</option>
+                {(data.clients || []).map((client) => (
+                  <option key={client} value={client}>{client}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack">
+              <span>Numéro bon de commande</span>
+              <input
+                aria-label="Numéro bon de commande"
+                placeholder="Numéro bon de commande"
+                value={purchaseOrderValue}
+                onChange={(e) => setPurchaseOrderValue(e.target.value)}
+              />
+            </label>
             <button
               type="button"
               className="primary-btn"

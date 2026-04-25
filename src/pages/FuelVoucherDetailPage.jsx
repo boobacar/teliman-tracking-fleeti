@@ -225,7 +225,10 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large">
         <div className="panel-header"><div><h3>Informations du bon</h3><p>Modification directe</p></div></div>
         <div className="delivery-form delivery-form-premium compact-detail-form">
-          <input value={form.voucherNumber} onChange={(e) => setForm((current) => ({ ...current, voucherNumber: e.target.value }))} placeholder="Numéro bon" disabled={saving} />
+          <label className="field-stack">
+            <span>Numéro de bon carburant</span>
+            <input value={form.voucherNumber} onChange={(e) => setForm((current) => ({ ...current, voucherNumber: e.target.value }))} placeholder="Numéro bon" disabled={saving} />
+          </label>
           <label className="field-stack">
             <span>Date et heure</span>
             <StableDatePicker
@@ -237,15 +240,24 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
               className="filter-control modern-date-input"
             />
           </label>
-          <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} disabled={saving}>
-            <option value="">Sélection Camion</option>
-            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
-          <input value={form.driver} onChange={(e) => setForm((current) => ({ ...current, driver: e.target.value }))} placeholder="Chauffeur" disabled={saving} />
-          <select value={form.supplier} onChange={(e) => setForm((current) => ({ ...current, supplier: e.target.value }))} disabled={saving}>
-            <option value="">Fournisseur</option>
-            {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
-          </select>
+          <label className="field-stack">
+            <span>Camion</span>
+            <select value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} disabled={saving}>
+              <option value="">Sélection Camion</option>
+              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+            </select>
+          </label>
+          <label className="field-stack">
+            <span>Chauffeur</span>
+            <input value={form.driver} onChange={(e) => setForm((current) => ({ ...current, driver: e.target.value }))} placeholder="Chauffeur" disabled={saving} />
+          </label>
+          <label className="field-stack">
+            <span>Fournisseur</span>
+            <select value={form.supplier} onChange={(e) => setForm((current) => ({ ...current, supplier: e.target.value }))} disabled={saving}>
+              <option value="">Fournisseur</option>
+              {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
+            </select>
+          </label>
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((current) => ({ ...current, quantityLiters: e.target.value }))} disabled={saving} /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((current) => ({ ...current, unitPrice: e.target.value }))} disabled={saving} /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
