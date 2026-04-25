@@ -25,6 +25,9 @@ cp .env.example .env
 
 Fill the required environment variables in `.env`.
 
+⚠️ Vous pouvez démarrer avec **l’API privée** (FLEETI_API_BASE + login/password/dealer) *ou* avec **l’API publique** (`FLEETI_PUBLIC_API_KEY`).
+Le backend bascule automatiquement vers l’API publique si l’API privée est indisponible.
+
 ## Security notes
 - Never commit `.env`
 - Never hardcode Fleeti credentials in source files
@@ -58,10 +61,12 @@ npm run build
 ```
 
 ## Environment
-- `FLEETI_API_BASE`
-- `FLEETI_LOGIN`
-- `FLEETI_PASSWORD`
-- `FLEETI_DEALER_ID`
+- `FLEETI_API_BASE` (optionnel si API publique utilisée)
+- `FLEETI_LOGIN` (optionnel si API publique utilisée)
+- `FLEETI_PASSWORD` (optionnel si API publique utilisée)
+- `FLEETI_DEALER_ID` (optionnel si API publique utilisée)
+- `FLEETI_PUBLIC_API_BASE` (optionnel, défaut: `https://api.fleeti.co/v1`)
+- `FLEETI_PUBLIC_API_KEY` (requis si API privée non configurée)
 - `FLEETI_LOCALE`
 - `PORT`
 - `VITE_BACKEND_URL`
