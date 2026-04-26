@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
-import { fallbackEvents } from './data/mock'
+import { employeeFallback, fallbackEvents } from './data/mock'
 import { getCurrentUser, loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData, logout } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
@@ -158,6 +158,16 @@ function App() {
 
     const fallbackDriverByTrackerId = {}
     const fallbackDriverByLabel = {}
+
+    for (const employee of employeeFallback) {
+      const first = String(employee?.first_name || '').trim()
+      const last = String(employee?.last_name || '').trim()
+      const fullName = [first, last].filter(Boolean).join(' ').trim()
+      const trackerId = Number(employee?.tracker_id)
+      if (Number.isFinite(trackerId) && fullName && !fallbackDriverByTrackerId[trackerId]) {
+        fallbackDriverByTrackerId[trackerId] = fullName
+      }
+    }
 
     for (const row of (deliveryOrders ?? [])) {
       const driver = String(row?.driver || '').trim()
