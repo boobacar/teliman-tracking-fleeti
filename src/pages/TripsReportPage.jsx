@@ -41,7 +41,8 @@ function formatDurationMinutes(minutes) {
 
 function formatDistance(km) {
   const value = Number(km) || 0
-  return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+  const fractionDigits = value > 0 && value < 1 ? 2 : 1
+  return `${value.toLocaleString('fr-FR', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })} km`
 }
 
 function pointLat(point) {
@@ -61,15 +62,33 @@ function pointSpeed(point) {
 }
 
 function segmentStart(segment) {
-  return segment?.from ?? segment?.start_time ?? segment?.start_date ?? segment?.begin ?? segment?.start ?? segment?.date_from ?? null
+  return segment?.from
+    ?? segment?.start_time
+    ?? segment?.start_date
+    ?? segment?.started_at
+    ?? segment?.startedAt
+    ?? segment?.begin
+    ?? segment?.start
+    ?? segment?.date_from
+    ?? null
 }
 
 function segmentEnd(segment) {
-  return segment?.to ?? segment?.end_time ?? segment?.end_date ?? segment?.finish ?? segment?.end ?? segment?.date_to ?? null
+  return segment?.to
+    ?? segment?.end_time
+    ?? segment?.end_date
+    ?? segment?.ended_at
+    ?? segment?.endedAt
+    ?? segment?.finish
+    ?? segment?.end
+    ?? segment?.date_to
+    ?? null
 }
 
 function segmentLengthKm(segment) {
-  return Number(segment?.length ?? segment?.distance ?? segment?.km ?? 0) || 0
+  const raw = Number(segment?.length ?? segment?.distance ?? segment?.km ?? 0) || 0
+  // Some Fleeti responses expose distance in meters; normalize to km when value is clearly meter-like.
+  return raw > 500 ? raw / 1000 : raw
 }
 
 function segmentAvgSpeed(segment) {
