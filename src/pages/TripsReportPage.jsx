@@ -106,6 +106,39 @@ function durationMinutes(start, end) {
   return Math.max(0, (endDate.getTime() - startDate.getTime()) / 60000)
 }
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const r = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * r * Math.asin(Math.sqrt(a))
+}
+
+function distanceFromPointsKm(points = [], start, end) {
+  const startDate = toDate(start)
+  const endDate = toDate(end)
+  if (!startDate || !endDate) return 0
+
+  const scoped = points
+    .map((point) => ({
+      lat: pointLat(point),
+      lng: pointLng(point),
+      time: toDate(pointTime(point)),
+    }))
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng) && point.time && point.time >= startDate && point.time <= endDate)
+    .sort((a, b) => a.time - b.time)
+
+  if (scoped.length < 2) return 0
+
+  let total = 0
+  for (let index = 1; index < scoped.length; index += 1) {
+    total += haversineKm(scoped[index - 1].lat, scoped[index - 1].lng, scoped[index].lat, scoped[index].lng)
+  }
+  return Number(total.toFixed(3))
+}
+
 function buildTrips(bundle, tracker) {
   const points = Array.isArray(bundle?.points) ? bundle.points : []
   const segments = Array.isArray(bundle?.segments) ? bundle.segments : []
@@ -148,9 +181,8 @@ function buildTrips(bundle, tracker) {
       })
       const tripDurationMinutes = durationMinutes(segment.start, segment.end)
       const rawDistanceKm = Number(segment.distanceKm || 0)
-      const fallbackDailyMileageKm = Number(tracker?.latestDayMileage || 0)
-      const shouldUseDailyFallback = normalizedSegments.length === 1 && rawDistanceKm < 0.1 && fallbackDailyMileageKm > 0
-      const distanceKm = shouldUseDailyFallback ? fallbackDailyMileageKm : rawDistanceKm
+      const estimatedFromPointsKm = distanceFromPointsKm(points, segment.start, segment.end)
+      const distanceKm = Math.max(rawDistanceKm, estimatedFromPointsKm)
       const avgSpeed = tripDurationMinutes > 0
         ? Number((distanceKm / (tripDurationMinutes / 60)).toFixed(1))
         : Number((segment.avgSpeed || 0).toFixed(1))
