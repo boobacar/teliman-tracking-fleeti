@@ -262,16 +262,16 @@ textarea:focus-visible,
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow-y: auto;
+  position: relative;
+  top: auto;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   padding: 28px 22px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  position: relative;
   background:
     radial-gradient(circle at 16% -8%, rgba(59, 130, 246, 0.24), transparent 38%),
     radial-gradient(circle at 110% 8%, rgba(16, 185, 129, 0.15), transparent 34%),
