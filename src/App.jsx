@@ -139,6 +139,8 @@ function App() {
   useAutoRefresh(currentUser ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
+    const normalizeKey = (value) => String(value || '').trim().toUpperCase()
+
     const employees = {}
     for (const employee of (dataset?.employees ?? [])) {
       const trackerIds = [
@@ -153,6 +155,28 @@ function App() {
         employees[trackerId] = employee
       }
     }
+
+    const fallbackDriverByTrackerId = {}
+    const fallbackDriverByLabel = {}
+
+    for (const row of (deliveryOrders ?? [])) {
+      const driver = String(row?.driver || '').trim()
+      if (!driver) continue
+      const trackerId = Number(row?.trackerId)
+      if (Number.isFinite(trackerId) && !fallbackDriverByTrackerId[trackerId]) fallbackDriverByTrackerId[trackerId] = driver
+      const labelKey = normalizeKey(row?.truckLabel)
+      if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
+    }
+
+    for (const row of (masterData?.manualTrackers ?? [])) {
+      const driver = String(row?.driver || '').trim()
+      if (!driver) continue
+      const trackerId = Number(row?.id)
+      if (Number.isFinite(trackerId) && !fallbackDriverByTrackerId[trackerId]) fallbackDriverByTrackerId[trackerId] = driver
+      const labelKey = normalizeKey(row?.label)
+      if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
+    }
+
     const preferredMileageKeys = [dataset?.dateKeys?.todayKey, dataset?.dateKeys?.yesterdayKey].filter(Boolean)
 
     return (dataset?.trackers ?? []).map((tracker) => {
@@ -163,7 +187,11 @@ function App() {
       const eventCounts = events.reduce((acc, event) => ({ ...acc, [event.event]: (acc[event.event] || 0) + 1 }), {})
       const firstName = String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
       const lastName = String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
-      const employeeName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Non assigné'
+      const employeeNameFromApi = [firstName, lastName].filter(Boolean).join(' ').trim()
+      const employeeName = employeeNameFromApi
+        || fallbackDriverByTrackerId[Number(tracker.id)]
+        || fallbackDriverByLabel[normalizeKey(tracker.label)]
+        || 'Non assigné'
       const base = {
         ...tracker,
         state,
@@ -177,7 +205,7 @@ function App() {
       }
       return base
     })
-  }, [dataset])
+  }, [dataset, deliveryOrders, masterData])
 
   const operationalTrackers = useMemo(() => {
     const manualTrackers = Array.isArray(masterData?.manualTrackers)
