@@ -116,20 +116,24 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return 2 * r * Math.asin(Math.sqrt(a))
 }
 
-function distanceFromPointsKm(points = [], start, end) {
+function pointsInWindow(points = [], start, end) {
   const startDate = toDate(start)
   const endDate = toDate(end)
-  if (!startDate || !endDate) return 0
+  if (!startDate || !endDate) return []
 
-  const scoped = points
+  return points
     .map((point) => ({
       lat: pointLat(point),
       lng: pointLng(point),
+      speed: pointSpeed(point),
       time: toDate(pointTime(point)),
     }))
     .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng) && point.time && point.time >= startDate && point.time <= endDate)
     .sort((a, b) => a.time - b.time)
+}
 
+function distanceFromPointsKm(points = [], start, end) {
+  const scoped = pointsInWindow(points, start, end)
   if (scoped.length < 2) return 0
 
   let total = 0
@@ -137,6 +141,24 @@ function distanceFromPointsKm(points = [], start, end) {
     total += haversineKm(scoped[index - 1].lat, scoped[index - 1].lng, scoped[index].lat, scoped[index].lng)
   }
   return Number(total.toFixed(3))
+}
+
+function movingDurationFromPointsMinutes(points = [], start, end, minSpeedKmh = 5) {
+  const scoped = pointsInWindow(points, start, end)
+  if (scoped.length < 2) return 0
+
+  let movingMs = 0
+  for (let index = 1; index < scoped.length; index += 1) {
+    const prev = scoped[index - 1]
+    const curr = scoped[index]
+    const deltaMs = curr.time.getTime() - prev.time.getTime()
+    if (deltaMs <= 0) continue
+    if (Number(prev.speed || 0) >= minSpeedKmh || Number(curr.speed || 0) >= minSpeedKmh) {
+      movingMs += deltaMs
+    }
+  }
+
+  return movingMs > 0 ? Math.round(movingMs / 60000) : 0
 }
 
 function buildTrips(bundle, tracker) {
@@ -179,10 +201,14 @@ function buildTrips(bundle, tracker) {
         const eventTime = toDate(event?.time)
         return eventTime && startDate && endDate && eventTime >= startDate && eventTime <= endDate
       })
-      const tripDurationMinutes = durationMinutes(segment.start, segment.end)
+      const wallDurationMinutes = durationMinutes(segment.start, segment.end)
       const rawDistanceKm = Number(segment.distanceKm || 0)
       const estimatedFromPointsKm = distanceFromPointsKm(points, segment.start, segment.end)
       const distanceKm = Math.max(rawDistanceKm, estimatedFromPointsKm)
+      const movingDurationMinutes = movingDurationFromPointsMinutes(points, segment.start, segment.end)
+      const tripDurationMinutes = distanceKm < 1
+        ? movingDurationMinutes
+        : Math.max(wallDurationMinutes, movingDurationMinutes)
       const avgSpeed = tripDurationMinutes > 0
         ? Number((distanceKm / (tripDurationMinutes / 60)).toFixed(1))
         : Number((segment.avgSpeed || 0).toFixed(1))
