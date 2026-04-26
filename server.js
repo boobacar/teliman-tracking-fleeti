@@ -732,13 +732,49 @@ function sanitizeTrackers(trackers = []) {
   }))
 }
 
+function extractEmployeeTrackerIds(employee = {}) {
+  const candidates = [
+    employee?.tracker_id,
+    employee?.trackerId,
+    employee?.trackerID,
+    employee?.tracker,
+    employee?.tracker_ids,
+    employee?.trackerIds,
+    employee?.trackers,
+  ]
+
+  const ids = candidates
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .flatMap((value) => {
+      if (value && typeof value === 'object') {
+        return [
+          value.id,
+          value.tracker_id,
+          value.trackerId,
+        ]
+      }
+      return [value]
+    })
+    .map((value) => Number(value))
+    .filter(Number.isFinite)
+
+  return Array.from(new Set(ids))
+}
+
 function sanitizeEmployees(employees = []) {
-  return employees.filter(Boolean).map((employee) => ({
-    ...employee,
-    first_name: employee.first_name || '',
-    last_name: employee.last_name || '',
-    phone: employee.phone || 'N/A',
-  }))
+  return employees.filter(Boolean).map((employee) => {
+    const trackerIds = extractEmployeeTrackerIds(employee)
+    const firstName = String(employee.first_name || employee.firstname || employee.firstName || employee.name || '').trim()
+    const lastName = String(employee.last_name || employee.lastname || employee.lastName || '').trim()
+    return {
+      ...employee,
+      tracker_id: trackerIds[0] ?? (Number(employee?.tracker_id || employee?.trackerId) || null),
+      tracker_ids: trackerIds,
+      first_name: firstName,
+      last_name: lastName,
+      phone: employee.phone || employee.mobile || employee.tel || 'N/A',
+    }
+  })
 }
 
 function sanitizeHistory(history = []) {
@@ -1107,7 +1143,14 @@ function parseReportFilters(query = {}) {
 }
 
 function buildLookupMaps(data) {
-  const employeesByTracker = Object.fromEntries((data.employees ?? []).map((employee) => [Number(employee.tracker_id), employee]))
+  const employeesByTracker = {}
+  for (const employee of (data.employees ?? [])) {
+    const trackerIds = extractEmployeeTrackerIds(employee)
+    for (const trackerId of trackerIds) {
+      if (!Number.isFinite(trackerId)) continue
+      employeesByTracker[trackerId] = employee
+    }
+  }
   const trackersById = Object.fromEntries((data.trackers ?? []).map((tracker) => [Number(tracker.id), tracker]))
   return { employeesByTracker, trackersById }
 }
@@ -1711,7 +1754,13 @@ app.get('/api/fleeti/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').toLowerCase().trim()
     const data = await getDashboardData()
-    const employeesByTracker = Object.fromEntries((data.employees ?? []).map((employee) => [employee.tracker_id, employee]))
+    const employeesByTracker = {}
+    for (const employee of (data.employees ?? [])) {
+      for (const trackerId of extractEmployeeTrackerIds(employee)) {
+        if (!Number.isFinite(trackerId)) continue
+        employeesByTracker[trackerId] = employee
+      }
+    }
     const results = (data.trackers ?? []).filter((tracker) => {
       const employee = employeesByTracker[tracker.id]
       const text = `${tracker.label} ${employee?.first_name || ''} ${employee?.last_name || ''}`.toLowerCase()

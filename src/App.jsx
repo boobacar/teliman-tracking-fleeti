@@ -139,7 +139,20 @@ function App() {
   useAutoRefresh(currentUser ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
-    const employees = Object.fromEntries((dataset?.employees ?? []).map((e) => [e.tracker_id, e]))
+    const employees = {}
+    for (const employee of (dataset?.employees ?? [])) {
+      const trackerIds = [
+        employee?.tracker_id,
+        employee?.trackerId,
+        ...(Array.isArray(employee?.tracker_ids) ? employee.tracker_ids : []),
+        ...(Array.isArray(employee?.trackerIds) ? employee.trackerIds : []),
+      ]
+        .map((value) => Number(value))
+        .filter(Number.isFinite)
+      for (const trackerId of trackerIds) {
+        employees[trackerId] = employee
+      }
+    }
     const preferredMileageKeys = [dataset?.dateKeys?.todayKey, dataset?.dateKeys?.yesterdayKey].filter(Boolean)
 
     return (dataset?.trackers ?? []).map((tracker) => {
@@ -148,12 +161,15 @@ function App() {
       const employee = employees[tracker.id]
       const events = (dataset?.history ?? []).filter((event) => event.tracker_id === tracker.id)
       const eventCounts = events.reduce((acc, event) => ({ ...acc, [event.event]: (acc[event.event] || 0) + 1 }), {})
+      const firstName = String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
+      const lastName = String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
+      const employeeName = [firstName, lastName].filter(Boolean).join(' ').trim() || 'Non assigné'
       const base = {
         ...tracker,
         state,
         mileage,
-        employeeName: employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Non assigné',
-        employeePhone: employee?.phone || 'N/A',
+        employeeName,
+        employeePhone: employee?.phone || employee?.mobile || employee?.tel || 'N/A',
         latestDayMileage: pickLatestMileage(mileage, preferredMileageKeys),
         events,
         eventCounts,
