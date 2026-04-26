@@ -161,6 +161,112 @@ function movingDurationFromPointsMinutes(points = [], start, end, minSpeedKmh = 
   return movingMs > 0 ? Math.round(movingMs / 60000) : 0
 }
 
+function normalizedTrackPoints(points = []) {
+  return points
+    .map((point) => ({
+      lat: pointLat(point),
+      lng: pointLng(point),
+      speed: pointSpeed(point),
+      rawTime: pointTime(point),
+      time: toDate(pointTime(point)),
+    }))
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng) && point.time)
+    .sort((a, b) => a.time - b.time)
+}
+
+function estimateSegmentDistanceKm(points = []) {
+  if (points.length < 2) return 0
+  let total = 0
+  for (let index = 1; index < points.length; index += 1) {
+    total += haversineKm(points[index - 1].lat, points[index - 1].lng, points[index].lat, points[index].lng)
+  }
+  return Number(total.toFixed(3))
+}
+
+function inferSegmentsFromPoints(points = [], trackerId) {
+  const normalized = normalizedTrackPoints(points)
+  if (normalized.length < 2) return []
+
+  const MAX_CLUSTER_GAP_MINUTES = 45
+  const MIN_MOVEMENT_STEP_KM = 0.15
+  const MIN_MOVING_SPEED_KMH = 5
+  const MIN_SEGMENT_DURATION_MINUTES = 3
+
+  const movingIndexSet = new Set()
+  for (let index = 1; index < normalized.length; index += 1) {
+    const prev = normalized[index - 1]
+    const curr = normalized[index]
+    const deltaMinutes = (curr.time.getTime() - prev.time.getTime()) / 60000
+    if (deltaMinutes <= 0 || deltaMinutes > MAX_CLUSTER_GAP_MINUTES) continue
+
+    const stepDistanceKm = haversineKm(prev.lat, prev.lng, curr.lat, curr.lng)
+    const moving = Number(prev.speed || 0) >= MIN_MOVING_SPEED_KMH
+      || Number(curr.speed || 0) >= MIN_MOVING_SPEED_KMH
+      || stepDistanceKm >= MIN_MOVEMENT_STEP_KM
+    if (!moving) continue
+
+    movingIndexSet.add(index - 1)
+    movingIndexSet.add(index)
+  }
+
+  const movingIndexes = Array.from(movingIndexSet).sort((a, b) => a - b)
+  if (!movingIndexes.length) return []
+
+  const ranges = []
+  let rangeStart = movingIndexes[0]
+  let rangeEnd = movingIndexes[0]
+
+  for (let cursor = 1; cursor < movingIndexes.length; cursor += 1) {
+    const currentIndex = movingIndexes[cursor]
+    const prevPoint = normalized[rangeEnd]
+    const currentPoint = normalized[currentIndex]
+    const gapMinutes = (currentPoint.time.getTime() - prevPoint.time.getTime()) / 60000
+
+    if (gapMinutes <= MAX_CLUSTER_GAP_MINUTES) {
+      rangeEnd = currentIndex
+      continue
+    }
+
+    ranges.push([Math.max(0, rangeStart - 1), Math.min(normalized.length - 1, rangeEnd + 1)])
+    rangeStart = currentIndex
+    rangeEnd = currentIndex
+  }
+  ranges.push([Math.max(0, rangeStart - 1), Math.min(normalized.length - 1, rangeEnd + 1)])
+
+  const mergedRanges = []
+  ranges.forEach(([start, end]) => {
+    const previous = mergedRanges[mergedRanges.length - 1]
+    if (!previous || start > previous[1]) {
+      mergedRanges.push([start, end])
+      return
+    }
+    previous[1] = Math.max(previous[1], end)
+  })
+
+  return mergedRanges
+    .map(([startIndex, endIndex], segmentIndex) => {
+      const scopedPoints = normalized.slice(startIndex, endIndex + 1)
+      const startPoint = scopedPoints[0]
+      const endPoint = scopedPoints[scopedPoints.length - 1]
+      const segmentDurationMinutes = (endPoint.time.getTime() - startPoint.time.getTime()) / 60000
+      if (segmentDurationMinutes < MIN_SEGMENT_DURATION_MINUTES) return null
+
+      const distanceKm = estimateSegmentDistanceKm(scopedPoints)
+      const maxSpeed = Math.max(...scopedPoints.map((point) => Number(point.speed || 0)), 0)
+      const avgSpeed = Number((scopedPoints.reduce((sum, point) => sum + Number(point.speed || 0), 0) / scopedPoints.length).toFixed(1))
+
+      return {
+        id: `${trackerId}-inferred-segment-${segmentIndex + 1}`,
+        start: startPoint.rawTime || startPoint.time.toISOString(),
+        end: endPoint.rawTime || endPoint.time.toISOString(),
+        distanceKm,
+        avgSpeed,
+        maxSpeed,
+      }
+    })
+    .filter(Boolean)
+}
+
 function buildTrips(bundle, tracker) {
   const points = Array.isArray(bundle?.points) ? bundle.points : []
   const segments = Array.isArray(bundle?.segments) ? bundle.segments : []
@@ -178,22 +284,28 @@ function buildTrips(bundle, tracker) {
     .filter((segment) => toDate(segment.start) && toDate(segment.end))
     .sort((a, b) => toDate(a.start) - toDate(b.start))
 
-  if (!normalizedSegments.length && points.length > 1) {
+  let effectiveSegments = normalizedSegments
+  const inferredSegments = inferSegmentsFromPoints(points, bundle.trackerId)
+  if (inferredSegments.length > 1 && normalizedSegments.length <= 1) {
+    effectiveSegments = inferredSegments
+  }
+
+  if (!effectiveSegments.length && points.length > 1) {
     const firstTime = pointTime(points[0])
     const lastTime = pointTime(points[points.length - 1])
     if (toDate(firstTime) && toDate(lastTime)) {
-      normalizedSegments.push({
+      effectiveSegments = [{
         id: `${bundle.trackerId}-fallback-0`,
         start: firstTime,
         end: lastTime,
         distanceKm: 0,
         avgSpeed: 0,
         maxSpeed: Math.max(...points.map(pointSpeed), 0),
-      })
+      }]
     }
   }
 
-  return normalizedSegments
+  return effectiveSegments
     .map((segment, index) => {
       const startDate = toDate(segment.start)
       const endDate = toDate(segment.end)
