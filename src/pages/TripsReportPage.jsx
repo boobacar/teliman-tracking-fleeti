@@ -147,7 +147,10 @@ function buildTrips(bundle, tracker) {
         return eventTime && startDate && endDate && eventTime >= startDate && eventTime <= endDate
       })
       const tripDurationMinutes = durationMinutes(segment.start, segment.end)
-      const distanceKm = Number((segment.distanceKm || 0).toFixed(1))
+      const rawDistanceKm = Number(segment.distanceKm || 0)
+      const fallbackDailyMileageKm = Number(tracker?.latestDayMileage || 0)
+      const shouldUseDailyFallback = normalizedSegments.length === 1 && rawDistanceKm < 0.1 && fallbackDailyMileageKm > 0
+      const distanceKm = shouldUseDailyFallback ? fallbackDailyMileageKm : rawDistanceKm
       const avgSpeed = tripDurationMinutes > 0
         ? Number((distanceKm / (tripDurationMinutes / 60)).toFixed(1))
         : Number((segment.avgSpeed || 0).toFixed(1))
