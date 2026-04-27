@@ -340,7 +340,7 @@ function App() {
           <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
           <Route path="/reports" element={<ReportsPage reports={reports} />} />
           <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
-          <Route path="/trips-report" element={<TripsReportPage filteredTrackers={filteredTrackers} />} />
+          <Route path="/trips-report" element={<TripsReportPage filteredTrackers={enrichedTrackers} />} />
           <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
           <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={operationalTrackers} />} />
           <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />} />

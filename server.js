@@ -2227,6 +2227,34 @@ app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), 
   res.json({ ok: true })
 })
 
+function flattenTrackSegments(payload = null) {
+  const queue = [...extractArrayPayload(payload, ['list', 'segments', 'tracks', 'items', 'results', 'data', 'result'])]
+  const flattened = []
+
+  while (queue.length) {
+    const current = queue.shift()
+    if (!current || typeof current !== 'object') continue
+
+    const nested = [
+      ...(Array.isArray(current?.segments) ? current.segments : []),
+      ...(Array.isArray(current?.tracks) ? current.tracks : []),
+      ...(Array.isArray(current?.list) ? current.list : []),
+      ...(Array.isArray(current?.items) ? current.items : []),
+      ...(Array.isArray(current?.results) ? current.results : []),
+      ...(Array.isArray(current?.data) ? current.data : []),
+      ...(Array.isArray(current?.result) ? current.result : []),
+    ]
+    if (nested.length) queue.push(...nested)
+
+    const hasTripMarkers = Boolean(
+      current?.from || current?.to || current?.start || current?.end || current?.started_at || current?.ended_at || current?.start_time || current?.end_time || current?.date_from || current?.date_to,
+    )
+    if (hasTripMarkers) flattened.push(current)
+  }
+
+  return flattened
+}
+
 async function readTrackBundle(hash, trackerId, from, to) {
   const [segmentsPayload, pointsPayload, eventsPayload] = await Promise.all([
     apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
@@ -2234,7 +2262,7 @@ async function readTrackBundle(hash, trackerId, from, to) {
     apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
   ])
 
-  const segments = extractArrayPayload(segmentsPayload, ['list', 'segments', 'tracks', 'items', 'results', 'data', 'result'])
+  const segments = flattenTrackSegments(segmentsPayload)
   const points = extractArrayPayload(pointsPayload, ['list', 'points', 'tracks', 'items', 'results', 'data', 'result'])
   const events = extractArrayPayload(eventsPayload, ['list', 'events', 'items', 'results', 'data', 'result'])
 
@@ -2272,7 +2300,9 @@ app.get('/api/tracks', async (req, res) => {
 
 app.post('/api/tracks/batch', async (req, res) => {
   try {
-    const trackerIds = Array.isArray(req.body.trackerIds) ? req.body.trackerIds.map((value) => ensureValidTrackerId(value)).filter(Boolean).slice(0, 8) : []
+    const trackerIds = Array.isArray(req.body.trackerIds)
+      ? Array.from(new Set(req.body.trackerIds.map((value) => ensureValidTrackerId(value)).filter(Boolean))).slice(0, 100)
+      : []
     if (!trackerIds.length) return res.status(400).json({ ok: false, error: 'Aucun tracker valide fourni' })
 
     const period = String(req.body.period || '1h')
@@ -2286,14 +2316,34 @@ app.post('/api/tracks/batch', async (req, res) => {
 
     const hash = await authenticate()
 
-    const items = await Promise.all(trackerIds.map(async (trackerId) => {
+    const settled = await Promise.allSettled(trackerIds.map(async (trackerId) => {
       const bundle = await readTrackBundle(hash, trackerId, from, to)
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
       return { ...bundle, lastTwoPoints, source: 'private' }
     }))
 
-    return res.json({ from, to, period, source: 'private', degraded: false, warning: '', items })
+    const items = []
+    const failed = []
+
+    settled.forEach((entry, index) => {
+      if (entry.status === 'fulfilled') {
+        items.push(entry.value)
+        return
+      }
+      failed.push({ trackerId: trackerIds[index], error: entry.reason?.message || 'Erreur de récupération' })
+    })
+
+    if (!items.length) {
+      const firstError = failed[0]?.error || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.'
+      return res.status(502).json({ ok: false, error: firstError, failed })
+    }
+
+    const warning = failed.length
+      ? `${failed.length} tracker(s) n’ont pas pu être chargés pour cette période.`
+      : ''
+
+    return res.json({ from, to, period, source: 'private', degraded: false, warning, failed, items })
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }

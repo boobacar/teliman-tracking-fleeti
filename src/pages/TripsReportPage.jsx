@@ -62,10 +62,10 @@ function pointSpeed(point) {
 }
 
 function segmentStart(segment) {
-  return segment?.from
-    ?? segment?.from?.time
+  return segment?.from?.time
     ?? segment?.from?.datetime
     ?? segment?.from?.date_time
+    ?? segment?.from
     ?? segment?.start_time
     ?? segment?.start_date
     ?? segment?.started_at
@@ -77,10 +77,10 @@ function segmentStart(segment) {
 }
 
 function segmentEnd(segment) {
-  return segment?.to
-    ?? segment?.to?.time
+  return segment?.to?.time
     ?? segment?.to?.datetime
     ?? segment?.to?.date_time
+    ?? segment?.to
     ?? segment?.end_time
     ?? segment?.end_date
     ?? segment?.ended_at
@@ -300,8 +300,40 @@ function inferSegmentsFromPoints(points = [], trackerId) {
     .filter(Boolean)
 }
 
+function flattenSegments(rows = []) {
+  const queue = Array.isArray(rows) ? [...rows] : []
+  const flat = []
+
+  while (queue.length) {
+    const current = queue.shift()
+    if (!current || typeof current !== 'object') continue
+
+    const nested = [
+      ...(Array.isArray(current.segments) ? current.segments : []),
+      ...(Array.isArray(current.tracks) ? current.tracks : []),
+      ...(Array.isArray(current.list) ? current.list : []),
+      ...(Array.isArray(current.items) ? current.items : []),
+      ...(Array.isArray(current.data) ? current.data : []),
+      ...(Array.isArray(current.result) ? current.result : []),
+    ]
+
+    if (nested.length) queue.push(...nested)
+
+    const hasTripMarkers = Boolean(
+      segmentStart(current)
+      || segmentEnd(current)
+      || Number.isFinite(Number(current?.duration_minutes ?? current?.duration_seconds ?? current?.duration ?? null))
+      || Number.isFinite(Number(current?.length ?? current?.distance ?? current?.distance_meters ?? current?.distanceMeters ?? null)),
+    )
+
+    if (hasTripMarkers) flat.push(current)
+  }
+
+  return flat
+}
+
 function buildTrips(bundle, tracker) {
-  const segments = Array.isArray(bundle?.segments) ? bundle.segments : []
+  const segments = flattenSegments(bundle?.segments)
   const events = Array.isArray(bundle?.events) ? bundle.events : []
   const driver = fleetiDriverName(tracker)
 
@@ -375,14 +407,22 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   const driverOptions = useMemo(() => Array.from(new Set(trackerOptions.map((tracker) => tracker.driver))).sort((a, b) => a.localeCompare(b, 'fr')), [trackerOptions])
 
   useEffect(() => {
+    if (selectedTrackerId && !trackerOptions.some((tracker) => tracker.id === selectedTrackerId)) {
+      setSelectedTrackerId('')
+    }
+  }, [selectedTrackerId, trackerOptions])
+
+  useEffect(() => {
+    if (selectedDriver && !driverOptions.includes(selectedDriver)) {
+      setSelectedDriver('')
+    }
+  }, [selectedDriver, driverOptions])
+
+  useEffect(() => {
     let cancelled = false
 
     async function run() {
-      const candidateTrackers = filteredTrackers.filter((tracker) => {
-        if (selectedTrackerId && String(tracker.id) !== selectedTrackerId) return false
-        if (selectedDriver && fleetiDriverName(tracker) !== selectedDriver) return false
-        return true
-      })
+      const candidateTrackers = filteredTrackers
 
       if (!candidateTrackers.length) {
         setTrips([])
@@ -418,7 +458,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
     run()
     return () => { cancelled = true }
-  }, [filteredTrackers, from, to, selectedDriver, selectedTrackerId])
+  }, [filteredTrackers, from, to])
 
   const filteredTrips = useMemo(() => trips.filter((trip) => {
     if (selectedTrackerId && String(trip.trackerId) !== selectedTrackerId) return false
