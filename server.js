@@ -2217,20 +2217,17 @@ async function readTrackBundle(hash, trackerId, from, to) {
     apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
   ])
 
-  const bundle = {
+  return {
     trackerId,
     from,
     to,
     segments: segments.list ?? [],
     points: points.list ?? [],
-    events: events.list ?? [],
+    events: (events.list ?? []).filter((event) => {
+      const eventTrackerId = Number(event?.tracker_id ?? event?.trackerId ?? event?.tracker?.id ?? trackerId)
+      return Number.isFinite(eventTrackerId) ? eventTrackerId === Number(trackerId) : true
+    }),
   }
-
-  if (!bundle.segments.length && !bundle.points.length && !bundle.events.length) {
-    return buildTrackBundleFromPublicCache(trackerId, from, to)
-  }
-
-  return bundle
 }
 
 app.get('/api/tracks', async (req, res) => {
@@ -2241,14 +2238,14 @@ app.get('/api/tracks', async (req, res) => {
     const to = req.query.to || getDateRange('1h').to
 
     if (!PRIVATE_API_CONFIGURED) {
-      return res.json(buildTrackBundleFromPublicCache(trackerId, from, to))
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée: impossible de retourner les trajets bruts.' })
     }
 
     try {
       const hash = await authenticate()
       return res.json(await readTrackBundle(hash, trackerId, from, to))
     } catch {
-      return res.json(buildTrackBundleFromPublicCache(trackerId, from, to))
+      return res.status(502).json({ ok: false, error: 'Impossible de récupérer les trajets bruts depuis Fleeti.' })
     }
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -2265,19 +2262,19 @@ app.post('/api/tracks/batch', async (req, res) => {
     const from = req.body.from || range.from
     const to = req.body.to || range.to
 
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée: impossible de retourner les trajets bruts.' })
+    }
+
     let hash = null
-    if (PRIVATE_API_CONFIGURED) {
-      try {
-        hash = await authenticate()
-      } catch {
-        hash = null
-      }
+    try {
+      hash = await authenticate()
+    } catch {
+      return res.status(502).json({ ok: false, error: 'Impossible d’authentifier la requête trajets auprès de Fleeti.' })
     }
 
     const items = await Promise.all(trackerIds.map(async (trackerId) => {
-      const bundle = hash
-        ? await readTrackBundle(hash, trackerId, from, to).catch(() => buildTrackBundleFromPublicCache(trackerId, from, to))
-        : buildTrackBundleFromPublicCache(trackerId, from, to)
+      const bundle = await readTrackBundle(hash, trackerId, from, to)
 
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []

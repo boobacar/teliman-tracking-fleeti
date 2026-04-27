@@ -99,6 +99,21 @@ function segmentMaxSpeed(segment) {
   return Number(segment?.max_speed ?? segment?.speed_max ?? 0) || 0
 }
 
+function segmentDurationMinutes(segment) {
+  const rawMinutes = Number(segment?.duration_minutes ?? segment?.duration_min ?? null)
+  if (Number.isFinite(rawMinutes) && rawMinutes >= 0) return rawMinutes
+
+  const rawSeconds = Number(segment?.duration_seconds ?? segment?.duration_sec ?? segment?.duration ?? null)
+  if (Number.isFinite(rawSeconds) && rawSeconds >= 0) return rawSeconds / 60
+
+  return durationMinutes(segmentStart(segment), segmentEnd(segment))
+}
+
+function fleetiDriverName(tracker) {
+  const raw = String(tracker?.employeeNameFromApi || '').trim()
+  return raw || 'Non assigné'
+}
+
 function durationMinutes(start, end) {
   const startDate = toDate(start)
   const endDate = toDate(end)
@@ -268,44 +283,22 @@ function inferSegmentsFromPoints(points = [], trackerId) {
 }
 
 function buildTrips(bundle, tracker) {
-  const points = Array.isArray(bundle?.points) ? bundle.points : []
   const segments = Array.isArray(bundle?.segments) ? bundle.segments : []
   const events = Array.isArray(bundle?.events) ? bundle.events : []
+  const driver = fleetiDriverName(tracker)
 
-  const normalizedSegments = segments
+  return segments
     .map((segment, index) => ({
-      id: `${bundle.trackerId}-segment-${index}`,
+      id: String(segment?.id || segment?.track_id || `${bundle.trackerId}-segment-${index}`),
       start: segmentStart(segment),
       end: segmentEnd(segment),
       distanceKm: segmentLengthKm(segment),
+      durationMinutes: segmentDurationMinutes(segment),
       avgSpeed: segmentAvgSpeed(segment),
       maxSpeed: segmentMaxSpeed(segment),
     }))
     .filter((segment) => toDate(segment.start) && toDate(segment.end))
     .sort((a, b) => toDate(a.start) - toDate(b.start))
-
-  let effectiveSegments = normalizedSegments
-  const inferredSegments = inferSegmentsFromPoints(points, bundle.trackerId)
-  if (inferredSegments.length > 1 && normalizedSegments.length <= 1) {
-    effectiveSegments = inferredSegments
-  }
-
-  if (!effectiveSegments.length && points.length > 1) {
-    const firstTime = pointTime(points[0])
-    const lastTime = pointTime(points[points.length - 1])
-    if (toDate(firstTime) && toDate(lastTime)) {
-      effectiveSegments = [{
-        id: `${bundle.trackerId}-fallback-0`,
-        start: firstTime,
-        end: lastTime,
-        distanceKm: 0,
-        avgSpeed: 0,
-        maxSpeed: Math.max(...points.map(pointSpeed), 0),
-      }]
-    }
-  }
-
-  return effectiveSegments
     .map((segment, index) => {
       const startDate = toDate(segment.start)
       const endDate = toDate(segment.end)
@@ -313,28 +306,19 @@ function buildTrips(bundle, tracker) {
         const eventTime = toDate(event?.time)
         return eventTime && startDate && endDate && eventTime >= startDate && eventTime <= endDate
       })
-      const wallDurationMinutes = durationMinutes(segment.start, segment.end)
-      const rawDistanceKm = Number(segment.distanceKm || 0)
-      const estimatedFromPointsKm = distanceFromPointsKm(points, segment.start, segment.end)
-      const distanceKm = Math.max(rawDistanceKm, estimatedFromPointsKm)
-      const movingDurationMinutes = movingDurationFromPointsMinutes(points, segment.start, segment.end)
-      const tripDurationMinutes = distanceKm < 1
-        ? movingDurationMinutes
-        : Math.max(wallDurationMinutes, movingDurationMinutes)
-      const avgSpeed = tripDurationMinutes > 0
-        ? Number((distanceKm / (tripDurationMinutes / 60)).toFixed(1))
-        : Number((segment.avgSpeed || 0).toFixed(1))
+      const distanceKm = Number(segment.distanceKm || 0)
+      const tripDurationMinutes = Number(segment.durationMinutes || durationMinutes(segment.start, segment.end) || 0)
 
       return {
-        id: `${bundle.trackerId}-segment-trip-${index + 1}`,
+        id: `${segment.id}-${index + 1}`,
         trackerId: bundle.trackerId,
         truckLabel: tracker?.label || `Camion ${bundle.trackerId}`,
-        driver: tracker?.employeeName || 'Non assigné',
+        driver,
         start: segment.start,
         end: segment.end,
         distanceKm,
         durationMinutes: tripDurationMinutes,
-        avgSpeed,
+        avgSpeed: Number((segment.avgSpeed || 0).toFixed(1)),
         maxSpeed: Number((segment.maxSpeed || 0).toFixed(0)),
         events: segmentEvents,
         eventCount: segmentEvents.length,
@@ -367,7 +351,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   const trackerOptions = useMemo(() => filteredTrackers.map((tracker) => ({
     id: String(tracker.id),
     label: tracker.label,
-    driver: tracker.employeeName || 'Non assigné',
+    driver: fleetiDriverName(tracker),
   })).sort((a, b) => a.label.localeCompare(b.label, 'fr')), [filteredTrackers])
 
   const driverOptions = useMemo(() => Array.from(new Set(trackerOptions.map((tracker) => tracker.driver))).sort((a, b) => a.localeCompare(b, 'fr')), [trackerOptions])
@@ -378,7 +362,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
     async function run() {
       const candidateTrackers = filteredTrackers.filter((tracker) => {
         if (selectedTrackerId && String(tracker.id) !== selectedTrackerId) return false
-        if (selectedDriver && (tracker.employeeName || 'Non assigné') !== selectedDriver) return false
+        if (selectedDriver && fleetiDriverName(tracker) !== selectedDriver) return false
         return true
       })
 

@@ -206,6 +206,7 @@ function App() {
         ...tracker,
         state,
         mileage,
+        employeeNameFromApi: employeeNameFromApi || '',
         employeeName,
         employeePhone: employee?.phone || employee?.mobile || employee?.tel || 'N/A',
         latestDayMileage: pickLatestMileage(mileage, preferredMileageKeys),
