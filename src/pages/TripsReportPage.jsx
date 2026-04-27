@@ -364,7 +364,6 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   const [selectedDriver, setSelectedDriver] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [warning, setWarning] = useState('')
   const [trips, setTrips] = useState([])
 
   const trackerOptions = useMemo(() => filteredTrackers.map((tracker) => ({
@@ -387,13 +386,11 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
       if (!candidateTrackers.length) {
         setTrips([])
-        setWarning('')
         return
       }
 
       setLoading(true)
       setError('')
-      setWarning('')
       try {
         const payload = await loadTracksBatch({
           trackerIds: candidateTrackers.map((tracker) => tracker.id),
@@ -409,7 +406,6 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           .sort((a, b) => (toDate(b.start)?.getTime() || 0) - (toDate(a.start)?.getTime() || 0))
 
         setTrips(builtTrips)
-        setWarning(String(payload?.warning || '').trim())
       } catch (e) {
         if (!cancelled) {
           setError(e.message || 'Impossible de charger les trajets Fleeti.')
@@ -588,7 +584,6 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       </section>
 
       {error && <div className="error-banner">{error}</div>}
-      {!error && warning && <div className="info-banner">{warning}</div>}
       {loading && <div className="info-banner">Chargement des trajets Fleeti…</div>}
 
       <section className="stats-grid stats-grid-tight">

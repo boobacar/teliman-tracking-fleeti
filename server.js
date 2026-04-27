@@ -62,15 +62,10 @@ function parseNumberList(value) {
 
 function validateRequiredEnv() {
   const missing = []
-  const privateMissing = []
-  if (!API_BASE) privateMissing.push('FLEETI_API_BASE')
-  if (!LOGIN) privateMissing.push('FLEETI_LOGIN')
-  if (!PASSWORD) privateMissing.push('FLEETI_PASSWORD')
-  if (!DEALER_ID) privateMissing.push('FLEETI_DEALER_ID')
-
-  if (privateMissing.length && !PUBLIC_API_KEY) {
-    missing.push(...privateMissing, 'FLEETI_PUBLIC_API_KEY')
-  }
+  if (!API_BASE) missing.push('FLEETI_API_BASE')
+  if (!LOGIN) missing.push('FLEETI_LOGIN')
+  if (!PASSWORD) missing.push('FLEETI_PASSWORD')
+  if (!DEALER_ID) missing.push('FLEETI_DEALER_ID')
 
   if (missing.length) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
@@ -638,65 +633,100 @@ function formatFuelSnapshot(asset = {}) {
 }
 
 async function loadCameraAssets() {
-  const payload = await publicApiGet('/Asset/Search', { Take: 500 })
-  const results = payload.results || []
-  const isCameraName = (value) => /(?:-cam|_cam)$/i.test(String(value || '').trim())
-  const normalizeCameraBase = (value) => String(value || '').replace(/(?:-cam|_cam)$/i, '').trim()
-  const cameraAssets = results.filter((asset) => isCameraName(asset.name) || isCameraName(asset.properties?.licensePlate) || /dashcam/i.test(String(asset.gateways?.[0]?.model || '')))
-  const truckAssets = results.filter((asset) => asset.assetType === 10 && !isCameraName(asset.name) && !isCameraName(asset.properties?.licensePlate))
+  if (!PRIVATE_API_CONFIGURED) {
+    throw new Error('API privée Fleeti non configurée')
+  }
 
-  const items = cameraAssets.map((camera) => {
-    const cameraBase = normalizeCameraBase(camera.name || camera.properties?.licensePlate)
-    const truck = truckAssets.find((asset) => String(asset.name || '').trim().toLowerCase() === cameraBase.toLowerCase()) || null
-    const gateway = (camera.gateways || [])[0] || null
-    const position = gateway?.state?.position?.location || null
-    return {
-      truckLabel: truck?.name || cameraBase || camera.name,
-      truckAssetId: truck?.id || null,
-      truckGatewayId: truck?.gateways?.[0]?.provider?.gatewayId || null,
-      cameraLabel: camera.name || null,
-      cameraAssetId: camera.id || null,
-      cameraGatewayId: gateway?.provider?.gatewayId || null,
+  const hash = await authenticate()
+  const trackersResponse = await apiCall('tracker/list', { hash })
+  const trackers = sanitizeTrackers(extractArrayPayload(trackersResponse, ['list', 'trackers', 'items', 'results', 'result', 'data']))
+
+  const isCameraLike = (tracker) => {
+    const label = String(tracker?.label || tracker?.name || '').trim()
+    const model = String(tracker?.model || '').trim()
+    return /(?:-cam|_cam)$/i.test(label) || /dashcam/i.test(model)
+  }
+
+  const items = trackers
+    .filter(isCameraLike)
+    .map((tracker) => ({
+      truckLabel: tracker.label,
+      truckAssetId: null,
+      truckGatewayId: Number(tracker.id) || null,
+      cameraLabel: tracker.label,
+      cameraAssetId: null,
+      cameraGatewayId: Number(tracker.id) || null,
       liveViewAvailable: false,
-      liveViewReason: 'Aucun flux live ou lien vidéo exploitable n’est exposé par l’API publique Fleeti actuellement.',
-      imei: gateway?.imei || null,
-      model: gateway?.model || null,
-      supplier: gateway?.supplier || null,
-      isOnline: Boolean(gateway?.isOnline),
-      connectionStatus: gateway?.state?.connectionStatus ?? null,
-      movementStatus: gateway?.state?.movementStatus ?? null,
-      updatedAt: gateway?.state?.updatedAt || null,
-      location: position ? { lat: position.latitude, lng: position.longitude } : null,
-    }
-  }).sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
+      liveViewReason: 'Aucun flux live exploitable renvoyé par l’API privée Fleeti actuellement.',
+      imei: tracker.imei || null,
+      model: tracker.model || null,
+      supplier: null,
+      isOnline: null,
+      connectionStatus: null,
+      movementStatus: null,
+      updatedAt: null,
+      location: null,
+    }))
+    .sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
 
-  return { items, generatedAt: new Date().toISOString() }
+  return { items, generatedAt: new Date().toISOString(), source: 'private' }
 }
 
 async function loadLiveFuelLevels() {
-  const payload = await publicApiGet('/Asset/Search', { Take: 200 })
-  const byTracker = new Map()
-  for (const asset of (payload.results || []).filter((entry) => entry.assetType === 10)) {
-    const snapshot = formatFuelSnapshot(asset)
-    if (!snapshot.trackerId || !TRACKER_IDS.includes(Number(snapshot.trackerId))) continue
-    const existing = byTracker.get(String(snapshot.trackerId))
-    const snapshotHasLiters = snapshot.fuelLevel != null && String(snapshot.fuelUnits || '').toLowerCase() === 'l'
-    const existingHasLiters = existing && existing.fuelLevel != null && String(existing.fuelUnits || '').toLowerCase() === 'l'
-    const looksLikeCamera = String(snapshot.truckLabel || '').toLowerCase().includes('-cam')
-    if (!existing) {
-      byTracker.set(String(snapshot.trackerId), snapshot)
-      continue
-    }
-    if (snapshotHasLiters && !existingHasLiters) {
-      byTracker.set(String(snapshot.trackerId), snapshot)
-      continue
-    }
-    if (snapshotHasLiters === existingHasLiters && !looksLikeCamera && String(existing.truckLabel || '').toLowerCase().includes('-cam')) {
-      byTracker.set(String(snapshot.trackerId), snapshot)
-    }
+  if (!PRIVATE_API_CONFIGURED) {
+    throw new Error('API privée Fleeti non configurée')
   }
-  const items = Array.from(byTracker.values()).sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr'))
-  return { items, generatedAt: new Date().toISOString() }
+
+  const hash = await authenticate()
+  const trackersResponse = await apiCall('tracker/list', { hash })
+  const trackers = sanitizeTrackers(extractArrayPayload(trackersResponse, ['list', 'trackers', 'items', 'results', 'result', 'data']))
+
+  const trackerIds = trackers
+    .map((tracker) => Number(tracker.id))
+    .filter((trackerId) => Number.isFinite(trackerId) && (!TRACKER_IDS.length || TRACKER_IDS.includes(trackerId)))
+
+  const statesResponse = trackerIds.length
+    ? await apiCall('tracker/get_states', { hash, trackers: trackerIds }).catch(() => ({ states: {} }))
+    : { states: {} }
+  const states = extractObjectPayload(statesResponse, ['states', 'result', 'data'])
+
+  const items = await Promise.all(trackerIds.map(async (trackerId) => {
+    const tracker = trackers.find((entry) => Number(entry.id) === trackerId)
+    const state = states?.[trackerId] || states?.[String(trackerId)] || {}
+    const fuelSensors = await getFuelSensorInfo(hash, trackerId)
+    const preferredFuelSensor = fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_consumption'))
+      || fuelSensors.find((sensor) => String(sensor.input_name || '').includes('can_fuel_litres'))
+      || fuelSensors[0]
+
+    return {
+      trackerId,
+      sourceId: null,
+      truckLabel: tracker?.label || `Tracker ${trackerId}`,
+      imei: tracker?.imei || '',
+      isOnline: null,
+      movementStatus: state?.movement_status ?? state?.movementStatus ?? null,
+      connectionStatus: state?.connection_status ?? state?.connectionStatus ?? null,
+      fuelLevel: extractFuelSensorValue(preferredFuelSensor),
+      fuelUnits: preferredFuelSensor?.units || 'L',
+      fuelUpdatedAt: preferredFuelSensor?.updated_at || preferredFuelSensor?.value_updated_at || null,
+      fuelInputName: preferredFuelSensor?.input_name || preferredFuelSensor?.inputName || null,
+      sensorId: preferredFuelSensor?.id || null,
+      sensors: fuelSensors.map((sensor) => ({
+        id: sensor.id,
+        inputName: sensor.input_name || sensor.inputName || null,
+        value: Number.isFinite(Number(sensor.value)) ? Number(sensor.value) : null,
+        valueUpdatedAt: sensor.updated_at || sensor.value_updated_at || null,
+        units: sensor.units || null,
+        isCan: Boolean(sensor.is_can || sensor.isCan),
+      })),
+    }
+  }))
+
+  return {
+    items: items.sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr')),
+    generatedAt: new Date().toISOString(),
+    source: 'private',
+  }
 }
 
 function extractArrayPayload(payload, candidateKeys = ['list', 'items', 'results', 'data', 'result']) {
@@ -1616,73 +1646,61 @@ async function getDashboardData(forceRefresh = false) {
     return dashboardCache.data
   }
 
+  if (!PRIVATE_API_CONFIGURED) {
+    throw new Error('API privée Fleeti non configurée')
+  }
+
   const { from, to, todayKey, yesterdayKey } = getDateRange('48h')
 
-  if (!PRIVATE_API_CONFIGURED) {
-    const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
-    dashboardCache = { data: publicPayload, ts: Date.now() }
-    return publicPayload
+  const hash = await authenticate()
+
+  const trackers = await apiCall('tracker/list', { hash })
+  const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
+  const sanitizedTrackers = sanitizeTrackers(trackerRows)
+
+  if (!sanitizedTrackers.length) {
+    throw new Error('tracker/list vide depuis API privée Fleeti')
   }
 
-  try {
-    const hash = await authenticate()
+  const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
+  const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
+  const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
+  const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
 
-    const trackers = await apiCall('tracker/list', { hash })
-    const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
-    const sanitizedTrackers = sanitizeTrackers(trackerRows)
-
-    if (!sanitizedTrackers.length) {
-      console.warn('[dashboard] tracker/list vide depuis API privée. Bascule automatique sur API publique Asset/Search.')
-      const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
-      dashboardCache = { data: publicPayload, ts: Date.now() }
-      return publicPayload
-    }
-
-    const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
-    const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
-    const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
-    const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
-
-    if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
-      console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
-    }
-
-    const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
-      scopedTrackerIds.length
-        ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
-        : Promise.resolve({ states: {} }),
-      apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
-      apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
-      apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
-      apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
-      scopedTrackerIds.length
-        ? apiCall('history/tracker/list', { hash, trackers: scopedTrackerIds, from, to, limit: 200 }).catch(() => ({ list: [] }))
-        : Promise.resolve({ list: [] }),
-      scopedTrackerIds.length
-        ? apiCall('tracker/stats/mileage/read', { hash, trackers: scopedTrackerIds, from, to }).catch(() => ({ result: {} }))
-        : Promise.resolve({ result: {} }),
-    ])
-
-    const payload = {
-      trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
-      states: extractObjectPayload(states, ['states', 'result', 'data']),
-      employees: sanitizeEmployees(extractArrayPayload(employees)),
-      unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
-      rules: extractArrayPayload(rules),
-      tariffs: extractArrayPayload(tariffs),
-      history: sanitizeHistory(extractArrayPayload(history)),
-      mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
-      dateKeys: { todayKey, yesterdayKey },
-    }
-
-    dashboardCache = { data: payload, ts: Date.now() }
-    return payload
-  } catch (error) {
-    console.warn(`[dashboard] API privée Fleeti indisponible (${error.message}). Tentative via API publique.`)
-    const publicPayload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
-    dashboardCache = { data: publicPayload, ts: Date.now() }
-    return publicPayload
+  if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
+    console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
   }
+
+  const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
+    scopedTrackerIds.length
+      ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
+      : Promise.resolve({ states: {} }),
+    apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+    apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
+    apiCall('tracker/rule/list', { hash }).catch(() => ({ list: [] })),
+    apiCall('tariff/list', { hash }).catch(() => ({ list: [] })),
+    scopedTrackerIds.length
+      ? apiCall('history/tracker/list', { hash, trackers: scopedTrackerIds, from, to, limit: 200 }).catch(() => ({ list: [] }))
+      : Promise.resolve({ list: [] }),
+    scopedTrackerIds.length
+      ? apiCall('tracker/stats/mileage/read', { hash, trackers: scopedTrackerIds, from, to }).catch(() => ({ result: {} }))
+      : Promise.resolve({ result: {} }),
+  ])
+
+  const payload = {
+    trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
+    states: extractObjectPayload(states, ['states', 'result', 'data']),
+    employees: sanitizeEmployees(extractArrayPayload(employees)),
+    unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
+    rules: extractArrayPayload(rules),
+    tariffs: extractArrayPayload(tariffs),
+    history: sanitizeHistory(extractArrayPayload(history)),
+    mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
+    dateKeys: { todayKey, yesterdayKey },
+  }
+
+  dashboardCache = { data: payload, ts: Date.now() }
+  return payload
 }
 
 app.get('/api/health', (_req, res) => {
@@ -1691,7 +1709,6 @@ app.get('/api/health', (_req, res) => {
     service: 'teliman-tracking-fleeti-v3',
     cacheTtlMs: CACHE_TTL_MS,
     privateApiConfigured: PRIVATE_API_CONFIGURED,
-    publicApiConfigured: Boolean(PUBLIC_API_KEY),
     timestamp: new Date().toISOString(),
   })
 })
@@ -2242,21 +2259,14 @@ app.get('/api/tracks', async (req, res) => {
     const to = req.query.to || getDateRange('1h').to
 
     if (!PRIVATE_API_CONFIGURED) {
-      const fallback = buildTrackBundleFromPublicCache(trackerId, from, to)
-      return res.json({ ...fallback, source: 'public-cache', warning: 'API privée Fleeti non configurée, fallback public activé.' })
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée.' })
     }
 
-    try {
-      const hash = await authenticate()
-      const bundle = await readTrackBundle(hash, trackerId, from, to)
-      return res.json({ ...bundle, source: 'private' })
-    } catch (error) {
-      console.warn(`[tracks] auth/read fallback public-cache for tracker ${trackerId}: ${error.message}`)
-      const fallback = buildTrackBundleFromPublicCache(trackerId, from, to)
-      return res.json({ ...fallback, source: 'public-cache', warning: 'API privée Fleeti indisponible, fallback public activé.' })
-    }
+    const hash = await authenticate()
+    const bundle = await readTrackBundle(hash, trackerId, from, to)
+    return res.json({ ...bundle, source: 'private' })
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message })
+    return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }
 })
 
@@ -2270,55 +2280,22 @@ app.post('/api/tracks/batch', async (req, res) => {
     const from = req.body.from || range.from
     const to = req.body.to || range.to
 
-    let hash = null
-    let fallbackReason = ''
-
-    if (PRIVATE_API_CONFIGURED) {
-      try {
-        hash = await authenticate()
-      } catch (error) {
-        fallbackReason = error?.message || 'auth_failed'
-        console.warn(`[tracks/batch] authenticate failed, fallback public-cache: ${fallbackReason}`)
-      }
-    } else {
-      fallbackReason = 'private_api_not_configured'
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée.' })
     }
 
+    const hash = await authenticate()
+
     const items = await Promise.all(trackerIds.map(async (trackerId) => {
-      let bundle = null
-      let source = 'public-cache'
-
-      if (hash) {
-        try {
-          bundle = await readTrackBundle(hash, trackerId, from, to)
-          source = 'private'
-        } catch (error) {
-          console.warn(`[tracks/batch] readTrackBundle failed for tracker ${trackerId}, fallback public-cache: ${error.message}`)
-        }
-      }
-
-      if (!bundle) {
-        bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
-      }
-
+      const bundle = await readTrackBundle(hash, trackerId, from, to)
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-      return { ...bundle, lastTwoPoints, source }
+      return { ...bundle, lastTwoPoints, source: 'private' }
     }))
 
-    const degraded = items.some((item) => item.source === 'public-cache')
-    res.json({
-      from,
-      to,
-      period,
-      source: degraded ? 'mixed' : 'private',
-      degraded,
-      warning: degraded ? 'API privée Fleeti indisponible sur tout ou partie des trackers, fallback public activé.' : '',
-      fallbackReason,
-      items,
-    })
+    return res.json({ from, to, period, source: 'private', degraded: false, warning: '', items })
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message })
+    return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }
 })
 
