@@ -25,7 +25,14 @@ export function Layout({ children, loading, refreshData, search, setSearch, data
 
   return (
     <div className="app-shell premium-shell phase2-shell">
-      <button type="button" className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)}><Menu size={20} /> Menu</button>
+      <button type="button" className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)}>
+        <span className="mobile-nav-toggle__icon"><Menu size={18} /></span>
+        <span className="mobile-nav-toggle__content">
+          <strong>Navigation</strong>
+          <small>Ouvrir le menu</small>
+        </span>
+        <ChevronRight size={16} className="mobile-nav-toggle__chevron" />
+      </button>
       <aside className={`sidebar premium-sidebar ${mobileNavOpen ? 'mobile-open' : ''}`}>
         <div>
           <div className="mobile-sidebar-header"><div><div className="brand-badge">TELIMAN</div><h1>Operations</h1><p>Flotte, alertes et pilotage.</p></div><button type="button" className="mobile-close-btn" onClick={() => setMobileNavOpen(false)}><X size={18} /></button></div>
