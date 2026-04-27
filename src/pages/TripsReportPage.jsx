@@ -124,8 +124,12 @@ function segmentDurationMinutes(segment) {
 }
 
 function fleetiDriverName(tracker) {
-  const raw = String(tracker?.employeeNameFromApi || '').trim()
-  return raw || 'Non assigné'
+  const fleetiRaw = String(tracker?.employeeNameFromApi || '').trim()
+  if (fleetiRaw) return fleetiRaw
+
+  // Fallback visible en mode dégradé (API privée indisponible)
+  const mappedRaw = String(tracker?.employeeName || '').trim()
+  return mappedRaw || 'Non assigné'
 }
 
 function durationMinutes(start, end) {
