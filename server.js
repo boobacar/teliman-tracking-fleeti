@@ -2242,14 +2242,18 @@ app.get('/api/tracks', async (req, res) => {
     const to = req.query.to || getDateRange('1h').to
 
     if (!PRIVATE_API_CONFIGURED) {
-      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée: impossible de retourner les trajets bruts.' })
+      const fallback = buildTrackBundleFromPublicCache(trackerId, from, to)
+      return res.json({ ...fallback, source: 'public-cache', warning: 'API privée Fleeti non configurée, fallback public activé.' })
     }
 
     try {
       const hash = await authenticate()
-      return res.json(await readTrackBundle(hash, trackerId, from, to))
-    } catch {
-      return res.status(502).json({ ok: false, error: 'Impossible de récupérer les trajets bruts depuis Fleeti.' })
+      const bundle = await readTrackBundle(hash, trackerId, from, to)
+      return res.json({ ...bundle, source: 'private' })
+    } catch (error) {
+      console.warn(`[tracks] auth/read fallback public-cache for tracker ${trackerId}: ${error.message}`)
+      const fallback = buildTrackBundleFromPublicCache(trackerId, from, to)
+      return res.json({ ...fallback, source: 'public-cache', warning: 'API privée Fleeti indisponible, fallback public activé.' })
     }
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -2266,25 +2270,53 @@ app.post('/api/tracks/batch', async (req, res) => {
     const from = req.body.from || range.from
     const to = req.body.to || range.to
 
-    if (!PRIVATE_API_CONFIGURED) {
-      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée: impossible de retourner les trajets bruts.' })
-    }
-
     let hash = null
-    try {
-      hash = await authenticate()
-    } catch {
-      return res.status(502).json({ ok: false, error: 'Impossible d’authentifier la requête trajets auprès de Fleeti.' })
+    let fallbackReason = ''
+
+    if (PRIVATE_API_CONFIGURED) {
+      try {
+        hash = await authenticate()
+      } catch (error) {
+        fallbackReason = error?.message || 'auth_failed'
+        console.warn(`[tracks/batch] authenticate failed, fallback public-cache: ${fallbackReason}`)
+      }
+    } else {
+      fallbackReason = 'private_api_not_configured'
     }
 
     const items = await Promise.all(trackerIds.map(async (trackerId) => {
-      const bundle = await readTrackBundle(hash, trackerId, from, to)
+      let bundle = null
+      let source = 'public-cache'
+
+      if (hash) {
+        try {
+          bundle = await readTrackBundle(hash, trackerId, from, to)
+          source = 'private'
+        } catch (error) {
+          console.warn(`[tracks/batch] readTrackBundle failed for tracker ${trackerId}, fallback public-cache: ${error.message}`)
+        }
+      }
+
+      if (!bundle) {
+        bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
+      }
 
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-      return { ...bundle, lastTwoPoints }
+      return { ...bundle, lastTwoPoints, source }
     }))
-    res.json({ from, to, period, items })
+
+    const degraded = items.some((item) => item.source === 'public-cache')
+    res.json({
+      from,
+      to,
+      period,
+      source: degraded ? 'mixed' : 'private',
+      degraded,
+      warning: degraded ? 'API privée Fleeti indisponible sur tout ou partie des trackers, fallback public activé.' : '',
+      fallbackReason,
+      items,
+    })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
