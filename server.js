@@ -1727,18 +1727,21 @@ async function getDashboardData(forceRefresh = false) {
 
   const hash = await authenticate()
 
-  const sanitizedTrackers = await fetchTrackersPrivate(hash)
-
-  if (!sanitizedTrackers.length) {
-    throw new Error('tracker/list vide depuis API privée Fleeti')
-  }
+  const sanitizedTrackers = await fetchTrackersPrivate(hash).catch((error) => {
+    console.warn(`[dashboard] tracker/list indisponible: ${error?.message || error}`)
+    return []
+  })
 
   const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
   const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
   const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
-  const scopedTrackerIds = strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds
+  const scopedTrackerIds = availableTrackerIds.length
+    ? (strictScopedTrackerIds.length ? strictScopedTrackerIds : availableTrackerIds)
+    : configuredTrackerIds
 
-  if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
+  if (!availableTrackerIds.length && configuredTrackerIds.length) {
+    console.warn('[dashboard] tracker/list vide; fallback sur FLEETI_TRACKER_IDS pour charger states/history.')
+  } else if (!strictScopedTrackerIds.length && configuredTrackerIds.length) {
     console.warn('[dashboard] Aucun tracker configuré trouvé chez Fleeti. Fallback automatique sur tous les trackers disponibles.')
   }
 
@@ -1758,14 +1761,48 @@ async function getDashboardData(forceRefresh = false) {
       : Promise.resolve({ result: {} }),
   ])
 
+  const normalizedStates = extractObjectPayload(states, ['states', 'result', 'data'])
+  const normalizedHistory = sanitizeHistory(extractArrayPayload(history))
+
+  const historyLabelByTrackerId = new Map()
+  normalizedHistory.forEach((event) => {
+    const trackerId = Number(event?.tracker_id ?? event?.trackerId)
+    if (!Number.isFinite(trackerId)) return
+    const label = String(event?.label || event?.tracker_label || event?.extra?.tracker_label || '').trim()
+    if (label && !historyLabelByTrackerId.has(trackerId)) {
+      historyLabelByTrackerId.set(trackerId, label)
+    }
+  })
+
+  const fallbackTrackers = scopedTrackerIds.map((trackerId) => {
+    const state = normalizedStates?.[trackerId] ?? normalizedStates?.[String(trackerId)] ?? {}
+    const stateLabel = String(
+      state?.label
+      || state?.name
+      || state?.tracker_label
+      || state?.vehicle_name
+      || state?.extra?.tracker_label
+      || '',
+    ).trim()
+
+    return {
+      id: trackerId,
+      label: stateLabel || historyLabelByTrackerId.get(trackerId) || `Tracker ${trackerId}`,
+      model: String(state?.model || state?.device_model || 'Modèle inconnu').trim(),
+    }
+  })
+
+  const scopedTrackers = sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id)))
+  const effectiveTrackers = scopedTrackers.length ? scopedTrackers : fallbackTrackers
+
   const payload = {
-    trackers: sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id))),
-    states: extractObjectPayload(states, ['states', 'result', 'data']),
+    trackers: effectiveTrackers,
+    states: normalizedStates,
     employees: sanitizeEmployees(extractArrayPayload(employees)),
     unreadCount: unreadCount.value ?? unreadCount.count ?? 0,
     rules: extractArrayPayload(rules),
     tariffs: extractArrayPayload(tariffs),
-    history: sanitizeHistory(extractArrayPayload(history)),
+    history: normalizedHistory,
     mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
     dateKeys: { todayKey, yesterdayKey },
   }
