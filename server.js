@@ -544,14 +544,62 @@ async function apiCall(endpoint, payload = {}) {
   return data
 }
 
+function extractAuthHash(auth = {}) {
+  return String(
+    auth?.hash
+      ?? auth?.result?.hash
+      ?? auth?.data?.hash
+      ?? auth?.user?.hash
+      ?? auth?.session?.hash
+      ?? '',
+  ).trim()
+}
+
 async function authenticate() {
-  const auth = await apiCall('user/auth', {
-    login: LOGIN,
-    password: PASSWORD,
-    dealer_id: DEALER_ID,
-    locale: LOCALE,
-  })
-  return auth.hash
+  const payloadVariants = [
+    { login: LOGIN, password: PASSWORD, dealer_id: DEALER_ID, locale: LOCALE },
+    { email: LOGIN, password: PASSWORD, dealer_id: DEALER_ID, locale: LOCALE },
+    { login: LOGIN, password: PASSWORD, locale: LOCALE },
+  ]
+
+  let lastError = null
+
+  for (const payload of payloadVariants) {
+    try {
+      const auth = await apiCall('user/auth', payload)
+      const hash = extractAuthHash(auth)
+      if (hash) return hash
+      lastError = new Error('Réponse user/auth sans hash exploitable')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Authentification Fleeti impossible')
+}
+
+async function fetchTrackersPrivate(hash) {
+  const calls = [
+    () => apiCall('tracker/list', { hash }),
+    () => apiCall('tracker/list', { hash, dealer_id: DEALER_ID }),
+    () => apiCall('tracker/search', { hash, query: '' }),
+    () => apiCall('tracker/search', { hash, dealer_id: DEALER_ID, query: '' }),
+  ]
+
+  let lastError = null
+  for (const run of calls) {
+    try {
+      const response = await run()
+      const rows = extractArrayPayload(response, ['list', 'trackers', 'items', 'results', 'result', 'data'])
+      const sanitized = sanitizeTrackers(rows)
+      if (sanitized.length) return sanitized
+      lastError = new Error('Liste trackers vide')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Impossible de récupérer tracker/list')
 }
 
 async function publicApiGet(pathname, query = {}) {
@@ -729,6 +777,14 @@ async function loadLiveFuelLevels() {
   }
 }
 
+function extractObjectCollection(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+  const entries = Object.values(value)
+  if (!entries.length) return []
+  if (entries.every((entry) => entry && typeof entry === 'object')) return entries
+  return []
+}
+
 function extractArrayPayload(payload, candidateKeys = ['list', 'items', 'results', 'data', 'result']) {
   if (Array.isArray(payload)) return payload
   if (!payload || typeof payload !== 'object') return []
@@ -739,8 +795,12 @@ function extractArrayPayload(payload, candidateKeys = ['list', 'items', 'results
       if (Array.isArray(payload[key].items)) return payload[key].items
       if (Array.isArray(payload[key].results)) return payload[key].results
       if (Array.isArray(payload[key].data)) return payload[key].data
+      const fromCollection = extractObjectCollection(payload[key])
+      if (fromCollection.length) return fromCollection
     }
   }
+  const fromPayloadCollection = extractObjectCollection(payload)
+  if (fromPayloadCollection.length) return fromPayloadCollection
   return []
 }
 
@@ -755,11 +815,23 @@ function extractObjectPayload(payload, candidateKeys = ['states', 'result', 'dat
 }
 
 function sanitizeTrackers(trackers = []) {
-  return trackers.filter(Boolean).map((tracker) => ({
-    ...tracker,
-    label: tracker.label || tracker.name || `Tracker ${tracker.id}`,
-    model: tracker.model || 'Modèle inconnu',
-  }))
+  return trackers.filter(Boolean).map((tracker) => {
+    const resolvedId = Number(
+      tracker.id
+      ?? tracker.tracker_id
+      ?? tracker.trackerId
+      ?? tracker.gateway_id
+      ?? tracker.gatewayId
+      ?? 0,
+    )
+    const normalizedId = Number.isFinite(resolvedId) && resolvedId > 0 ? resolvedId : tracker.id
+    return {
+      ...tracker,
+      id: normalizedId,
+      label: tracker.label || tracker.name || tracker.license_plate || tracker.plate || `Tracker ${normalizedId || 'N/A'}`,
+      model: tracker.model || tracker.device_model || tracker.type || 'Modèle inconnu',
+    }
+  })
 }
 
 function extractEmployeeTrackerIds(employee = {}) {
@@ -1654,9 +1726,7 @@ async function getDashboardData(forceRefresh = false) {
 
   const hash = await authenticate()
 
-  const trackers = await apiCall('tracker/list', { hash })
-  const trackerRows = extractArrayPayload(trackers, ['list', 'trackers', 'items', 'results', 'result', 'data'])
-  const sanitizedTrackers = sanitizeTrackers(trackerRows)
+  const sanitizedTrackers = await fetchTrackersPrivate(hash)
 
   if (!sanitizedTrackers.length) {
     throw new Error('tracker/list vide depuis API privée Fleeti')
