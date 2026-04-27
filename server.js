@@ -578,6 +578,28 @@ async function authenticate() {
   throw lastError || new Error('Authentification Fleeti impossible')
 }
 
+function mapVehicleRowsToTrackers(rows = []) {
+  return rows
+    .map((row) => {
+      const trackerId = Number(
+        row?.tracker_id
+        ?? row?.trackerId
+        ?? row?.tracker?.id
+        ?? row?.device_id
+        ?? row?.gateway_id
+        ?? row?.gatewayId
+        ?? row?.id,
+      )
+      if (!Number.isFinite(trackerId) || trackerId <= 0) return null
+      return {
+        id: trackerId,
+        label: row?.name || row?.label || row?.plate || row?.license_plate || `Tracker ${trackerId}`,
+        model: row?.model || row?.brand || row?.type || 'Modèle inconnu',
+      }
+    })
+    .filter(Boolean)
+}
+
 async function fetchTrackersPrivate(hash) {
   const calls = [
     () => apiCall('tracker/list', { hash }),
@@ -595,6 +617,24 @@ async function fetchTrackersPrivate(hash) {
         .filter((tracker) => Number.isFinite(Number(tracker?.id)) && Number(tracker.id) > 0)
       if (sanitized.length) return sanitized
       lastError = new Error('Liste trackers vide')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  const fallbackCalls = [
+    () => apiCall('vehicle/read', { hash }),
+    () => apiCall('vehicle/read', { hash, dealer_id: DEALER_ID }),
+    () => apiCall('tracker/read', { hash, trackers: TRACKER_IDS.length ? TRACKER_IDS : undefined }),
+  ]
+
+  for (const run of fallbackCalls) {
+    try {
+      const response = await run()
+      const rows = extractArrayPayload(response, ['list', 'vehicles', 'trackers', 'items', 'results', 'result', 'data'])
+      const mapped = mapVehicleRowsToTrackers(rows)
+      if (mapped.length) return mapped
+      lastError = new Error('Aucun tracker exploitable via vehicle/read|tracker/read')
     } catch (error) {
       lastError = error
     }
