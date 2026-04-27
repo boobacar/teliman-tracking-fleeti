@@ -580,21 +580,25 @@ async function authenticate() {
 
 function mapVehicleRowsToTrackers(rows = []) {
   return rows
-    .map((row) => {
+    .map((row, index) => {
       const trackerId = Number(
         row?.tracker_id
         ?? row?.trackerId
         ?? row?.tracker?.id
         ?? row?.device_id
         ?? row?.gateway_id
-        ?? row?.gatewayId
-        ?? row?.id,
+        ?? row?.gatewayId,
       )
-      if (!Number.isFinite(trackerId) || trackerId <= 0) return null
+      const vehicleId = Number(row?.id)
+      const normalizedId = Number.isFinite(trackerId) && trackerId > 0
+        ? trackerId
+        : (Number.isFinite(vehicleId) && vehicleId > 0 ? -vehicleId : -(index + 1))
       return {
-        id: trackerId,
-        label: row?.name || row?.label || row?.plate || row?.license_plate || `Tracker ${trackerId}`,
+        id: normalizedId,
+        trackerId: Number.isFinite(trackerId) && trackerId > 0 ? trackerId : null,
+        label: row?.name || row?.label || row?.plate || row?.license_plate || `Véhicule ${Math.abs(normalizedId)}`,
         model: row?.model || row?.brand || row?.type || 'Modèle inconnu',
+        source: Number.isFinite(trackerId) && trackerId > 0 ? 'tracker' : 'vehicle',
       }
     })
     .filter(Boolean)
@@ -1772,7 +1776,9 @@ async function getDashboardData(forceRefresh = false) {
     return []
   })
 
-  const availableTrackerIds = sanitizedTrackers.map((tracker) => Number(tracker.id)).filter(Number.isFinite)
+  const availableTrackerIds = sanitizedTrackers
+    .map((tracker) => Number(tracker.trackerId ?? tracker.id))
+    .filter((value) => Number.isFinite(value) && value > 0)
   const configuredTrackerIds = TRACKER_IDS.length ? TRACKER_IDS : availableTrackerIds
   const strictScopedTrackerIds = availableTrackerIds.filter((trackerId) => configuredTrackerIds.includes(trackerId))
   const scopedTrackerIds = availableTrackerIds.length
@@ -1787,7 +1793,7 @@ async function getDashboardData(forceRefresh = false) {
 
   const [states, employees, unreadCount, rules, tariffs, history, mileage] = await Promise.all([
     scopedTrackerIds.length
-      ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds })
+      ? apiCall('tracker/get_states', { hash, trackers: scopedTrackerIds }).catch(() => ({ states: {} }))
       : Promise.resolve({ states: {} }),
     apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
     apiCall('history/unread/count', { hash }).catch(() => ({ value: 0 })),
@@ -1832,7 +1838,11 @@ async function getDashboardData(forceRefresh = false) {
     }
   })
 
-  const scopedTrackers = sanitizedTrackers.filter((tracker) => scopedTrackerIds.includes(Number(tracker.id)))
+  const scopedTrackers = sanitizedTrackers.filter((tracker) => {
+    const numericId = Number(tracker.id)
+    if (!Number.isFinite(numericId) || numericId <= 0) return true
+    return scopedTrackerIds.includes(numericId)
+  })
   const effectiveTrackers = scopedTrackers.length ? scopedTrackers : fallbackTrackers
 
   const payload = {
