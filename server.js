@@ -582,8 +582,8 @@ async function fetchTrackersPrivate(hash) {
   const calls = [
     () => apiCall('tracker/list', { hash }),
     () => apiCall('tracker/list', { hash, dealer_id: DEALER_ID }),
-    () => apiCall('tracker/search', { hash, query: '' }),
-    () => apiCall('tracker/search', { hash, dealer_id: DEALER_ID, query: '' }),
+    () => apiCall('tracker/list', { hash, dealerId: DEALER_ID }),
+    () => apiCall('tracker/list', { hash, dealer: DEALER_ID }),
   ]
 
   let lastError = null
@@ -592,6 +592,7 @@ async function fetchTrackersPrivate(hash) {
       const response = await run()
       const rows = extractArrayPayload(response, ['list', 'trackers', 'items', 'results', 'result', 'data'])
       const sanitized = sanitizeTrackers(rows)
+        .filter((tracker) => Number.isFinite(Number(tracker?.id)) && Number(tracker.id) > 0)
       if (sanitized.length) return sanitized
       lastError = new Error('Liste trackers vide')
     } catch (error) {
