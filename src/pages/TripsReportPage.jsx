@@ -63,6 +63,9 @@ function pointSpeed(point) {
 
 function segmentStart(segment) {
   return segment?.from
+    ?? segment?.from?.time
+    ?? segment?.from?.datetime
+    ?? segment?.from?.date_time
     ?? segment?.start_time
     ?? segment?.start_date
     ?? segment?.started_at
@@ -75,6 +78,9 @@ function segmentStart(segment) {
 
 function segmentEnd(segment) {
   return segment?.to
+    ?? segment?.to?.time
+    ?? segment?.to?.datetime
+    ?? segment?.to?.date_time
     ?? segment?.end_time
     ?? segment?.end_date
     ?? segment?.ended_at
@@ -86,7 +92,15 @@ function segmentEnd(segment) {
 }
 
 function segmentLengthKm(segment) {
-  const raw = Number(segment?.length ?? segment?.distance ?? segment?.km ?? 0) || 0
+  const raw = Number(
+    segment?.length
+    ?? segment?.distance
+    ?? segment?.distance_meters
+    ?? segment?.distanceMeters
+    ?? segment?.length_m
+    ?? segment?.km
+    ?? 0,
+  ) || 0
   // Some Fleeti responses expose distance in meters; normalize to km when value is clearly meter-like.
   return raw > 500 ? raw / 1000 : raw
 }

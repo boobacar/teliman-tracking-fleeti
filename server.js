@@ -2211,19 +2211,23 @@ app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), 
 })
 
 async function readTrackBundle(hash, trackerId, from, to) {
-  const [segments, points, events] = await Promise.all([
+  const [segmentsPayload, pointsPayload, eventsPayload] = await Promise.all([
     apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
     apiCall('track/read', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
     apiCall('history/tracker/list', { hash, trackers: [trackerId], from, to, limit: 300 }).catch(() => ({ list: [] })),
   ])
 
+  const segments = extractArrayPayload(segmentsPayload, ['list', 'segments', 'tracks', 'items', 'results', 'data', 'result'])
+  const points = extractArrayPayload(pointsPayload, ['list', 'points', 'tracks', 'items', 'results', 'data', 'result'])
+  const events = extractArrayPayload(eventsPayload, ['list', 'events', 'items', 'results', 'data', 'result'])
+
   return {
     trackerId,
     from,
     to,
-    segments: segments.list ?? [],
-    points: points.list ?? [],
-    events: (events.list ?? []).filter((event) => {
+    segments,
+    points,
+    events: events.filter((event) => {
       const eventTrackerId = Number(event?.tracker_id ?? event?.trackerId ?? event?.tracker?.id ?? trackerId)
       return Number.isFinite(eventTrackerId) ? eventTrackerId === Number(trackerId) : true
     }),
