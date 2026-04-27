@@ -187,6 +187,15 @@ function App() {
       if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
     }
 
+    for (const event of (dataset?.history ?? [])) {
+      const driver = String(event?.chauffeur || event?.driver || event?.extra?.employee_full_name || event?.employee_full_name || '').trim()
+      if (!driver) continue
+      const trackerId = Number(event?.tracker_id ?? event?.trackerId)
+      if (Number.isFinite(trackerId) && !fallbackDriverByTrackerId[trackerId]) fallbackDriverByTrackerId[trackerId] = driver
+      const labelKey = normalizeKey(event?.label || event?.tracker_label || event?.extra?.tracker_label)
+      if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
+    }
+
     const preferredMileageKeys = [dataset?.dateKeys?.todayKey, dataset?.dateKeys?.yesterdayKey].filter(Boolean)
 
     return (dataset?.trackers ?? []).map((tracker) => {
