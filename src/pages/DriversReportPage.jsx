@@ -1,56 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { Download, MapPin, Truck } from 'lucide-react'
+import { Download, MapPin, PackageCheck, Scale, Truck, UserRound } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-
-function toDate(value) {
-  if (!value) return null
-  const direct = new Date(value)
-  if (!Number.isNaN(direct.getTime())) return direct
-  const normalized = new Date(String(value).replace(' ', 'T'))
-  if (!Number.isNaN(normalized.getTime())) return normalized
-  return null
-}
-
-function inRange(value, from, to) {
-  const d = toDate(value)
-  if (!d) return false
-  if (from) {
-    const f = new Date(`${from}T00:00:00`)
-    if (d < f) return false
-  }
-  if (to) {
-    const t = new Date(`${to}T23:59:59`)
-    if (d > t) return false
-  }
-  return true
-}
-
-function dateToYmd(value) {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ''
-  return value.toISOString().slice(0, 10)
-}
-
-function ymdToDate(value) {
-  if (!value) return null
-  const parsed = new Date(`${value}T00:00:00`)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-function parseQuantity(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
-  const raw = String(value || '').trim().replace(',', '.')
-  if (!raw) return 0
-  const match = raw.match(/-?\d+(?:\.\d+)?/)
-  return match ? Number(match[0]) : 0
-}
-
-function formatQty(value) {
-  const num = parseQuantity(value)
-  if (!Number.isFinite(num)) return value || '-'
-  return `${num.toLocaleString('fr-FR')} t`
-}
+import {
+  buildDriverReportTotals,
+  buildDriverSummaries,
+  dateToYmd,
+  deliveryActivityDate,
+  formatQty,
+  latestDeliveryActivityYmd,
+  toDate,
+  ymdToDate,
+} from '../lib/driverReport'
 
 async function loadLogoDataUrl() {
   const response = await fetch('/teliman-logistique-logo.jpg')
@@ -64,44 +26,25 @@ async function loadLogoDataUrl() {
 }
 
 export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
+  const latestActivityDate = useMemo(() => latestDeliveryActivityYmd(deliveryOrders), [deliveryOrders])
+  const fallbackDate = latestActivityDate || new Date().toISOString().slice(0, 10)
+  const [from, setFrom] = useState(fallbackDate)
+  const [to, setTo] = useState(fallbackDate)
   const [selectedDriver, setSelectedDriver] = useState('')
+  const [autoPeriodApplied, setAutoPeriodApplied] = useState(false)
 
-  const rows = useMemo(() => deliveryOrders.filter((item) => inRange(item.date, from, to)), [deliveryOrders, from, to])
+  useEffect(() => {
+    if (!latestActivityDate || autoPeriodApplied) return
+    setFrom(latestActivityDate)
+    setTo(latestActivityDate)
+    setAutoPeriodApplied(true)
+  }, [autoPeriodApplied, latestActivityDate])
 
-  const driverSummaries = useMemo(() => {
-    const grouped = new Map()
-    for (const item of rows) {
-      const driver = String(item.driver || 'Non renseigné').trim() || 'Non renseigné'
-      if (!grouped.has(driver)) grouped.set(driver, [])
-      grouped.get(driver).push(item)
-    }
-    return Array.from(grouped.entries()).map(([driver, items]) => {
-      const latest = [...items].sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0))[0]
-      const tracker = filteredTrackers.find((entry) => Number(entry.id) === Number(latest?.trackerId)) || null
-      const totalTonnage = items.reduce((sum, item) => sum + parseQuantity(item.quantity), 0)
-      const clients = Array.from(new Set(items.map((item) => item.client).filter(Boolean)))
-      const destinations = Array.from(new Set(items.map((item) => item.destination).filter(Boolean)))
-      return {
-        driver,
-        totalTonnage,
-        blCount: items.length,
-        clients,
-        destinations,
-        truckLabel: latest?.truckLabel || tracker?.label || '-',
-        currentStatus: tracker?.state?.movement_status || 'inconnu',
-        currentLocation: tracker?.state?.gps?.location ? `${tracker.state.gps.location.lat.toFixed(5)}, ${tracker.state.gps.location.lng.toFixed(5)}` : '-',
-        currentSpeed: tracker?.state?.gps?.speed ?? 0,
-        currentClient: latest?.client || '-',
-        currentDestination: latest?.destination || '-',
-        items,
-      }
-    }).sort((a, b) => a.driver.localeCompare(b.driver, 'fr'))
-  }, [rows, filteredTrackers])
+  const driverSummaries = useMemo(() => buildDriverSummaries({ deliveryOrders, filteredTrackers, from, to }), [deliveryOrders, filteredTrackers, from, to])
 
   const selectedSummary = driverSummaries.find((item) => item.driver === selectedDriver) || null
+  const visibleSummaries = selectedDriver ? driverSummaries.filter((item) => item.driver === selectedDriver) : driverSummaries
+  const totals = useMemo(() => buildDriverReportTotals(driverSummaries), [driverSummaries])
 
   async function exportPdf() {
     const brandBrown = [120, 72, 32]
@@ -170,8 +113,14 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
 
   return (
     <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
-      <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée de l’activité chauffeur, clients desservis, tonnage et position actuelle.</p></div></div>
+      <section className="panel reports-v2-hero" style={{ minHeight: 'unset' }}>
+        <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée des BL, tonnages, clients desservis et position actuelle par chauffeur.</p></div></div>
+        <section className="stats-grid stats-grid-tight" style={{ marginTop: 18 }}>
+          <article className="stat-card"><div className="stat-icon"><UserRound size={18} /></div><div><p>Chauffeurs actifs</p><strong>{totals.drivers}</strong></div></article>
+          <article className="stat-card"><div className="stat-icon"><PackageCheck size={18} /></div><div><p>Bons livraison</p><strong>{totals.blCount}</strong></div></article>
+          <article className="stat-card"><div className="stat-icon"><Scale size={18} /></div><div><p>Tonnage livré</p><strong>{formatQty(totals.tonnage)}</strong></div></article>
+          <article className="stat-card"><div className="stat-icon"><Truck size={18} /></div><div><p>Camions</p><strong>{totals.trucks}</strong></div></article>
+        </section>
       </section>
 
       <section className="panel panel-large" style={{ minHeight: 'unset', paddingBottom: 18 }}>
@@ -180,7 +129,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <span>Du</span>
             <StableDatePicker
               value={ymdToDate(from)}
-              onChange={(value) => setFrom(dateToYmd(value) || today)}
+              onChange={(value) => setFrom(dateToYmd(value) || fallbackDate)}
               placeholder="Date début"
               clearable
               className="filter-control modern-date-input"
@@ -191,7 +140,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
             <span>Au</span>
             <StableDatePicker
               value={ymdToDate(to)}
-              onChange={(value) => setTo(dateToYmd(value) || today)}
+              onChange={(value) => setTo(dateToYmd(value) || fallbackDate)}
               placeholder="Date fin"
               clearable
               className="filter-control modern-date-input"
@@ -217,7 +166,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
           <table className="reports-table">
             <thead><tr><th>Chauffeur</th><th>Camion</th><th>BL</th><th>Tonnage</th><th>Clients</th><th>Où il est allé</th><th>Où il est actuellement</th><th>Statut</th></tr></thead>
             <tbody>
-              {(selectedDriver ? driverSummaries.filter((item) => item.driver === selectedDriver) : driverSummaries).map((item) => (
+              {visibleSummaries.map((item) => (
                 <tr key={item.driver} onClick={() => setSelectedDriver(item.driver)} style={{ cursor: 'pointer' }}>
                   <td><strong>{item.driver}</strong></td>
                   <td><Truck size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />{item.truckLabel}</td>
@@ -229,7 +178,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
                   <td>{item.currentStatus}</td>
                 </tr>
               ))}
-              {driverSummaries.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune activité chauffeur sur la période.</td></tr>}
+              {visibleSummaries.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune activité chauffeur sur la période sélectionnée.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -249,7 +198,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
                     <td>{item.destination || '-'}</td>
                     <td>{item.goods || '-'}</td>
                     <td>{formatQty(item.quantity)}</td>
-                    <td>{item.date ? new Date(item.date).toLocaleString('fr-FR') : '-'}</td>
+                    <td>{deliveryActivityDate(item) ? toDate(deliveryActivityDate(item))?.toLocaleString('fr-FR') : '-'}</td>
                     <td>{item.truckLabel || '-'}</td>
                   </tr>
                 ))}
