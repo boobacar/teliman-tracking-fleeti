@@ -5,7 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { chunkIds, fetchAllPublicAssets, isCameraLike, resolveScopedTrackerIds } from './src/backend/fleetiBackend.js'
+import { buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds } from './src/backend/fleetiBackend.js'
 
 dotenv.config()
 
@@ -1037,58 +1037,12 @@ function buildPublicAddress(location = {}) {
 }
 
 function buildTrackBundleFromPublicCache(trackerId, from, to) {
-  const telemetryCache = readPublicTelemetryCache()
-  const trackerCache = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
-  const fromTs = Date.parse(from)
-  const toTs = Date.parse(to)
-
-  const points = (Array.isArray(trackerCache.points) ? trackerCache.points : [])
-    .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
-    .filter((point) => {
-      const ts = Date.parse(point.time)
-      if (!Number.isFinite(ts)) return true
-      if (Number.isFinite(fromTs) && ts < fromTs) return false
-      if (Number.isFinite(toTs) && ts > toTs) return false
-      return true
-    })
-    .map((point) => ({
-      lat: Number(point.lat),
-      lng: Number(point.lng),
-      speed: Number(point.speed || 0),
-      heading: Number(point.heading || 0),
-      time: point.time || null,
-    }))
-
-  const segmentLength = points.reduce((sum, point, index) => {
-    if (index === 0) return 0
-    const prev = points[index - 1]
-    const dLat = Number(point.lat) - Number(prev.lat)
-    const dLng = Number(point.lng) - Number(prev.lng)
-    const approxKm = Math.sqrt((dLat * 111) ** 2 + (dLng * 111) ** 2)
-    return sum + approxKm
-  }, 0)
-
-  const segments = points.length >= 2
-    ? [{
-      length: Number(segmentLength.toFixed(2)),
-      avg_speed: Number((points.reduce((sum, row) => sum + Number(row.speed || 0), 0) / Math.max(points.length, 1)).toFixed(1)),
-      max_speed: Math.max(...points.map((row) => Number(row.speed || 0))),
-      started_at: points[0]?.time || null,
-      ended_at: points[points.length - 1]?.time || null,
-    }]
-    : []
-
-  const events = (Array.isArray(telemetryCache.events) ? telemetryCache.events : [])
-    .filter((event) => Number(event?.tracker_id) === Number(trackerId))
-    .filter((event) => {
-      const ts = Date.parse(event.time)
-      if (!Number.isFinite(ts)) return true
-      if (Number.isFinite(fromTs) && ts < fromTs) return false
-      if (Number.isFinite(toTs) && ts > toTs) return false
-      return true
-    })
-
-  return { trackerId, from, to, segments, points, events }
+  return buildTrackBundleFromTelemetryCache({
+    trackerId,
+    from,
+    to,
+    telemetryCache: readPublicTelemetryCache(),
+  })
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -2467,7 +2421,14 @@ async function readTrackBundle(hash, trackerId, from, to) {
 
   const segments = flattenTrackSegments(segmentsPayload)
   const points = extractArrayPayload(pointsPayload, ['list', 'points', 'tracks', 'items', 'results', 'data', 'result'])
+    .map(normalizeTrackPoint)
+    .filter(Boolean)
   const events = extractArrayPayload(eventsPayload, ['list', 'events', 'items', 'results', 'data', 'result'])
+    .map(normalizeTrackEvent)
+    .filter((event) => {
+      const eventTrackerId = Number(event?.tracker_id ?? event?.trackerId ?? event?.tracker?.id ?? trackerId)
+      return Number.isFinite(eventTrackerId) ? eventTrackerId === Number(trackerId) : true
+    })
 
   return {
     trackerId,
@@ -2475,10 +2436,7 @@ async function readTrackBundle(hash, trackerId, from, to) {
     to,
     segments,
     points,
-    events: events.filter((event) => {
-      const eventTrackerId = Number(event?.tracker_id ?? event?.trackerId ?? event?.tracker?.id ?? trackerId)
-      return Number.isFinite(eventTrackerId) ? eventTrackerId === Number(trackerId) : true
-    }),
+    events,
   }
 }
 
@@ -2494,8 +2452,10 @@ app.get('/api/tracks', async (req, res) => {
     }
 
     const hash = await authenticate()
-    const bundle = await readTrackBundle(hash, trackerId, from, to)
-    return res.json({ ...bundle, source: 'private' })
+    const privateBundle = await readTrackBundle(hash, trackerId, from, to)
+    const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
+    const bundle = hasPrivateData ? privateBundle : buildTrackBundleFromPublicCache(trackerId, from, to)
+    return res.json({ ...bundle, source: hasPrivateData ? 'private' : 'public-cache', degraded: !hasPrivateData })
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }
@@ -2520,10 +2480,12 @@ app.post('/api/tracks/batch', async (req, res) => {
     const hash = await authenticate()
 
     const settled = await Promise.allSettled(trackerIds.map(async (trackerId) => {
-      const bundle = await readTrackBundle(hash, trackerId, from, to)
+      const privateBundle = await readTrackBundle(hash, trackerId, from, to)
+      const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
+      const bundle = hasPrivateData ? privateBundle : buildTrackBundleFromPublicCache(trackerId, from, to)
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-      return { ...bundle, lastTwoPoints, source: 'private' }
+      return { ...bundle, lastTwoPoints, source: hasPrivateData ? 'private' : 'public-cache', degraded: !hasPrivateData }
     }))
 
     const items = []

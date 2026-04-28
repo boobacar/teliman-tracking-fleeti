@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildTrackBundleFromTelemetryCache,
   chunkIds,
   fetchAllPublicAssets,
   isCameraLike,
+  normalizeTrackEvent,
+  normalizeTrackPoint,
   resolveScopedTrackerIds,
 } from '../src/backend/fleetiBackend.js'
 
@@ -47,4 +50,55 @@ test('isCameraLike détecte les trackers caméra pour ne pas les mélanger aux c
   assert.equal(isCameraLike({ label: '5273WWCI01-CAM' }), true)
   assert.equal(isCameraLike({ label: '3100WWCI01_CAM' }), true)
   assert.equal(isCameraLike({ label: '4400WWCI01' }), false)
+})
+
+test('normalizeTrackPoint accepte les variantes latitude/longitude Fleeti', () => {
+  assert.deepEqual(normalizeTrackPoint({ latitude: '5.1', longitude: '-4.2', speed: '63', heading: '90', time: '2026-04-28T10:00:00Z' }), {
+    lat: 5.1,
+    lng: -4.2,
+    speed: 63,
+    heading: 90,
+    time: '2026-04-28T10:00:00Z',
+  })
+  assert.deepEqual(normalizeTrackPoint({ position: { location: { latitude: 7, longitude: -5 } }, updatedAt: '2026-04-28T11:00:00Z' }), {
+    lat: 7,
+    lng: -5,
+    speed: 0,
+    heading: 0,
+    time: '2026-04-28T11:00:00Z',
+  })
+})
+
+test('normalizeTrackEvent conserve les alertes géolocalisées Fleeti', () => {
+  const event = normalizeTrackEvent({ tracker_id: 3580652, event: 'speedup', location: { lat: 8.5, lng: -6.6 }, speed: 81, time: '2026-04-28T12:00:00Z' })
+  assert.equal(event.tracker_id, 3580652)
+  assert.equal(event.lat, 8.5)
+  assert.equal(event.lng, -6.6)
+})
+
+test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API privée tracks est vide', () => {
+  const bundle = buildTrackBundleFromTelemetryCache({
+    trackerId: 3580652,
+    from: '2026-04-28T00:00:00Z',
+    to: '2026-04-29T00:00:00Z',
+    telemetryCache: {
+      trackers: {
+        3580652: {
+          points: [
+            { lat: 8.5, lng: -6.6, speed: 20, time: '2026-04-28T10:00:00Z' },
+            { latitude: 8.6, longitude: -6.7, speed: 80, time: '2026-04-28T11:00:00Z' },
+          ],
+        },
+      },
+      events: [
+        { tracker_id: 3580652, event: 'speedup', lat: 8.6, lng: -6.7, speed: 80, time: '2026-04-28T11:00:00Z' },
+        { tracker_id: 111, event: 'speedup', lat: 0, lng: 0, time: '2026-04-28T11:00:00Z' },
+      ],
+    },
+  })
+
+  assert.equal(bundle.points.length, 2)
+  assert.equal(bundle.segments.length, 1)
+  assert.equal(bundle.events.length, 1)
+  assert.equal(bundle.events[0].event, 'speedup')
 })
