@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   chunkIds,
   fetchAllPublicAssets,
+  isCameraLike,
   resolveScopedTrackerIds,
 } from '../src/backend/fleetiBackend.js'
 
@@ -40,4 +41,10 @@ test('resolveScopedTrackerIds garde seulement les ids configurés quand ils exis
 
 test('chunkIds découpe les gros appels Fleeti par paquets stables', () => {
   assert.deepEqual(chunkIds([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])
+})
+
+test('isCameraLike détecte les trackers caméra pour ne pas les mélanger aux camions', () => {
+  assert.equal(isCameraLike({ label: '5273WWCI01-CAM' }), true)
+  assert.equal(isCameraLike({ label: '3100WWCI01_CAM' }), true)
+  assert.equal(isCameraLike({ label: '4400WWCI01' }), false)
 })

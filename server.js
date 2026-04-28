@@ -5,7 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { chunkIds, fetchAllPublicAssets, resolveScopedTrackerIds } from './src/backend/fleetiBackend.js'
+import { chunkIds, fetchAllPublicAssets, isCameraLike, resolveScopedTrackerIds } from './src/backend/fleetiBackend.js'
 
 dotenv.config()
 
@@ -1094,6 +1094,7 @@ function buildTrackBundleFromPublicCache(trackerId, from, to) {
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
   const rows = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
   const fleetRows = rows.filter((asset) => {
+    if (isCameraLike({ label: asset?.name || asset?.properties?.licensePlate, model: asset?.model })) return false
     if (asset?.assetType === 10) return true
     if (asset?.assetType != null) return false
     return Array.isArray(asset?.gateways) && asset.gateways.length > 0
@@ -1882,6 +1883,7 @@ async function getDashboardData(forceRefresh = false) {
   })
 
   const scopedTrackers = sanitizedTrackers.filter((tracker) => {
+    if (isCameraLike(tracker)) return false
     const numericId = Number(tracker.id)
     if (!Number.isFinite(numericId) || numericId <= 0) return true
     return scopedTrackerIds.includes(numericId)

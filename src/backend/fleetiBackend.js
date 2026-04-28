@@ -11,6 +11,12 @@ export function extractArrayPayload(payload = {}, keys = ['results', 'items', 'l
   return []
 }
 
+export function isCameraLike(item = {}) {
+  const label = String(item?.label || item?.name || item?.cameraLabel || '').trim()
+  const model = String(item?.model || item?.device_model || '').trim()
+  return /(?:-cam|_cam)$/i.test(label) || /dashcam/i.test(model)
+}
+
 export function chunkIds(ids = [], size = 100) {
   const normalizedSize = Math.max(1, Number(size) || 100)
   const uniqueIds = Array.from(new Set((ids || [])
