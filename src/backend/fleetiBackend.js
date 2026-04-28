@@ -122,29 +122,72 @@ function computeApproxDistanceKm(points = []) {
   }, 0)
 }
 
+function comparePointTime(a, b) {
+  const aTs = Date.parse(a?.time)
+  const bTs = Date.parse(b?.time)
+  if (Number.isFinite(aTs) && Number.isFinite(bTs)) return aTs - bTs
+  if (Number.isFinite(aTs)) return -1
+  if (Number.isFinite(bTs)) return 1
+  return 0
+}
+
+function splitPointsIntoTripSegments(points = [], maxGapMinutes = 45) {
+  const sorted = [...points].sort(comparePointTime)
+  if (sorted.length < 2) return []
+
+  const segments = []
+  let current = [sorted[0]]
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1]
+    const point = sorted[index]
+    const previousTs = Date.parse(previous?.time)
+    const pointTs = Date.parse(point?.time)
+    const gapMinutes = Number.isFinite(previousTs) && Number.isFinite(pointTs)
+      ? (pointTs - previousTs) / 60000
+      : 0
+
+    if (gapMinutes > maxGapMinutes) {
+      if (current.length >= 2) segments.push(current)
+      current = [point]
+      continue
+    }
+
+    current.push(point)
+  }
+
+  if (current.length >= 2) segments.push(current)
+  return segments
+}
+
+function buildSegmentFromPoints(segmentPoints = [], trackerId, index) {
+  const distance = computeApproxDistanceKm(segmentPoints)
+  const speeds = segmentPoints.map((point) => Number(point.speed || 0)).filter(Number.isFinite)
+  return {
+    id: `${trackerId}-cache-segment-${index + 1}`,
+    length: Number(distance.toFixed(2)),
+    avg_speed: Number((speeds.reduce((sum, speed) => sum + speed, 0) / Math.max(speeds.length, 1)).toFixed(1)),
+    max_speed: speeds.length ? Math.max(...speeds) : 0,
+    started_at: segmentPoints[0]?.time || null,
+    ended_at: segmentPoints[segmentPoints.length - 1]?.time || null,
+  }
+}
+
 export function buildTrackBundleFromTelemetryCache({ trackerId, from, to, telemetryCache = {} } = {}) {
   const trackerCache = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
   const points = (Array.isArray(trackerCache.points) ? trackerCache.points : [])
     .map(normalizeTrackPoint)
     .filter(Boolean)
     .filter((point) => isWithinRange(point.time, from, to))
+    .sort(comparePointTime)
 
   const events = (Array.isArray(telemetryCache.events) ? telemetryCache.events : [])
     .map(normalizeTrackEvent)
     .filter((event) => Number(event?.tracker_id) === Number(trackerId))
     .filter((event) => isWithinRange(event.time, from, to))
 
-  const distance = computeApproxDistanceKm(points)
-  const speeds = points.map((point) => Number(point.speed || 0)).filter(Number.isFinite)
-  const segments = points.length >= 2
-    ? [{
-      length: Number(distance.toFixed(2)),
-      avg_speed: Number((speeds.reduce((sum, speed) => sum + speed, 0) / Math.max(speeds.length, 1)).toFixed(1)),
-      max_speed: speeds.length ? Math.max(...speeds) : 0,
-      started_at: points[0]?.time || null,
-      ended_at: points[points.length - 1]?.time || null,
-    }]
-    : []
+  const segments = splitPointsIntoTripSegments(points)
+    .map((segmentPoints, index) => buildSegmentFromPoints(segmentPoints, trackerId, index))
 
   return { trackerId, from, to, segments, points, events }
 }

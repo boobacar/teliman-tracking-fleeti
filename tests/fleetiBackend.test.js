@@ -86,12 +86,12 @@ test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API
         3580652: {
           points: [
             { lat: 8.5, lng: -6.6, speed: 20, time: '2026-04-28T10:00:00Z' },
-            { latitude: 8.6, longitude: -6.7, speed: 80, time: '2026-04-28T11:00:00Z' },
+            { latitude: 8.6, longitude: -6.7, speed: 80, time: '2026-04-28T10:15:00Z' },
           ],
         },
       },
       events: [
-        { tracker_id: 3580652, event: 'speedup', lat: 8.6, lng: -6.7, speed: 80, time: '2026-04-28T11:00:00Z' },
+        { tracker_id: 3580652, event: 'speedup', lat: 8.6, lng: -6.7, speed: 80, time: '2026-04-28T10:15:00Z' },
         { tracker_id: 111, event: 'speedup', lat: 0, lng: 0, time: '2026-04-28T11:00:00Z' },
       ],
     },
@@ -101,4 +101,34 @@ test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API
   assert.equal(bundle.segments.length, 1)
   assert.equal(bundle.events.length, 1)
   assert.equal(bundle.events[0].event, 'speedup')
+})
+
+test('buildTrackBundleFromTelemetryCache sépare les segments de trajets au lieu de tout regrouper', () => {
+  const bundle = buildTrackBundleFromTelemetryCache({
+    trackerId: 3580652,
+    from: '2026-04-28T00:00:00Z',
+    to: '2026-04-29T00:00:00Z',
+    telemetryCache: {
+      trackers: {
+        3580652: {
+          points: [
+            { lat: 8.5, lng: -6.6, speed: 30, time: '2026-04-28T08:00:00Z' },
+            { lat: 8.6, lng: -6.7, speed: 45, time: '2026-04-28T08:20:00Z' },
+            { lat: 8.7, lng: -6.8, speed: 50, time: '2026-04-28T10:00:00Z' },
+            { lat: 8.8, lng: -6.9, speed: 60, time: '2026-04-28T10:15:00Z' },
+          ],
+        },
+      },
+    },
+  })
+
+  assert.equal(bundle.segments.length, 2)
+  assert.deepEqual(bundle.segments.map((segment) => segment.started_at), [
+    '2026-04-28T08:00:00Z',
+    '2026-04-28T10:00:00Z',
+  ])
+  assert.deepEqual(bundle.segments.map((segment) => segment.ended_at), [
+    '2026-04-28T08:20:00Z',
+    '2026-04-28T10:15:00Z',
+  ])
 })
