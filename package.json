@@ -8,6 +8,7 @@
     "dev:server": "node server.js",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node --test tests/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
