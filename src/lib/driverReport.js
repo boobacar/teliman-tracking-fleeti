@@ -80,9 +80,11 @@ export function buildDriverSummaries({ deliveryOrders = [], filteredTrackers = [
     grouped.get(driver).push(item)
   }
 
-  return Array.from(grouped.entries()).map(([driver, items]) => {
+  const summaries = Array.from(grouped.entries()).map(([driver, items]) => {
     const latest = [...items].sort((a, b) => (toDate(deliveryActivityDate(b))?.getTime() || 0) - (toDate(deliveryActivityDate(a))?.getTime() || 0))[0]
-    const tracker = filteredTrackers.find((entry) => Number(entry.id) === Number(latest?.trackerId)) || null
+    const tracker = filteredTrackers.find((entry) => Number(entry.id) === Number(latest?.trackerId))
+      || filteredTrackers.find((entry) => String(entry.label || '').trim() === String(latest?.truckLabel || '').trim())
+      || null
     const totalTonnage = items.reduce((sum, item) => sum + parseQuantity(item.quantity), 0)
     const clients = Array.from(new Set(items.map((item) => item.client).filter(Boolean)))
     const destinations = Array.from(new Set(items.map((item) => item.destination).filter(Boolean)))
@@ -101,7 +103,37 @@ export function buildDriverSummaries({ deliveryOrders = [], filteredTrackers = [
       currentDestination: latest?.destination || '-',
       items,
     }
-  }).sort((a, b) => a.driver.localeCompare(b.driver, 'fr'))
+  })
+
+  const existingDrivers = new Set(summaries.map((item) => String(item.driver || '').trim().toUpperCase()))
+  const existingTrucks = new Set(summaries.map((item) => String(item.truckLabel || '').trim().toUpperCase()))
+
+  for (const tracker of filteredTrackers) {
+    const driver = String(tracker?.employeeName || '').trim()
+    const truckLabel = String(tracker?.label || '').trim()
+    if (!driver || driver === 'Non assigné') continue
+    const driverKey = driver.toUpperCase()
+    const truckKey = truckLabel.toUpperCase()
+    if (existingDrivers.has(driverKey) || (truckKey && existingTrucks.has(truckKey))) continue
+    summaries.push({
+      driver,
+      totalTonnage: 0,
+      blCount: 0,
+      clients: [],
+      destinations: [],
+      truckLabel: truckLabel || '-',
+      currentStatus: tracker?.state?.movement_status || 'inconnu',
+      currentLocation: trackerLocation(tracker),
+      currentSpeed: tracker?.state?.gps?.speed ?? 0,
+      currentClient: '-',
+      currentDestination: '-',
+      items: [],
+    })
+    existingDrivers.add(driverKey)
+    if (truckKey) existingTrucks.add(truckKey)
+  }
+
+  return summaries.sort((a, b) => a.driver.localeCompare(b.driver, 'fr'))
 }
 
 export function buildDriverReportTotals(driverSummaries = []) {

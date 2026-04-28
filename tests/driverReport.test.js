@@ -37,6 +37,28 @@ test('latestDeliveryActivityYmd prend la dernière activité exploitable', () =>
   ]), '2026-04-25')
 })
 
+test('buildDriverSummaries affiche aussi les chauffeurs assignés sans BL sur la période', () => {
+  const summaries = buildDriverSummaries({
+    from: '2026-04-25',
+    to: '2026-04-25',
+    filteredTrackers: [
+      { id: 3537762, label: '3216WWCI01', employeeName: 'BAMBA LAMA', state: { movement_status: 'moving', gps: { location: { lat: 7.1, lng: -5.2 }, speed: 42 } } },
+      { id: 3580652, label: '5273WWCI01', employeeName: 'MAKO DOSSO', state: { movement_status: 'idle', gps: { location: { lat: 8.1, lng: -6.2 }, speed: 0 } } },
+    ],
+    deliveryOrders: [
+      { id: 1, date: null, completedAt: '2026-04-25T01:59:25.116Z', driver: 'BAMBA LAMA', truckLabel: '3216WWCI01', trackerId: 3537762, quantity: '55,160', client: 'K1 MINE', destination: 'Mine' },
+    ],
+  })
+
+  assert.equal(summaries.length, 2)
+  assert.deepEqual(summaries.map((item) => item.driver), ['BAMBA LAMA', 'MAKO DOSSO'])
+  const inactive = summaries.find((item) => item.driver === 'MAKO DOSSO')
+  assert.equal(inactive.blCount, 0)
+  assert.equal(inactive.totalTonnage, 0)
+  assert.equal(inactive.truckLabel, '5273WWCI01')
+  assert.equal(inactive.currentLocation, '8.10000, -6.20000')
+})
+
 test('buildDriverReportTotals calcule les indicateurs de synthèse', () => {
   const totals = buildDriverReportTotals([
     { driver: 'A', blCount: 2, totalTonnage: 12.5, clients: ['C1'], truckLabel: 'T1' },

@@ -1,4 +1,6 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8787'
+import { normalizeBackendUrl } from './backendUrl.js'
+
+const BACKEND_URL = normalizeBackendUrl(import.meta.env.VITE_BACKEND_URL)
 
 function isBrowser() {
   return typeof window !== 'undefined'
