@@ -25,3 +25,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Données runtime locales (BL, bons carburant, caches, uploads)
+.data/
+data/

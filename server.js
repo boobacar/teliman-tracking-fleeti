@@ -11,11 +11,14 @@ dotenv.config()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const DELIVERY_ORDERS_FILE = path.join(__dirname, 'delivery-orders.json')
-const FUEL_VOUCHERS_FILE = path.join(__dirname, 'fuel-vouchers.json')
-const MASTER_DATA_FILE = path.join(__dirname, 'master-data.json')
-const UPLOADS_DIR = path.join(__dirname, 'uploads', 'delivery-proofs')
-const PUBLIC_TELEMETRY_CACHE_FILE = path.join(__dirname, 'public-telemetry-cache.json')
+const DATA_DIR = process.env.TELIMAN_DATA_DIR || __dirname
+fs.mkdirSync(DATA_DIR, { recursive: true })
+const DELIVERY_ORDERS_FILE = path.join(DATA_DIR, 'delivery-orders.json')
+const FUEL_VOUCHERS_FILE = path.join(DATA_DIR, 'fuel-vouchers.json')
+const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
+const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
+const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
+const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
