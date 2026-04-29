@@ -46,6 +46,10 @@ validateRequiredEnv()
 
 const app = express()
 let dashboardCache = { data: null, ts: 0 }
+let authCache = { hash: '', ts: 0 }
+let tracksBatchCache = new Map()
+const AUTH_CACHE_TTL_MS = Number(process.env.FLEETI_AUTH_CACHE_TTL_MS || 50 * 60 * 1000)
+const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS || 45 * 1000)
 
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
@@ -563,6 +567,11 @@ function extractAuthHash(auth = {}) {
 }
 
 async function authenticate() {
+  const now = Date.now()
+  if (authCache.hash && (now - authCache.ts) < AUTH_CACHE_TTL_MS) {
+    return authCache.hash
+  }
+
   const payloadVariants = [
     { login: LOGIN, password: PASSWORD, dealer_id: DEALER_ID, locale: LOCALE },
     { email: LOGIN, password: PASSWORD, dealer_id: DEALER_ID, locale: LOCALE },
@@ -575,7 +584,10 @@ async function authenticate() {
     try {
       const auth = await apiCall('user/auth', payload)
       const hash = extractAuthHash(auth)
-      if (hash) return hash
+      if (hash) {
+        authCache = { hash, ts: Date.now() }
+        return hash
+      }
       lastError = new Error('Réponse user/auth sans hash exploitable')
     } catch (error) {
       lastError = error
@@ -1046,6 +1058,13 @@ function buildTrackBundleFromPublicCache(trackerId, from, to) {
     to,
     telemetryCache: readPublicTelemetryCache(),
   })
+}
+
+function buildPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
+  const bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
+  const points = bundle.points || []
+  const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
+  return { ...bundle, lastTwoPoints, source: 'public-cache', degraded: true, ...extra }
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -2454,7 +2473,17 @@ app.get('/api/tracks', async (req, res) => {
       return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée.' })
     }
 
-    const hash = await authenticate()
+    let hash = ''
+    try {
+      hash = await authenticate()
+    } catch (authError) {
+      const bundle = buildPublicCacheTrackBundle(trackerId, from, to, { authFallback: true })
+      return res.json({
+        ...bundle,
+        warning: `Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list est temporairement indisponible (${authError.message || 'erreur API'}).`,
+      })
+    }
+
     const privateBundle = await readTrackBundle(hash, trackerId, from, to)
     const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
     const bundle = hasPrivateData ? privateBundle : buildTrackBundleFromPublicCache(trackerId, from, to)
@@ -2475,12 +2504,35 @@ app.post('/api/tracks/batch', async (req, res) => {
     const range = getDateRange(period)
     const from = req.body.from || range.from
     const to = req.body.to || range.to
+    const cacheKey = JSON.stringify({ trackerIds: [...trackerIds].sort((a, b) => a - b), from, to, period })
+    const cached = tracksBatchCache.get(cacheKey)
+    if (cached && (Date.now() - cached.ts) < TRACKS_BATCH_CACHE_TTL_MS) {
+      return res.json({ ...cached.data, cached: true })
+    }
 
     if (!PRIVATE_API_CONFIGURED) {
       return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée.' })
     }
 
-    const hash = await authenticate()
+    let hash = ''
+    try {
+      hash = await authenticate()
+    } catch (authError) {
+      const items = trackerIds.map((trackerId) => buildPublicCacheTrackBundle(trackerId, from, to, { authFallback: true }))
+      const responsePayload = {
+        from,
+        to,
+        period,
+        source: 'public-cache',
+        degraded: true,
+        authFallback: true,
+        warning: `Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list est temporairement indisponible (${authError.message || 'erreur API'}).`,
+        failed: [],
+        items,
+      }
+      tracksBatchCache.set(cacheKey, { ts: Date.now(), data: responsePayload })
+      return res.json(responsePayload)
+    }
 
     const settled = await Promise.allSettled(trackerIds.map(async (trackerId) => {
       const privateBundle = await readTrackBundle(hash, trackerId, from, to)
@@ -2517,7 +2569,9 @@ app.post('/api/tracks/batch', async (req, res) => {
       sourceWarning,
     ].filter(Boolean).join(' ')
 
-    return res.json({ from, to, period, source: responseSource, degraded: degradedCount > 0, warning, failed, items })
+    const responsePayload = { from, to, period, source: responseSource, degraded: degradedCount > 0, warning, failed, items }
+    tracksBatchCache.set(cacheKey, { ts: Date.now(), data: responsePayload })
+    return res.json(responsePayload)
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }
