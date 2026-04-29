@@ -2507,11 +2507,17 @@ app.post('/api/tracks/batch', async (req, res) => {
       return res.status(502).json({ ok: false, error: firstError, failed })
     }
 
-    const warning = failed.length
-      ? `${failed.length} tracker(s) n’ont pas pu être chargés pour cette période.`
-      : ''
+    const degradedCount = items.filter((item) => item?.degraded).length
+    const responseSource = degradedCount === 0 ? 'private' : (degradedCount === items.length ? 'public-cache' : 'mixed')
+    const sourceWarning = responseSource === 'private'
+      ? ''
+      : 'Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list ne renvoie pas ces trackers.'
+    const warning = [
+      failed.length ? `${failed.length} tracker(s) n’ont pas pu être chargés pour cette période.` : '',
+      sourceWarning,
+    ].filter(Boolean).join(' ')
 
-    return res.json({ from, to, period, source: 'private', degraded: false, warning, failed, items })
+    return res.json({ from, to, period, source: responseSource, degraded: degradedCount > 0, warning, failed, items })
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }

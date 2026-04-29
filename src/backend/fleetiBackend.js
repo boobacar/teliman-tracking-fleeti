@@ -112,13 +112,26 @@ function isWithinRange(time, from, to) {
   return true
 }
 
+function computeDistanceKm(pointA = {}, pointB = {}) {
+  const lat1 = Number(pointA.lat)
+  const lng1 = Number(pointA.lng)
+  const lat2 = Number(pointB.lat)
+  const lng2 = Number(pointB.lng)
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return 0
+
+  const toRad = (value) => (value * Math.PI) / 180
+  const radiusKm = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * radiusKm * Math.asin(Math.sqrt(a))
+}
+
 function computeApproxDistanceKm(points = []) {
   return points.reduce((sum, point, index) => {
     if (index === 0) return 0
-    const prev = points[index - 1]
-    const dLat = Number(point.lat) - Number(prev.lat)
-    const dLng = Number(point.lng) - Number(prev.lng)
-    return sum + Math.sqrt((dLat * 111) ** 2 + (dLng * 111) ** 2)
+    return sum + computeDistanceKm(points[index - 1], point)
   }, 0)
 }
 
@@ -135,8 +148,9 @@ function splitPointsIntoTripSegments(points = [], maxGapMinutes = 45) {
   const sorted = [...points].sort(comparePointTime)
   if (sorted.length < 2) return []
 
-  const segments = []
-  let current = [sorted[0]]
+  const MIN_MOVEMENT_STEP_KM = 0.15
+  const MIN_MOVING_SPEED_KMH = 5
+  const movingIndexes = new Set()
 
   for (let index = 1; index < sorted.length; index += 1) {
     const previous = sorted[index - 1]
@@ -147,13 +161,41 @@ function splitPointsIntoTripSegments(points = [], maxGapMinutes = 45) {
       ? (pointTs - previousTs) / 60000
       : 0
 
-    if (gapMinutes > maxGapMinutes) {
-      if (current.length >= 2) segments.push(current)
-      current = [point]
+    if (gapMinutes <= 0 || gapMinutes > maxGapMinutes) continue
+
+    const stepDistanceKm = computeDistanceKm(previous, point)
+    const previousMoving = Number(previous?.speed || 0) >= MIN_MOVING_SPEED_KMH
+    const currentMoving = Number(point?.speed || 0) >= MIN_MOVING_SPEED_KMH
+    const coordinateMoved = stepDistanceKm >= MIN_MOVEMENT_STEP_KM
+    const moving = previousMoving || currentMoving || coordinateMoved
+    if (!moving) continue
+
+    if (previousMoving || (coordinateMoved && !currentMoving)) movingIndexes.add(index - 1)
+    if (currentMoving || coordinateMoved) movingIndexes.add(index)
+  }
+
+  const indexes = Array.from(movingIndexes).sort((a, b) => a - b)
+  if (!indexes.length) return []
+
+  const segments = []
+  let current = [sorted[indexes[0]]]
+
+  for (let cursor = 1; cursor < indexes.length; cursor += 1) {
+    const previousPoint = current[current.length - 1]
+    const point = sorted[indexes[cursor]]
+    const previousTs = Date.parse(previousPoint?.time)
+    const pointTs = Date.parse(point?.time)
+    const gapMinutes = Number.isFinite(previousTs) && Number.isFinite(pointTs)
+      ? (pointTs - previousTs) / 60000
+      : 0
+
+    if (gapMinutes > 0 && gapMinutes <= maxGapMinutes) {
+      current.push(point)
       continue
     }
 
-    current.push(point)
+    if (current.length >= 2) segments.push(current)
+    current = [point]
   }
 
   if (current.length >= 2) segments.push(current)

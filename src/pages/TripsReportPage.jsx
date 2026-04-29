@@ -396,6 +396,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   const [selectedDriver, setSelectedDriver] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [trips, setTrips] = useState([])
 
   const trackerOptions = useMemo(() => filteredTrackers.map((tracker) => ({
@@ -431,6 +432,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
       setLoading(true)
       setError('')
+      setWarning('')
       try {
         const payload = await loadTracksBatch({
           trackerIds: candidateTrackers.map((tracker) => tracker.id),
@@ -446,9 +448,11 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           .sort((a, b) => (toDate(b.start)?.getTime() || 0) - (toDate(a.start)?.getTime() || 0))
 
         setTrips(builtTrips)
+        setWarning(String(payload?.warning || '').trim())
       } catch (e) {
         if (!cancelled) {
           setError(e.message || 'Impossible de charger les trajets Fleeti.')
+          setWarning('')
           setTrips([])
         }
       } finally {
@@ -468,6 +472,21 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
   const summaryByTruck = useMemo(() => {
     const grouped = new Map()
+    trackerOptions
+      .filter((tracker) => !selectedTrackerId || String(tracker.id) === selectedTrackerId)
+      .filter((tracker) => !selectedDriver || tracker.driver === selectedDriver)
+      .forEach((tracker) => {
+        grouped.set(String(tracker.id), {
+          trackerId: tracker.id,
+          truckLabel: tracker.label,
+          driver: tracker.driver,
+          tripCount: 0,
+          distanceKm: 0,
+          durationMinutes: 0,
+          eventCount: 0,
+        })
+      })
+
     filteredTrips.forEach((trip) => {
       const key = `${trip.trackerId}`
       const current = grouped.get(key) || { trackerId: trip.trackerId, truckLabel: trip.truckLabel, driver: trip.driver, tripCount: 0, distanceKm: 0, durationMinutes: 0, eventCount: 0 }
@@ -477,11 +496,21 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       current.eventCount += trip.eventCount
       grouped.set(key, current)
     })
-    return Array.from(grouped.values()).sort((a, b) => b.distanceKm - a.distanceKm)
-  }, [filteredTrips])
+    return Array.from(grouped.values()).sort((a, b) => (b.distanceKm - a.distanceKm) || a.truckLabel.localeCompare(b.truckLabel, 'fr'))
+  }, [filteredTrips, selectedDriver, selectedTrackerId, trackerOptions])
 
   const summaryByDriver = useMemo(() => {
     const grouped = new Map()
+    trackerOptions
+      .filter((tracker) => !selectedTrackerId || String(tracker.id) === selectedTrackerId)
+      .filter((tracker) => !selectedDriver || tracker.driver === selectedDriver)
+      .forEach((tracker) => {
+        const key = tracker.driver || 'Non assigné'
+        const current = grouped.get(key) || { driver: key, tripCount: 0, distanceKm: 0, durationMinutes: 0, eventCount: 0, trucks: new Set() }
+        current.trucks.add(tracker.label)
+        grouped.set(key, current)
+      })
+
     filteredTrips.forEach((trip) => {
       const key = trip.driver || 'Non assigné'
       const current = grouped.get(key) || { driver: key, tripCount: 0, distanceKm: 0, durationMinutes: 0, eventCount: 0, trucks: new Set() }
@@ -492,8 +521,8 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       current.trucks.add(trip.truckLabel)
       grouped.set(key, current)
     })
-    return Array.from(grouped.values()).map((entry) => ({ ...entry, trucks: Array.from(entry.trucks).sort((a, b) => a.localeCompare(b, 'fr')) })).sort((a, b) => b.distanceKm - a.distanceKm)
-  }, [filteredTrips])
+    return Array.from(grouped.values()).map((entry) => ({ ...entry, trucks: Array.from(entry.trucks).sort((a, b) => a.localeCompare(b, 'fr')) })).sort((a, b) => (b.distanceKm - a.distanceKm) || a.driver.localeCompare(b.driver, 'fr'))
+  }, [filteredTrips, selectedDriver, selectedTrackerId, trackerOptions])
 
   const totals = useMemo(() => ({
     tripCount: filteredTrips.length,
@@ -624,6 +653,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       </section>
 
       {error && <div className="error-banner">{error}</div>}
+      {warning && !error && <div className="info-banner">{warning}</div>}
       {loading && <div className="info-banner">Chargement des trajets Fleeti…</div>}
 
       <section className="stats-grid stats-grid-tight">

@@ -103,7 +103,7 @@ test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API
   assert.equal(bundle.events[0].event, 'speedup')
 })
 
-test('buildTrackBundleFromTelemetryCache sépare les segments de trajets au lieu de tout regrouper', () => {
+test('buildTrackBundleFromTelemetryCache sépare les vrais déplacements au lieu de tout regrouper', () => {
   const bundle = buildTrackBundleFromTelemetryCache({
     trackerId: 3580652,
     from: '2026-04-28T00:00:00Z',
@@ -131,4 +131,30 @@ test('buildTrackBundleFromTelemetryCache sépare les segments de trajets au lieu
     '2026-04-28T08:20:00Z',
     '2026-04-28T10:15:00Z',
   ])
+})
+
+test('buildTrackBundleFromTelemetryCache ignore les grappes de points arrêtés à 0 km', () => {
+  const bundle = buildTrackBundleFromTelemetryCache({
+    trackerId: 3580652,
+    from: '2026-04-28T00:00:00Z',
+    to: '2026-04-29T00:00:00Z',
+    telemetryCache: {
+      trackers: {
+        3580652: {
+          points: [
+            { lat: 8.5, lng: -6.6, speed: 0, time: '2026-04-28T08:00:00Z' },
+            { lat: 8.5, lng: -6.6, speed: 0, time: '2026-04-28T08:10:00Z' },
+            { lat: 8.5, lng: -6.6, speed: 0, time: '2026-04-28T08:20:00Z' },
+            { lat: 8.51, lng: -6.61, speed: 35, time: '2026-04-28T09:00:00Z' },
+            { lat: 8.52, lng: -6.62, speed: 42, time: '2026-04-28T09:15:00Z' },
+          ],
+        },
+      },
+    },
+  })
+
+  assert.equal(bundle.segments.length, 1)
+  assert.equal(bundle.segments[0].started_at, '2026-04-28T09:00:00Z')
+  assert.equal(bundle.segments[0].ended_at, '2026-04-28T09:15:00Z')
+  assert.ok(bundle.segments[0].length > 0)
 })
