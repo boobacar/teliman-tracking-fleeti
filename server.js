@@ -5,7 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds } from './src/backend/fleetiBackend.js'
+import { buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 
 dotenv.config()
 
@@ -40,6 +40,7 @@ const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60 * 1000)
 const ALLOWED_ORIGINS = parseCsv(process.env.ALLOWED_ORIGINS)
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || ''
 const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
+const TRACKS_SOURCE = resolveTracksSource(process.env.FLEETI_TRACKS_SOURCE)
 const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
 
 validateRequiredEnv()
@@ -1064,7 +1065,7 @@ function buildPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
   const bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
   const points = bundle.points || []
   const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-  return { ...bundle, lastTwoPoints, source: 'public-cache', degraded: true, ...extra }
+  return { ...bundle, lastTwoPoints, source: extra.source || 'public', degraded: false, ...extra }
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -2469,6 +2470,14 @@ app.get('/api/tracks', async (req, res) => {
     const from = req.query.from || getDateRange('1h').from
     const to = req.query.to || getDateRange('1h').to
 
+    if (TRACKS_SOURCE === 'public') {
+      const bundle = buildPublicCacheTrackBundle(trackerId, from, to)
+      return res.json({
+        ...bundle,
+        warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.',
+      })
+    }
+
     if (!PRIVATE_API_CONFIGURED) {
       return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée.' })
     }
@@ -2508,6 +2517,22 @@ app.post('/api/tracks/batch', async (req, res) => {
     const cached = tracksBatchCache.get(cacheKey)
     if (cached && (Date.now() - cached.ts) < TRACKS_BATCH_CACHE_TTL_MS) {
       return res.json({ ...cached.data, cached: true })
+    }
+
+    if (TRACKS_SOURCE === 'public') {
+      const items = trackerIds.map((trackerId) => buildPublicCacheTrackBundle(trackerId, from, to))
+      const responsePayload = {
+        from,
+        to,
+        period,
+        source: 'public',
+        degraded: false,
+        warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.',
+        failed: [],
+        items,
+      }
+      tracksBatchCache.set(cacheKey, { ts: Date.now(), data: responsePayload })
+      return res.json(responsePayload)
     }
 
     if (!PRIVATE_API_CONFIGURED) {

@@ -8,7 +8,15 @@ import {
   normalizeTrackEvent,
   normalizeTrackPoint,
   resolveScopedTrackerIds,
+  resolveTracksSource,
 } from '../src/backend/fleetiBackend.js'
+
+test('resolveTracksSource utilise l’API publique pour les trajets par défaut', () => {
+  assert.equal(resolveTracksSource(), 'public')
+  assert.equal(resolveTracksSource(''), 'public')
+  assert.equal(resolveTracksSource('private'), 'private')
+  assert.equal(resolveTracksSource('public-cache'), 'public')
+})
 
 test('fetchAllPublicAssets pagine Asset/Search avec Skip/Take jusqu’à la dernière page', async () => {
   const calls = []

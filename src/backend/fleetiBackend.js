@@ -1,3 +1,9 @@
+export function resolveTracksSource(value = '') {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'private') return 'private'
+  return 'public'
+}
+
 export function extractArrayPayload(payload = {}, keys = ['results', 'items', 'list', 'data', 'result']) {
   if (Array.isArray(payload)) return payload
   for (const key of keys) {
