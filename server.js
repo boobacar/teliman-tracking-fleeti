@@ -5,7 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
+import { buildOfficialFleetiTripBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 
 dotenv.config()
 
@@ -19,6 +19,7 @@ const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
 const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
+const OFFICIAL_FLEETI_TRIPS_FILE = path.join(DATA_DIR, 'official-fleeti-trips.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -1061,11 +1062,45 @@ function buildTrackBundleFromPublicCache(trackerId, from, to) {
   })
 }
 
+function readOfficialFleetiTrips() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(OFFICIAL_FLEETI_TRIPS_FILE, 'utf8'))
+    return {
+      trips: Array.isArray(payload?.trips) ? payload.trips : [],
+      updatedAt: payload?.updatedAt || null,
+    }
+  } catch {
+    return { trips: [], updatedAt: null }
+  }
+}
+
+function trackerLabelFromTelemetryCache(trackerId) {
+  const telemetryCache = readPublicTelemetryCache()
+  const tracker = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
+  return String(tracker?.label || tracker?.name || '').trim()
+}
+
 function buildPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
   const bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
   const points = bundle.points || []
   const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
   return { ...bundle, lastTwoPoints, source: extra.source || 'public', degraded: false, ...extra }
+}
+
+function buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
+  const officialBundle = buildOfficialFleetiTripBundle({
+    trackerId,
+    trackerLabel: extra.trackerLabel || trackerLabelFromTelemetryCache(trackerId),
+    from,
+    to,
+    officialTrips: readOfficialFleetiTrips(),
+  })
+  if (officialBundle) {
+    const points = officialBundle.points || []
+    const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
+    return { ...officialBundle, lastTwoPoints, ...extra, source: 'official-fleeti-report', degraded: false }
+  }
+  return buildPublicCacheTrackBundle(trackerId, from, to, extra)
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -2463,6 +2498,14 @@ async function readTrackBundle(hash, trackerId, from, to) {
   }
 }
 
+function tripSourceSummary(items = []) {
+  const officialCount = items.filter((item) => item?.source === 'official-fleeti-report').length
+  if (!items.length) return { source: 'public', warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.' }
+  if (officialCount === items.length) return { source: 'official-fleeti-report', warning: 'Trajets repris depuis le rapport officiel Fleeti importé.' }
+  if (officialCount > 0) return { source: 'mixed', warning: 'Certains trajets sont repris depuis le rapport officiel Fleeti importé; les autres viennent de la télémétrie publique.' }
+  return { source: 'public', warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.' }
+}
+
 app.get('/api/tracks', async (req, res) => {
   try {
     const trackerId = ensureValidTrackerId(req.query.trackerId)
@@ -2471,10 +2514,12 @@ app.get('/api/tracks', async (req, res) => {
     const to = req.query.to || getDateRange('1h').to
 
     if (TRACKS_SOURCE === 'public') {
-      const bundle = buildPublicCacheTrackBundle(trackerId, from, to)
+      const bundle = buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
+      const sourceSummary = tripSourceSummary([bundle])
       return res.json({
         ...bundle,
-        warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.',
+        source: sourceSummary.source,
+        warning: sourceSummary.warning,
       })
     }
 
@@ -2486,17 +2531,20 @@ app.get('/api/tracks', async (req, res) => {
     try {
       hash = await authenticate()
     } catch (authError) {
-      const bundle = buildPublicCacheTrackBundle(trackerId, from, to, { authFallback: true })
+      const bundle = buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, { authFallback: true })
+      const warning = bundle.source === 'official-fleeti-report'
+        ? 'Trajets repris depuis le rapport officiel Fleeti importé.'
+        : `Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list est temporairement indisponible (${authError.message || 'erreur API'}).`
       return res.json({
         ...bundle,
-        warning: `Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list est temporairement indisponible (${authError.message || 'erreur API'}).`,
+        warning,
       })
     }
 
     const privateBundle = await readTrackBundle(hash, trackerId, from, to)
     const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
-    const bundle = hasPrivateData ? privateBundle : buildTrackBundleFromPublicCache(trackerId, from, to)
-    return res.json({ ...bundle, source: hasPrivateData ? 'private' : 'public-cache', degraded: !hasPrivateData })
+    const bundle = hasPrivateData ? privateBundle : buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
+    return res.json({ ...bundle, source: hasPrivateData ? 'private' : (bundle.source || 'public-cache'), degraded: hasPrivateData ? false : (bundle.degraded ?? true) })
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
   }
@@ -2520,14 +2568,15 @@ app.post('/api/tracks/batch', async (req, res) => {
     }
 
     if (TRACKS_SOURCE === 'public') {
-      const items = trackerIds.map((trackerId) => buildPublicCacheTrackBundle(trackerId, from, to))
+      const items = trackerIds.map((trackerId) => buildOfficialOrPublicCacheTrackBundle(trackerId, from, to))
+      const sourceSummary = tripSourceSummary(items)
       const responsePayload = {
         from,
         to,
         period,
-        source: 'public',
+        source: sourceSummary.source,
         degraded: false,
-        warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.',
+        warning: sourceSummary.warning,
         failed: [],
         items,
       }
@@ -2543,7 +2592,7 @@ app.post('/api/tracks/batch', async (req, res) => {
     try {
       hash = await authenticate()
     } catch (authError) {
-      const items = trackerIds.map((trackerId) => buildPublicCacheTrackBundle(trackerId, from, to, { authFallback: true }))
+      const items = trackerIds.map((trackerId) => buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, { authFallback: true }))
       const responsePayload = {
         from,
         to,
@@ -2562,10 +2611,10 @@ app.post('/api/tracks/batch', async (req, res) => {
     const settled = await Promise.allSettled(trackerIds.map(async (trackerId) => {
       const privateBundle = await readTrackBundle(hash, trackerId, from, to)
       const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
-      const bundle = hasPrivateData ? privateBundle : buildTrackBundleFromPublicCache(trackerId, from, to)
+      const bundle = hasPrivateData ? privateBundle : buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-      return { ...bundle, lastTwoPoints, source: hasPrivateData ? 'private' : 'public-cache', degraded: !hasPrivateData }
+      return { ...bundle, lastTwoPoints, source: hasPrivateData ? 'private' : (bundle.source || 'public-cache'), degraded: hasPrivateData ? false : (bundle.degraded ?? true) }
     }))
 
     const items = []
@@ -2585,10 +2634,13 @@ app.post('/api/tracks/batch', async (req, res) => {
     }
 
     const degradedCount = items.filter((item) => item?.degraded).length
-    const responseSource = degradedCount === 0 ? 'private' : (degradedCount === items.length ? 'public-cache' : 'mixed')
+    const sources = Array.from(new Set(items.map((item) => item?.source).filter(Boolean)))
+    const responseSource = sources.length === 1 ? sources[0] : 'mixed'
     const sourceWarning = responseSource === 'private'
       ? ''
-      : 'Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list ne renvoie pas ces trackers.'
+      : (sources.includes('official-fleeti-report')
+        ? 'Certains trajets sont repris depuis le rapport officiel Fleeti importé.'
+        : 'Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list ne renvoie pas ces trackers.')
     const warning = [
       failed.length ? `${failed.length} tracker(s) n’ont pas pu être chargés pour cette période.` : '',
       sourceWarning,

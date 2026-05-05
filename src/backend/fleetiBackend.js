@@ -221,6 +221,81 @@ function buildSegmentFromPoints(segmentPoints = [], trackerId, index) {
   }
 }
 
+function parseReportTime(value) {
+  if (!value) return null
+  const raw = String(value).trim()
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+    ? `${raw.replace(' ', 'T')}Z`
+    : raw
+  const ts = Date.parse(normalized)
+  return Number.isFinite(ts) ? new Date(ts) : null
+}
+
+function sameTripDate(row = {}, from, to) {
+  const start = parseReportTime(row.start || row.started_at || row.from)
+  if (start) return isWithinRange(start.toISOString(), from, to)
+  const date = String(row.date || '').slice(0, 10)
+  if (!date) return false
+  return isWithinRange(`${date}T12:00:00Z`, from, to)
+}
+
+function sameTracker(row = {}, trackerId, trackerLabel = '') {
+  const rowTrackerId = Number(row.trackerId ?? row.tracker_id)
+  if (Number.isFinite(rowTrackerId) && Number.isFinite(Number(trackerId)) && rowTrackerId === Number(trackerId)) return true
+  const rowLabel = String(row.trackerLabel || row.truckLabel || row.label || '').trim().toLowerCase()
+  const wantedLabel = String(trackerLabel || '').trim().toLowerCase()
+  return Boolean(rowLabel && wantedLabel && rowLabel === wantedLabel)
+}
+
+export function buildOfficialFleetiTripBundle({ trackerId, trackerLabel = '', from, to, officialTrips = {} } = {}) {
+  const rows = (Array.isArray(officialTrips) ? officialTrips : officialTrips.trips) || []
+  const matchingRows = rows
+    .filter((row) => row && typeof row === 'object')
+    .filter((row) => sameTracker(row, trackerId, trackerLabel))
+    .filter((row) => sameTripDate(row, from, to))
+    .sort((a, b) => (parseReportTime(a.start)?.getTime() || 0) - (parseReportTime(b.start)?.getTime() || 0))
+
+  if (!matchingRows.length) return null
+
+  const segments = matchingRows.map((row, index) => ({
+    id: row.id || `${trackerId}-official-fleeti-${row.date || 'trip'}-${index + 1}`,
+    length: Number(Number(row.distanceKm ?? row.length ?? row.distance).toFixed(2)),
+    avg_speed: Number(Number(row.avgSpeed ?? row.avg_speed ?? 0).toFixed(1)),
+    max_speed: Number(row.maxSpeed ?? row.max_speed ?? 0),
+    duration_minutes: Number(row.durationMinutes ?? row.duration_minutes ?? 0),
+    idle_minutes: Number(row.idleMinutes ?? row.idle_minutes ?? 0),
+    started_at: parseReportTime(row.start || row.started_at || row.from)?.toISOString() || null,
+    ended_at: parseReportTime(row.end || row.ended_at || row.to)?.toISOString() || null,
+    start_address: row.startAddress || row.departureAddress || '',
+    end_address: row.endAddress || row.arrivalAddress || '',
+  }))
+
+  const points = matchingRows.flatMap((row) => {
+    const startTime = parseReportTime(row.start || row.started_at || row.from)?.toISOString() || null
+    const endTime = parseReportTime(row.end || row.ended_at || row.to)?.toISOString() || null
+    const startLat = firstFiniteNumber(row.startLat, row.departureLat)
+    const startLng = firstFiniteNumber(row.startLng, row.departureLng)
+    const endLat = firstFiniteNumber(row.endLat, row.arrivalLat)
+    const endLng = firstFiniteNumber(row.endLng, row.arrivalLng)
+    return [
+      Number.isFinite(startLat) && Number.isFinite(startLng) ? { lat: startLat, lng: startLng, speed: row.avgSpeed || 0, time: startTime } : null,
+      Number.isFinite(endLat) && Number.isFinite(endLng) ? { lat: endLat, lng: endLng, speed: 0, time: endTime } : null,
+    ].filter(Boolean)
+  })
+
+  return {
+    trackerId: Number(trackerId),
+    from,
+    to,
+    segments,
+    points,
+    events: [],
+    source: 'official-fleeti-report',
+    degraded: false,
+    officialReport: true,
+  }
+}
+
 export function buildTrackBundleFromTelemetryCache({ trackerId, from, to, telemetryCache = {} } = {}) {
   const trackerCache = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
   const points = (Array.isArray(trackerCache.points) ? trackerCache.points : [])

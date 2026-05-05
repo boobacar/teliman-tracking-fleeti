@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildOfficialFleetiTripBundle,
   buildTrackBundleFromTelemetryCache,
   chunkIds,
   fetchAllPublicAssets,
@@ -82,6 +83,50 @@ test('normalizeTrackEvent conserve les alertes géolocalisées Fleeti', () => {
   assert.equal(event.tracker_id, 3580652)
   assert.equal(event.lat, 8.5)
   assert.equal(event.lng, -6.6)
+})
+
+test('buildOfficialFleetiTripBundle privilégie les segments exportés officiellement par Fleeti', () => {
+  const bundle = buildOfficialFleetiTripBundle({
+    trackerId: 3580652,
+    trackerLabel: '5273WWCI01',
+    from: '2026-05-05 00:00:00',
+    to: '2026-05-05 23:59:59',
+    officialTrips: {
+      trips: [
+        {
+          trackerId: 3580652,
+          trackerLabel: '5273WWCI01',
+          date: '2026-05-05',
+          start: '2026-05-05T05:20:01Z',
+          end: '2026-05-05T05:22:37Z',
+          startLat: 8.480025,
+          startLng: -6.6135415,
+          endLat: 8.4778583,
+          endLng: -6.6100883,
+          distanceKm: 0.47,
+          durationMinutes: 2.6,
+          avgSpeed: 11,
+          maxSpeed: 15,
+          idleMinutes: 0.73,
+        },
+        {
+          trackerLabel: '3100WWCI01',
+          date: '2026-05-05',
+          start: '2026-05-05T08:00:00Z',
+          end: '2026-05-05T08:10:00Z',
+          distanceKm: 99,
+        },
+      ],
+    },
+  })
+
+  assert.equal(bundle.trackerId, 3580652)
+  assert.equal(bundle.source, 'official-fleeti-report')
+  assert.equal(bundle.degraded, false)
+  assert.equal(bundle.segments.length, 1)
+  assert.equal(bundle.points.length, 2)
+  assert.equal(bundle.segments[0].length, 0.47)
+  assert.equal(bundle.segments[0].started_at, '2026-05-05T05:20:01.000Z')
 })
 
 test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API privée tracks est vide', () => {
