@@ -126,6 +126,11 @@ export function DataPage() {
     await refresh()
   }
 
+  async function removeClientPhone(client, phone) {
+    await deleteMasterDataItem('clientPhones', client, { client, phone })
+    await refresh()
+  }
+
   async function addManualTracker() {
     const label = manualTruckLabel.trim()
     const driver = manualDriverName.trim()
@@ -347,8 +352,8 @@ export function DataPage() {
 
           <div className="data-list-grid">
             {Object.keys(data.clientPhones || {}).length === 0 && <div className="empty-banner">Aucun numéro de téléphone client assigné.</div>}
-            {Object.entries(data.clientPhones || {}).map(([client, phone], index) => (
-              <article key={client} className="data-item-card">
+            {Object.entries(data.clientPhones || {}).flatMap(([client, phones]) => (Array.isArray(phones) ? phones : [phones]).filter(Boolean).map((phone) => ({ client, phone }))).map(({ client, phone }, index) => (
+              <article key={`${client}-${phone}`} className="data-item-card">
                 <div className="data-item-main">
                   <span className="data-item-title">{client}</span>
                   <small>Tél: {phone}</small>
@@ -358,7 +363,7 @@ export function DataPage() {
                   <button
                     type="button"
                     className="ghost-btn small-btn danger-btn icon-btn"
-                    onClick={() => removeItem('clientPhones', client)}
+                    onClick={() => removeClientPhone(client, phone)}
                     aria-label="Supprimer"
                   >
                     <Trash2 size={16} />

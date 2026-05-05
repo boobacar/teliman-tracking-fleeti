@@ -8,12 +8,20 @@ export function normalizePurchaseOrdersMap(value) {
   )
 }
 
+export function normalizePhoneList(value) {
+  const items = Array.isArray(value) ? value : [value]
+  return Array.from(new Set(items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b))
+}
+
 export function normalizeClientPhonesMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(
     Object.entries(value)
-      .map(([client, phone]) => [String(client || '').trim(), String(phone || '').trim()])
-      .filter(([client, phone]) => client && phone)
+      .map(([client, phones]) => [String(client || '').trim(), normalizePhoneList(phones)])
+      .filter(([client, phones]) => client && phones.length > 0)
       .sort((a, b) => a[0].localeCompare(b[0]))
   )
 }

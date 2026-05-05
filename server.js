@@ -2232,9 +2232,10 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     const client = String(req.body?.client || '').trim()
     const phone = String(req.body?.phone || req.body?.value || '').trim()
     if (!client || !phone) return res.status(400).json({ ok: false, error: 'Client et numéro de téléphone obligatoires' })
-    data.clientPhones = { ...(data.clientPhones || {}), [client]: phone }
+    const currentPhones = Array.isArray(data.clientPhones?.[client]) ? data.clientPhones[client] : (data.clientPhones?.[client] ? [data.clientPhones[client]] : [])
+    data.clientPhones = { ...(data.clientPhones || {}), [client]: Array.from(new Set([...currentPhones, phone])).sort((a, b) => a.localeCompare(b)) }
     writeMasterData(data)
-    return res.status(201).json({ ok: true, data })
+    return res.status(201).json({ ok: true, data: readMasterData() })
   }
 
   if (listName === 'manualTrackers') {
@@ -2276,12 +2277,19 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
 
   if (listName === 'clientPhones') {
     const client = String(req.query.client || req.query.value || '').trim()
+    const phone = String(req.query.phone || '').trim()
     if (!client) return res.status(400).json({ ok: false, error: 'Client obligatoire' })
     const next = { ...(data.clientPhones || {}) }
-    delete next[client]
+    if (phone) {
+      const remaining = (Array.isArray(next[client]) ? next[client] : (next[client] ? [next[client]] : [])).filter((item) => item !== phone)
+      if (remaining.length > 0) next[client] = remaining
+      else delete next[client]
+    } else {
+      delete next[client]
+    }
     data.clientPhones = next
     writeMasterData(data)
-    return res.json({ ok: true, data })
+    return res.json({ ok: true, data: readMasterData() })
   }
 
   if (listName === 'manualTrackers') {

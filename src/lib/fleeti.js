@@ -133,8 +133,12 @@ export const loadReportProjects = (query = '') => getJson(`/api/reports/projects
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })
-export const deleteMasterDataItem = async (listName, value) => {
-  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?value=${encodeURIComponent(value)}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+export const deleteMasterDataItem = async (listName, value, extra = {}) => {
+  const params = new URLSearchParams({ value })
+  Object.entries(extra || {}).forEach(([key, entry]) => {
+    if (entry !== undefined && entry !== null && String(entry).trim()) params.set(key, String(entry))
+  })
+  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?${params.toString()}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
