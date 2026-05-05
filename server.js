@@ -5,7 +5,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { buildOfficialFleetiTripBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
+import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 
 dotenv.config()
 
@@ -19,7 +19,6 @@ const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
 const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
-const OFFICIAL_FLEETI_TRIPS_FILE = path.join(DATA_DIR, 'official-fleeti-trips.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -690,6 +689,22 @@ async function publicApiGet(pathname, query = {}) {
   return data
 }
 
+async function publicApiPost(pathname, body = {}) {
+  if (!PUBLIC_API_KEY) throw new Error('Missing FLEETI_PUBLIC_API_KEY')
+  const response = await fetch(`${PUBLIC_API_BASE}${pathname}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-API-Key': PUBLIC_API_KEY,
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || data.isSuccess === false) throw new Error(data?.message || 'Fleeti public API error')
+  return data
+}
+
 function getFuelSensorPriority(sensor = {}) {
   const inputName = String(sensor.inputName || '').toLowerCase()
   if (inputName === 'avl_io_89') return 100
@@ -1062,24 +1077,6 @@ function buildTrackBundleFromPublicCache(trackerId, from, to) {
   })
 }
 
-function readOfficialFleetiTrips() {
-  try {
-    const payload = JSON.parse(fs.readFileSync(OFFICIAL_FLEETI_TRIPS_FILE, 'utf8'))
-    return {
-      trips: Array.isArray(payload?.trips) ? payload.trips : [],
-      updatedAt: payload?.updatedAt || null,
-    }
-  } catch {
-    return { trips: [], updatedAt: null }
-  }
-}
-
-function trackerLabelFromTelemetryCache(trackerId) {
-  const telemetryCache = readPublicTelemetryCache()
-  const tracker = telemetryCache.trackers?.[trackerId] || telemetryCache.trackers?.[String(trackerId)] || {}
-  return String(tracker?.label || tracker?.name || '').trim()
-}
-
 function buildPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
   const bundle = buildTrackBundleFromPublicCache(trackerId, from, to)
   const points = bundle.points || []
@@ -1087,20 +1084,56 @@ function buildPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
   return { ...bundle, lastTwoPoints, source: extra.source || 'public', degraded: false, ...extra }
 }
 
-function buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, extra = {}) {
-  const officialBundle = buildOfficialFleetiTripBundle({
-    trackerId,
-    trackerLabel: extra.trackerLabel || trackerLabelFromTelemetryCache(trackerId),
-    from,
-    to,
-    officialTrips: readOfficialFleetiTrips(),
+function normalizeDateTimeForFleetiPublicApi(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return new Date().toISOString()
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return `${raw.replace(' ', 'T')}Z`
+  return raw
+}
+
+function assetMatchesTrackerId(asset = {}, trackerId) {
+  const wanted = String(trackerId)
+  return (asset?.gateways || []).some((gateway) => String(gateway?.provider?.gatewayId || gateway?.id || '') === wanted)
+}
+
+function customerReferenceFromAsset(asset = {}) {
+  return String(asset?.customer?.reference || asset?.customerReference || '').trim()
+}
+
+async function resolvePublicAssetForTracker(trackerId, assets = null) {
+  const rows = Array.isArray(assets) ? assets : await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
+  return rows.find((asset) => assetMatchesTrackerId(asset, trackerId)) || null
+}
+
+async function buildFleetiApiTrackBundle(trackerId, from, to, extra = {}, assets = null) {
+  const asset = await resolvePublicAssetForTracker(trackerId, assets)
+  const customerReference = customerReferenceFromAsset(asset)
+  if (!asset?.id || !customerReference) return buildPublicCacheTrackBundle(trackerId, from, to, extra)
+
+  const startAt = normalizeDateTimeForFleetiPublicApi(from)
+  const endAt = normalizeDateTimeForFleetiPublicApi(to)
+  const tracksPayload = await publicApiPost('/Provider/GetAllAssetTrack', {
+    customerReference,
+    assetId: asset.id,
+    startAt,
+    endAt,
   })
-  if (officialBundle) {
-    const points = officialBundle.points || []
-    const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
-    return { ...officialBundle, lastTwoPoints, ...extra, source: 'official-fleeti-report', degraded: false }
+  const trackRows = extractArrayPayload(tracksPayload, ['results', 'items', 'list', 'data', 'result'])
+  if (!trackRows.length) return buildPublicCacheTrackBundle(trackerId, from, to, extra)
+
+  const bundle = buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows })
+  const lastTwoPoints = []
+  return {
+    ...bundle,
+    lastTwoPoints,
+    assetId: asset.id,
+    customerReference,
+    trackerLabel: asset.name || asset.properties?.licensePlate || '',
+    warning: 'Trajets reçus directement depuis l’API Fleeti.',
+    ...extra,
+    source: 'fleeti-api-tracks',
+    degraded: false,
   }
-  return buildPublicCacheTrackBundle(trackerId, from, to, extra)
 }
 
 async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
@@ -2499,10 +2532,10 @@ async function readTrackBundle(hash, trackerId, from, to) {
 }
 
 function tripSourceSummary(items = []) {
-  const officialCount = items.filter((item) => item?.source === 'official-fleeti-report').length
+  const apiCount = items.filter((item) => item?.source === 'fleeti-api-tracks').length
   if (!items.length) return { source: 'public', warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.' }
-  if (officialCount === items.length) return { source: 'official-fleeti-report', warning: 'Trajets repris depuis le rapport officiel Fleeti importé.' }
-  if (officialCount > 0) return { source: 'mixed', warning: 'Certains trajets sont repris depuis le rapport officiel Fleeti importé; les autres viennent de la télémétrie publique.' }
+  if (apiCount === items.length) return { source: 'fleeti-api-tracks', warning: 'Trajets reçus directement depuis l’API Fleeti.' }
+  if (apiCount > 0) return { source: 'mixed', warning: 'Certains trajets sont reçus directement depuis l’API Fleeti; les autres viennent de la télémétrie publique.' }
   return { source: 'public', warning: 'Trajets calculés directement depuis la télémétrie Fleeti publique.' }
 }
 
@@ -2514,7 +2547,7 @@ app.get('/api/tracks', async (req, res) => {
     const to = req.query.to || getDateRange('1h').to
 
     if (TRACKS_SOURCE === 'public') {
-      const bundle = buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
+      const bundle = await buildFleetiApiTrackBundle(trackerId, from, to)
       const sourceSummary = tripSourceSummary([bundle])
       return res.json({
         ...bundle,
@@ -2531,9 +2564,9 @@ app.get('/api/tracks', async (req, res) => {
     try {
       hash = await authenticate()
     } catch (authError) {
-      const bundle = buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, { authFallback: true })
-      const warning = bundle.source === 'official-fleeti-report'
-        ? 'Trajets repris depuis le rapport officiel Fleeti importé.'
+      const bundle = await buildFleetiApiTrackBundle(trackerId, from, to, { authFallback: true })
+      const warning = bundle.source === 'fleeti-api-tracks'
+        ? 'Trajets reçus directement depuis l’API Fleeti.'
         : `Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list est temporairement indisponible (${authError.message || 'erreur API'}).`
       return res.json({
         ...bundle,
@@ -2543,7 +2576,7 @@ app.get('/api/tracks', async (req, res) => {
 
     const privateBundle = await readTrackBundle(hash, trackerId, from, to)
     const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
-    const bundle = hasPrivateData ? privateBundle : buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
+    const bundle = hasPrivateData ? privateBundle : await buildFleetiApiTrackBundle(trackerId, from, to)
     return res.json({ ...bundle, source: hasPrivateData ? 'private' : (bundle.source || 'public-cache'), degraded: hasPrivateData ? false : (bundle.degraded ?? true) })
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || 'Impossible de récupérer les trajets depuis l’API privée Fleeti.' })
@@ -2568,7 +2601,8 @@ app.post('/api/tracks/batch', async (req, res) => {
     }
 
     if (TRACKS_SOURCE === 'public') {
-      const items = trackerIds.map((trackerId) => buildOfficialOrPublicCacheTrackBundle(trackerId, from, to))
+      const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
+      const items = await Promise.all(trackerIds.map((trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, {}, assets)))
       const sourceSummary = tripSourceSummary(items)
       const responsePayload = {
         from,
@@ -2592,7 +2626,8 @@ app.post('/api/tracks/batch', async (req, res) => {
     try {
       hash = await authenticate()
     } catch (authError) {
-      const items = trackerIds.map((trackerId) => buildOfficialOrPublicCacheTrackBundle(trackerId, from, to, { authFallback: true }))
+      const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE }).catch(() => null)
+      const items = await Promise.all(trackerIds.map((trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, { authFallback: true }, assets)))
       const responsePayload = {
         from,
         to,
@@ -2611,7 +2646,7 @@ app.post('/api/tracks/batch', async (req, res) => {
     const settled = await Promise.allSettled(trackerIds.map(async (trackerId) => {
       const privateBundle = await readTrackBundle(hash, trackerId, from, to)
       const hasPrivateData = (privateBundle.points?.length || 0) + (privateBundle.events?.length || 0) + (privateBundle.segments?.length || 0) > 0
-      const bundle = hasPrivateData ? privateBundle : buildOfficialOrPublicCacheTrackBundle(trackerId, from, to)
+      const bundle = hasPrivateData ? privateBundle : await buildFleetiApiTrackBundle(trackerId, from, to)
       const points = bundle.points || []
       const lastTwoPoints = points.length >= 2 ? points.slice(-2) : []
       return { ...bundle, lastTwoPoints, source: hasPrivateData ? 'private' : (bundle.source || 'public-cache'), degraded: hasPrivateData ? false : (bundle.degraded ?? true) }
@@ -2638,8 +2673,8 @@ app.post('/api/tracks/batch', async (req, res) => {
     const responseSource = sources.length === 1 ? sources[0] : 'mixed'
     const sourceWarning = responseSource === 'private'
       ? ''
-      : (sources.includes('official-fleeti-report')
-        ? 'Certains trajets sont repris depuis le rapport officiel Fleeti importé.'
+      : (sources.includes('fleeti-api-tracks')
+        ? 'Certains trajets sont reçus directement depuis l’API Fleeti.'
         : 'Trajets calculés depuis la télémétrie Fleeti publique collectée, car l’API privée track/list ne renvoie pas ces trackers.')
     const warning = [
       failed.length ? `${failed.length} tracker(s) n’ont pas pu être chargés pour cette période.` : '',

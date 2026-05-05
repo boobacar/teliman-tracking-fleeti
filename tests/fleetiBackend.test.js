@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  buildOfficialFleetiTripBundle,
+  buildFleetiProviderTrackBundle,
   buildTrackBundleFromTelemetryCache,
   chunkIds,
   fetchAllPublicAssets,
@@ -85,47 +85,50 @@ test('normalizeTrackEvent conserve les alertes géolocalisées Fleeti', () => {
   assert.equal(event.lng, -6.6)
 })
 
-test('buildOfficialFleetiTripBundle privilégie les segments exportés officiellement par Fleeti', () => {
-  const bundle = buildOfficialFleetiTripBundle({
+test('buildFleetiProviderTrackBundle normalise les segments reçus depuis l’API Fleeti', () => {
+  const bundle = buildFleetiProviderTrackBundle({
     trackerId: 3580652,
-    trackerLabel: '5273WWCI01',
     from: '2026-05-05 00:00:00',
     to: '2026-05-05 23:59:59',
-    officialTrips: {
-      trips: [
-        {
-          trackerId: 3580652,
-          trackerLabel: '5273WWCI01',
-          date: '2026-05-05',
-          start: '2026-05-05T05:20:01Z',
-          end: '2026-05-05T05:22:37Z',
-          startLat: 8.480025,
-          startLng: -6.6135415,
-          endLat: 8.4778583,
-          endLng: -6.6100883,
-          distanceKm: 0.47,
-          durationMinutes: 2.6,
-          avgSpeed: 11,
-          maxSpeed: 15,
-          idleMinutes: 0.73,
-        },
-        {
-          trackerLabel: '3100WWCI01',
-          date: '2026-05-05',
-          start: '2026-05-05T08:00:00Z',
-          end: '2026-05-05T08:10:00Z',
-          distanceKm: 99,
-        },
+    trackRows: [
+      {
+        trackId: '305',
+        startAt: '2026-05-05T05:20:01Z',
+        endAt: '2026-05-05T05:22:37Z',
+        avgSpeed: 11,
+        length: 0.47,
+        maxSpeed: 15,
+        startAddress: 'Kani, Worodougou, Woroba, Côte d’Ivoire',
+        endAddress: 'Kani, Worodougou, Woroba, Côte d’Ivoire',
+        pointsCount: 7,
+      },
+      {
+        trackId: '306',
+        startAt: '2026-05-05T05:23:21Z',
+        endAt: '2026-05-05T05:40:16Z',
+        avgSpeed: 79,
+        length: 22.16,
+        maxSpeed: 112,
+        pointsCount: 81,
+      },
+    ],
+    pointRowsByTrackId: {
+      305: [
+        { latitude: 8.480025, longitude: -6.6135415, speed: 7, heading: 164, getAt: '2026-05-05T05:20:01Z' },
+        { latitude: 8.4778583, longitude: -6.6100883, speed: 0, heading: 116, getAt: '2026-05-05T05:22:37Z' },
       ],
     },
   })
 
   assert.equal(bundle.trackerId, 3580652)
-  assert.equal(bundle.source, 'official-fleeti-report')
+  assert.equal(bundle.source, 'fleeti-api-tracks')
   assert.equal(bundle.degraded, false)
-  assert.equal(bundle.segments.length, 1)
+  assert.equal(bundle.segments.length, 2)
   assert.equal(bundle.points.length, 2)
+  assert.equal(bundle.segments[0].trackId, '305')
   assert.equal(bundle.segments[0].length, 0.47)
+  assert.equal(bundle.segments[0].duration_minutes, 2.6)
+  assert.equal(bundle.segments[0].idle_minutes, 0.73)
   assert.equal(bundle.segments[0].started_at, '2026-05-05T05:20:01.000Z')
 })
 
