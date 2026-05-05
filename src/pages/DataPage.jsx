@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Package2, Truck, Trash2, Users } from 'lucide-react'
+import { MapPin, Package2, Phone, Truck, Trash2, Users } from 'lucide-react'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
@@ -82,12 +82,15 @@ export function DataPage() {
     destinations: [],
     suppliers: [],
     purchaseOrders: {},
+    clientPhones: {},
     manualTrackers: [],
   })
   const [clientValue, setClientValue] = useState('')
   const [goodsValue, setGoodsValue] = useState('')
   const [destinationValue, setDestinationValue] = useState('')
   const [supplierValue, setSupplierValue] = useState('')
+  const [clientPhoneClient, setClientPhoneClient] = useState('')
+  const [clientPhoneValue, setClientPhoneValue] = useState('')
   const [manualTruckLabel, setManualTruckLabel] = useState('')
   const [manualDriverName, setManualDriverName] = useState('')
   const [purchaseOrderClient, setPurchaseOrderClient] = useState('')
@@ -149,6 +152,11 @@ export function DataPage() {
         label: 'Chauffeurs manuels',
         value: new Set((data.manualTrackers || []).map((item) => item.driver).filter(Boolean)).size,
         helper: 'hors API Fleeti',
+      },
+      {
+        label: 'Téléphones clients',
+        value: Object.keys(data.clientPhones || {}).length || 0,
+        helper: 'contact par client',
       },
       {
         label: 'N° bons commande',
@@ -278,6 +286,79 @@ export function DataPage() {
                     type="button"
                     className="ghost-btn small-btn danger-btn icon-btn"
                     onClick={() => removeManualTracker(item.id)}
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel panel-large data-card-panel">
+          <SectionHeader
+            title="Téléphones clients"
+            description="Associer un numéro de téléphone à chaque client pour garder les contacts opérationnels dans les données."
+            right={<div className="stat-icon"><Phone size={18} /></div>}
+          />
+
+          <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
+            <label className="field-stack">
+              <span>Client</span>
+              <select
+                aria-label="Client pour le numéro de téléphone"
+                value={clientPhoneClient}
+                onChange={(e) => setClientPhoneClient(e.target.value)}
+              >
+                <option value="">Sélectionner un client</option>
+                {(data.clients || []).map((client) => (
+                  <option key={client} value={client}>{client}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack">
+              <span>Numéro de téléphone</span>
+              <input
+                aria-label="Numéro de téléphone client"
+                placeholder="Ex: +225 07 00 00 00 00"
+                type="tel"
+                value={clientPhoneValue}
+                onChange={(e) => setClientPhoneValue(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={async () => {
+                if (!clientPhoneClient.trim() || !clientPhoneValue.trim()) return
+                await addMasterDataItem('clientPhones', clientPhoneValue.trim(), {
+                  client: clientPhoneClient.trim(),
+                  phone: clientPhoneValue.trim(),
+                })
+                setClientPhoneClient('')
+                setClientPhoneValue('')
+                await refresh()
+              }}
+            >
+              Enregistrer
+            </button>
+          </div>
+
+          <div className="data-list-grid">
+            {Object.keys(data.clientPhones || {}).length === 0 && <div className="empty-banner">Aucun numéro de téléphone client assigné.</div>}
+            {Object.entries(data.clientPhones || {}).map(([client, phone], index) => (
+              <article key={client} className="data-item-card">
+                <div className="data-item-main">
+                  <span className="data-item-title">{client}</span>
+                  <small>Tél: {phone}</small>
+                </div>
+                <div className="data-item-actions">
+                  <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn small-btn danger-btn icon-btn"
+                    onClick={() => removeItem('clientPhones', client)}
                     aria-label="Supprimer"
                   >
                     <Trash2 size={16} />

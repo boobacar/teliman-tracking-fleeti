@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
+import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 
 dotenv.config()
 
@@ -324,61 +325,16 @@ function writeFuelVouchers(rows) {
   fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
 }
 
-function normalizePurchaseOrdersMap(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(
-    Object.entries(value)
-      .map(([client, purchaseOrderNumber]) => [String(client || '').trim(), String(purchaseOrderNumber || '').trim()])
-      .filter(([client, purchaseOrderNumber]) => client && purchaseOrderNumber)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-  )
-}
-
-function normalizeManualTrackers(value) {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item, index) => {
-      const id = Number(item?.id)
-      const label = String(item?.label || '').trim()
-      const driver = String(item?.driver || '').trim()
-      const normalizedId = Number.isInteger(id) && id > 0 ? id : (9000000 + index + 1)
-      if (!label || !driver) return null
-      return { id: normalizedId, label, driver }
-    })
-    .filter(Boolean)
-    .reduce((acc, item) => {
-      if (acc.some((entry) => Number(entry.id) === Number(item.id))) return acc
-      return [...acc, item]
-    }, [])
-    .sort((a, b) => a.label.localeCompare(b.label))
-}
-
 function readMasterData() {
   try {
-    const payload = JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8'))
-    return {
-      clients: Array.isArray(payload.clients) ? payload.clients : [],
-      goods: Array.isArray(payload.goods) ? payload.goods : [],
-      destinations: Array.isArray(payload.destinations) ? payload.destinations : [],
-      suppliers: Array.isArray(payload.suppliers) ? payload.suppliers : [],
-      purchaseOrders: normalizePurchaseOrdersMap(payload.purchaseOrders),
-      manualTrackers: normalizeManualTrackers(payload.manualTrackers),
-    }
+    return buildMasterDataPayload(JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8')))
   } catch {
-    return { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] }
+    return emptyMasterDataPayload()
   }
 }
 
 function writeMasterData(data) {
-  const payload = {
-    clients: Array.from(new Set((data.clients || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    goods: Array.from(new Set((data.goods || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    destinations: Array.from(new Set((data.destinations || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    suppliers: Array.from(new Set((data.suppliers || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    purchaseOrders: normalizePurchaseOrdersMap(data.purchaseOrders),
-    manualTrackers: normalizeManualTrackers(data.manualTrackers),
-  }
-  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(payload, null, 2))
+  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(buildMasterDataPayload(data), null, 2))
 }
 
 function ensureValidTrackerId(value) {
@@ -2259,7 +2215,7 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -2268,6 +2224,15 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     const purchaseOrderNumber = String(req.body?.purchaseOrderNumber || req.body?.value || '').trim()
     if (!client || !purchaseOrderNumber) return res.status(400).json({ ok: false, error: 'Client et numéro de bon de commande obligatoires' })
     data.purchaseOrders = { ...(data.purchaseOrders || {}), [client]: purchaseOrderNumber }
+    writeMasterData(data)
+    return res.status(201).json({ ok: true, data })
+  }
+
+  if (listName === 'clientPhones') {
+    const client = String(req.body?.client || '').trim()
+    const phone = String(req.body?.phone || req.body?.value || '').trim()
+    if (!client || !phone) return res.status(400).json({ ok: false, error: 'Client et numéro de téléphone obligatoires' })
+    data.clientPhones = { ...(data.clientPhones || {}), [client]: phone }
     writeMasterData(data)
     return res.status(201).json({ ok: true, data })
   }
@@ -2295,7 +2260,7 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
 
 app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -2305,6 +2270,16 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
     const next = { ...(data.purchaseOrders || {}) }
     delete next[client]
     data.purchaseOrders = next
+    writeMasterData(data)
+    return res.json({ ok: true, data })
+  }
+
+  if (listName === 'clientPhones') {
+    const client = String(req.query.client || req.query.value || '').trim()
+    if (!client) return res.status(400).json({ ok: false, error: 'Client obligatoire' })
+    const next = { ...(data.clientPhones || {}) }
+    delete next[client]
+    data.clientPhones = next
     writeMasterData(data)
     return res.json({ ok: true, data })
   }
