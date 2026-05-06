@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
-import { buildWhatsAppConfigFromEnv, sendDeliveryOrderWhatsAppNotifications } from './src/backend/whatsappNotifications.js'
+import { buildWhatsAppConfigFromEnv, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 
 dotenv.config()
 
@@ -22,6 +22,7 @@ const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
 const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
+const WHATSAPP_TEMPLATES_FILE = path.join(DATA_DIR, 'whatsapp-templates.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -343,6 +344,28 @@ function writeMasterData(data) {
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(buildMasterDataPayload(data), null, 2))
 }
 
+function readWhatsAppTemplates() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(WHATSAPP_TEMPLATES_FILE, 'utf8'))
+    return normalizeWhatsAppTemplates(payload)
+  } catch {
+    return { ...DEFAULT_WHATSAPP_TEMPLATES }
+  }
+}
+
+function writeWhatsAppTemplates(payload) {
+  const normalized = normalizeWhatsAppTemplates(payload)
+  fs.writeFileSync(WHATSAPP_TEMPLATES_FILE, JSON.stringify(normalized, null, 2))
+  return normalized
+}
+
+function normalizeWhatsAppTemplates(payload = {}) {
+  return Object.fromEntries(Object.entries(DEFAULT_WHATSAPP_TEMPLATES).map(([key, fallback]) => {
+    const value = String(payload?.[key] ?? '').trim()
+    return [key, value || fallback]
+  }))
+}
+
 async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   const results = await sendDeliveryOrderWhatsAppNotifications({
     previousOrder,
@@ -350,6 +373,7 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
     masterData: readMasterData(),
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
+    templates: readWhatsAppTemplates(),
   })
   for (const result of results) {
     if (result.sent) {
@@ -1958,6 +1982,40 @@ app.get('/api/whatsapp/qr', (_req, res) => {
     return res.json({ provider: WHATSAPP_CONFIG.provider, enabled: WHATSAPP_CONFIG.enabled, hasQr: false, state: 'not_configured' })
   }
   res.json({ enabled: WHATSAPP_CONFIG.enabled, ...baileysWhatsAppClient.getQr() })
+})
+
+app.post('/api/whatsapp/reconnect', async (req, res) => {
+  if (!baileysWhatsAppClient) return res.status(400).json({ ok: false, error: 'Baileys non configuré.' })
+  const result = await baileysWhatsAppClient.reconnect({ clearSession: Boolean(req.body?.clearSession) })
+  res.json({ ok: true, ...result })
+})
+
+app.post('/api/whatsapp/disconnect', async (req, res) => {
+  if (!baileysWhatsAppClient) return res.status(400).json({ ok: false, error: 'Baileys non configuré.' })
+  const result = await baileysWhatsAppClient.disconnect({ clearSession: req.body?.clearSession !== false })
+  res.json(result)
+})
+
+app.post('/api/whatsapp/test-message', async (req, res) => {
+  const result = await sendWhatsAppTextMessage({
+    to: req.body?.to,
+    message: req.body?.message,
+    config: WHATSAPP_CONFIG,
+    baileysClient: baileysWhatsAppClient,
+  })
+  res.status(result.sent ? 200 : 400).json({ ok: Boolean(result.sent), ...result })
+})
+
+app.get('/api/whatsapp/templates', (_req, res) => {
+  res.json({ ok: true, templates: readWhatsAppTemplates(), defaults: DEFAULT_WHATSAPP_TEMPLATES })
+})
+
+app.put('/api/whatsapp/templates', (req, res) => {
+  res.json({ ok: true, templates: writeWhatsAppTemplates(req.body?.templates || req.body || {}) })
+})
+
+app.post('/api/whatsapp/templates/reset', (_req, res) => {
+  res.json({ ok: true, templates: writeWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES) })
 })
 
 app.get('/api/dashboard', async (req, res) => {

@@ -110,6 +110,30 @@ textarea:focus-visible,
   color: var(--color-muted);
 }
 
+.whatsapp-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.whatsapp-template-grid textarea {
+  min-height: 170px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.45;
+}
+
+.success-text {
+  color: #bbf7d0;
+}
+
+@media (max-width: 860px) {
+  .whatsapp-template-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .success-chip {
   display: inline-flex;
   align-items: center;
@@ -2142,8 +2166,22 @@ textarea:focus-visible,
 }
 
 .danger-btn {
-  border-color: rgba(239, 68, 68, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: rgba(127, 29, 29, 0.18);
   color: #fca5a5;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.danger-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .icon-btn {

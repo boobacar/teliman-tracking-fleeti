@@ -49,6 +49,22 @@ async function postJson(path, body) {
   }
 }
 
+async function putJson(path, body) {
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+      body: JSON.stringify(body),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    return data
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    throw error
+  }
+}
+
 export async function login(email, password) {
   try {
     const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
@@ -132,6 +148,12 @@ export const loadReportBatches = (query = '') => getJson(`/api/reports/batches${
 export const loadReportProjects = (query = '') => getJson(`/api/reports/projects${query ? `?${query}` : ''}`)
 export const loadWhatsAppStatus = () => getJson('/api/whatsapp/status')
 export const loadWhatsAppQr = () => getJson('/api/whatsapp/qr')
+export const reconnectWhatsApp = (clearSession = false) => postJson('/api/whatsapp/reconnect', { clearSession })
+export const disconnectWhatsApp = (clearSession = true) => postJson('/api/whatsapp/disconnect', { clearSession })
+export const sendWhatsAppTestMessage = (payload) => postJson('/api/whatsapp/test-message', payload)
+export const loadWhatsAppTemplates = () => getJson('/api/whatsapp/templates')
+export const saveWhatsAppTemplates = (templates) => putJson('/api/whatsapp/templates', { templates })
+export const resetWhatsAppTemplates = () => postJson('/api/whatsapp/templates/reset', {})
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })

@@ -1,3 +1,4 @@
+import fs from 'fs/promises'
 import { normalizeWhatsAppPhone } from './whatsappNotifications.js'
 
 const DEFAULT_AUTH_DIR = 'whatsapp-auth'
@@ -13,6 +14,7 @@ export function createBaileysWhatsAppClient({
   socketFactory,
   authStateFactory,
   qrCodeFactory,
+  sessionCleaner,
   logger = console,
 } = {}) {
   let socket = null
@@ -72,6 +74,8 @@ export function createBaileysWhatsAppClient({
       connectedAt,
       authDir,
       user,
+      connectedPhone: user?.phone || '',
+      connectedName: user?.name || '',
     }
   }
 
@@ -99,7 +103,7 @@ export function createBaileysWhatsAppClient({
       lastQrDataUrl = ''
       lastError = ''
       connectedAt = new Date().toISOString()
-      user = socket?.user || null
+      user = normalizeBaileysUser(socket?.user)
       logger.info?.('[baileys] WhatsApp connecté.')
     }
 
@@ -118,7 +122,61 @@ export function createBaileysWhatsAppClient({
     }
   }
 
-  return { start, sendText, getStatus, getQr }
+  async function disconnect({ clearSession = false } = {}) {
+    const currentSocket = socket
+    started = false
+    socket = null
+    state = 'disconnected'
+    lastQr = ''
+    lastQrDataUrl = ''
+    connectedAt = null
+    user = null
+
+    try {
+      if (currentSocket?.logout) await currentSocket.logout()
+      else currentSocket?.end?.()
+      if (clearSession) await resolveSessionCleaner(sessionCleaner)(authDir)
+      return { ok: true, state }
+    } catch (error) {
+      lastError = error?.message || 'Erreur déconnexion Baileys.'
+      return { ok: false, error: lastError, state }
+    }
+  }
+
+  async function reconnect({ clearSession = false } = {}) {
+    await disconnect({ clearSession })
+    return start()
+  }
+
+  return { start, reconnect, disconnect, sendText, getStatus, getQr }
+}
+
+function normalizeBaileysUser(rawUser = null) {
+  if (!rawUser) return null
+  const rawId = String(rawUser.id || rawUser.jid || '').split('@')[0].split(':')[0]
+  const digits = normalizeWhatsAppPhone(rawId)
+  return {
+    id: rawUser.id || rawUser.jid || '',
+    name: rawUser.name || rawUser.notify || rawUser.verifiedName || '',
+    phone: formatInternationalPhone(digits),
+    phoneRaw: digits,
+  }
+}
+
+function formatInternationalPhone(digits) {
+  const value = String(digits || '')
+  if (!value) return ''
+  if (value.startsWith('225') && value.length === 13) return `+225 ${value.slice(3, 5)} ${value.slice(5, 7)} ${value.slice(7, 9)} ${value.slice(9, 11)} ${value.slice(11)}`
+  if (value.startsWith('221') && value.length === 12) return `+221 ${value.slice(3, 5)} ${value.slice(5, 8)} ${value.slice(8, 10)} ${value.slice(10)}`
+  return `+${value}`
+}
+
+function resolveSessionCleaner(sessionCleaner) {
+  if (sessionCleaner) return sessionCleaner
+  return async (authDir) => {
+    if (!authDir) return
+    await fs.rm(authDir, { recursive: true, force: true })
+  }
 }
 
 function resolveAuthStateFactory(authStateFactory) {

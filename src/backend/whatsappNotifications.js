@@ -7,6 +7,13 @@ const EVENT_TITLES = {
   arrived: 'Arrivée confirmée',
 }
 
+export const DEFAULT_WHATSAPP_TEMPLATES = {
+  created: 'TELIMAN LOGISTIQUE - Création de BL\n\nRéférence BL: {{reference}}\nClient: {{client}}\nStatut: {{status}}\nCamion: {{truckLabel}}\nChauffeur: {{driver}}\nPoint de chargement: {{loadingPoint}}\nDestination: {{destination}}\nMarchandise: {{goods}}\nQuantité: {{quantity}}\nDate création: {{date}}\nDépart: {{departureDateTime}}\nArrivée: {{arrivalDateTime}}\nNotes: {{notes}}\n\nMerci de votre confiance.',
+  status_changed: 'TELIMAN LOGISTIQUE - Changement de statut\n\nRéférence BL: {{reference}}\nClient: {{client}}\nNouveau statut: {{status}}\nCamion: {{truckLabel}}\nChauffeur: {{driver}}\nDestination: {{destination}}\n\nMerci de votre confiance.',
+  departed: 'TELIMAN LOGISTIQUE - Départ confirmé\n\nRéférence BL: {{reference}}\nClient: {{client}}\nCamion: {{truckLabel}}\nChauffeur: {{driver}}\nDépart: {{departureDateTime}}\nPoint de chargement: {{loadingPoint}}\nDestination: {{destination}}\nMarchandise: {{goods}}\nQuantité: {{quantity}}\nNotes: {{notes}}\n\nMerci de votre confiance.',
+  arrived: 'TELIMAN LOGISTIQUE - Arrivée confirmée\n\nRéférence BL: {{reference}}\nClient: {{client}}\nCamion: {{truckLabel}}\nChauffeur: {{driver}}\nArrivée: {{arrivalDateTime}}\nDestination: {{destination}}\nMarchandise: {{goods}}\nQuantité: {{quantity}}\n\nMerci de votre confiance.',
+}
+
 export function normalizeWhatsAppPhone(value) {
   const digits = String(value || '').replace(/\D/g, '')
   if (!digits) return ''
@@ -51,6 +58,15 @@ export function detectDeliveryOrderWhatsAppEvents(previousOrder = null, nextOrde
 }
 
 export function buildDeliveryOrderWhatsAppMessage(eventType, order = {}) {
+  return buildWhatsAppMessageFromTemplate(eventType, order, DEFAULT_WHATSAPP_TEMPLATES)
+}
+
+export function buildWhatsAppMessageFromTemplate(eventType, order = {}, templates = DEFAULT_WHATSAPP_TEMPLATES) {
+  const template = String(templates?.[eventType] || DEFAULT_WHATSAPP_TEMPLATES[eventType] || DEFAULT_WHATSAPP_TEMPLATES.created)
+  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, key) => templateValue(key, order))
+}
+
+export function buildLegacyDeliveryOrderWhatsAppMessage(eventType, order = {}) {
   const title = EVENT_TITLES[eventType] || 'Mise à jour BL'
   const lines = [
     `TELIMAN LOGISTIQUE - ${title}`,
@@ -133,7 +149,7 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   }
 }
 
-export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null } = {}) {
+export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES } = {}) {
   const events = detectDeliveryOrderWhatsAppEvents(previousOrder, order)
   const recipients = resolveClientWhatsAppRecipients(order, masterData)
 
@@ -149,13 +165,18 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
 
   const results = []
   for (const eventType of events) {
-    const message = buildDeliveryOrderWhatsAppMessage(eventType, order)
+    const message = buildWhatsAppMessageFromTemplate(eventType, order, templates)
     for (const recipient of recipients) {
       const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
       results.push({ eventType, recipient, ...result })
     }
   }
   return results
+}
+
+function templateValue(key, order = {}) {
+  if (key === 'date' || key === 'departureDateTime' || key === 'arrivalDateTime') return formatDateTime(order[key])
+  return display(order[key])
 }
 
 function normalizeComparableDate(value) {

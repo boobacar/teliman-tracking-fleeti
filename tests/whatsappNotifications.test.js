@@ -3,7 +3,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildDeliveryOrderWhatsAppMessage,
+  buildWhatsAppMessageFromTemplate,
   buildWhatsAppConfigFromEnv,
+  DEFAULT_WHATSAPP_TEMPLATES,
   detectDeliveryOrderWhatsAppEvents,
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
@@ -173,4 +175,52 @@ test('createBaileysWhatsAppClient expose le statut, le QR et envoie un message v
   assert.equal(result.sent, true)
   assert.equal(result.messageId, 'MSG-1')
   assert.deepEqual(sent, [{ jid: '2250701020304@s.whatsapp.net', payload: { text: 'Message test' } }])
+})
+
+test('createBaileysWhatsAppClient expose le vrai numéro connecté et peut se déconnecter puis redémarrer', async () => {
+  const handlers = {}
+  let logoutCalls = 0
+  let cleanCalls = 0
+  let socketCreations = 0
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => {
+      socketCreations += 1
+      return {
+        user: { id: '221776260020:12@s.whatsapp.net', name: 'Teliman Test' },
+        ev: { on: (name, handler) => { handlers[name] = handler } },
+        logout: async () => { logoutCalls += 1 },
+        end: () => {},
+        sendMessage: async () => ({ key: { id: 'MSG' } }),
+      }
+    },
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async (qr) => `data:image/png;base64,${Buffer.from(qr).toString('base64')}`,
+    sessionCleaner: async () => { cleanCalls += 1 },
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  assert.equal(client.getStatus().connectedPhone, '+221 77 626 00 20')
+  assert.equal(client.getStatus().connectedName, 'Teliman Test')
+
+  const logoutResult = await client.disconnect({ clearSession: true })
+  assert.equal(logoutResult.ok, true)
+  assert.equal(logoutCalls, 1)
+  assert.equal(cleanCalls, 1)
+  assert.equal(client.getStatus().state, 'disconnected')
+  assert.equal(client.getStatus().connectedPhone, '')
+
+  await client.reconnect({ clearSession: false })
+  assert.equal(socketCreations, 2)
+})
+
+test('buildWhatsAppMessageFromTemplate remplace les variables BL modifiables', () => {
+  const message = buildWhatsAppMessageFromTemplate('created', order, {
+    created: 'Bonjour {{client}}, votre BL {{reference}} vers {{destination}} est prêt. Camion {{truckLabel}}.',
+  })
+
+  assert.equal(message, 'Bonjour K1 MINE, votre BL BL-2026-001 vers Bouaké est prêt. Camion TG 1234 AB.')
+  assert.match(DEFAULT_WHATSAPP_TEMPLATES.departed, /{{departureDateTime}}/)
 })
