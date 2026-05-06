@@ -83,6 +83,25 @@ export function buildLegacyDeliveryOrderWhatsAppMessage(eventType, order = {}) {
   return lines.join('\n')
 }
 
+export function createWhatsAppHistoryEntry({ result = {}, order = {}, message = '', source = 'delivery_order', senderPhone = '', now = () => new Date().toISOString() } = {}) {
+  const status = result.sent ? 'sent' : result.skipped ? 'skipped' : 'failed'
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    sentAt: now(),
+    status,
+    source,
+    eventType: result.eventType || '',
+    recipient: result.recipient || '',
+    senderPhone: senderPhone || '',
+    messageId: result.messageId || '',
+    reason: result.reason || '',
+    orderId: order?.id || '',
+    orderReference: order?.reference || '',
+    client: order?.client || '',
+    messagePreview: truncateMessagePreview(message),
+  }
+}
+
 export function buildWhatsAppConfigFromEnv(env = {}) {
   return {
     enabled: String(env.WHATSAPP_NOTIFICATIONS_ENABLED ?? 'true').toLowerCase() !== 'false',
@@ -151,6 +170,7 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
       sent: false,
       skipped: true,
       reason: `Aucun numéro WhatsApp configuré pour le client ${order?.client || '-'}.`,
+      message: buildWhatsAppMessageFromTemplate(eventType, order, templates),
     }))
   }
 
@@ -159,7 +179,7 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
     const message = buildWhatsAppMessageFromTemplate(eventType, order, templates)
     for (const recipient of recipients) {
       const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
-      results.push({ eventType, recipient, ...result })
+      results.push({ eventType, recipient, message, ...result })
     }
   }
   return results
@@ -168,6 +188,11 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
 function templateValue(key, order = {}) {
   if (key === 'date' || key === 'departureDateTime' || key === 'arrivalDateTime') return formatDateTime(order[key])
   return display(order[key])
+}
+
+function truncateMessagePreview(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text
 }
 
 function normalizeDeliveryStatus(value) {

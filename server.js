@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
-import { buildWhatsAppConfigFromEnv, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 
 dotenv.config()
 
@@ -23,6 +23,8 @@ const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
 const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
 const WHATSAPP_TEMPLATES_FILE = path.join(DATA_DIR, 'whatsapp-templates.json')
+const WHATSAPP_HISTORY_FILE = path.join(DATA_DIR, 'whatsapp-history.json')
+const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -366,6 +368,27 @@ function normalizeWhatsAppTemplates(payload = {}) {
   }))
 }
 
+function readWhatsAppHistory() {
+  try {
+    const payload = JSON.parse(fs.readFileSync(WHATSAPP_HISTORY_FILE, 'utf8'))
+    return Array.isArray(payload) ? payload.slice(0, WHATSAPP_HISTORY_LIMIT) : []
+  } catch {
+    return []
+  }
+}
+
+function writeWhatsAppHistory(entries) {
+  const normalized = Array.isArray(entries) ? entries.slice(0, WHATSAPP_HISTORY_LIMIT) : []
+  fs.writeFileSync(WHATSAPP_HISTORY_FILE, JSON.stringify(normalized, null, 2))
+  return normalized
+}
+
+function appendWhatsAppHistory(entries) {
+  const newEntries = Array.isArray(entries) ? entries.filter(Boolean) : [entries].filter(Boolean)
+  if (!newEntries.length) return readWhatsAppHistory()
+  return writeWhatsAppHistory([...newEntries, ...readWhatsAppHistory()])
+}
+
 async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   const results = await sendDeliveryOrderWhatsAppNotifications({
     previousOrder,
@@ -376,6 +399,13 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
     templates: readWhatsAppTemplates(),
   })
   for (const result of results) {
+    appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result,
+      order,
+      message: result.message,
+      source: 'delivery_order',
+      senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+    }))
     if (result.sent) {
       console.log(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} envoyé à ${result.recipient}`)
     } else {
@@ -1996,6 +2026,11 @@ app.post('/api/whatsapp/disconnect', async (req, res) => {
   res.json(result)
 })
 
+app.get('/api/whatsapp/history', (req, res) => {
+  const limit = Math.max(1, Math.min(Number(req.query.limit || 100), WHATSAPP_HISTORY_LIMIT))
+  res.json({ ok: true, history: readWhatsAppHistory().slice(0, limit) })
+})
+
 app.post('/api/whatsapp/test-message', async (req, res) => {
   const result = await sendWhatsAppTextMessage({
     to: req.body?.to,
@@ -2003,6 +2038,13 @@ app.post('/api/whatsapp/test-message', async (req, res) => {
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
   })
+  appendWhatsAppHistory(createWhatsAppHistoryEntry({
+    result: { ...result, recipient: req.body?.to || '', eventType: 'test' },
+    order: {},
+    message: req.body?.message || '',
+    source: 'manual_test',
+    senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+  }))
   res.status(result.sent ? 200 : 400).json({ ok: Boolean(result.sent), ...result })
 })
 

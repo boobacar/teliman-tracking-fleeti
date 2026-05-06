@@ -6,6 +6,7 @@ import {
   buildWhatsAppMessageFromTemplate,
   buildWhatsAppConfigFromEnv,
   DEFAULT_WHATSAPP_TEMPLATES,
+  createWhatsAppHistoryEntry,
   detectDeliveryOrderWhatsAppEvents,
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
@@ -225,4 +226,26 @@ test('buildWhatsAppMessageFromTemplate remplace les variables BL modifiables', (
 
   assert.equal(message, 'Bonjour K1 MINE, votre BL BL-2026-001 vers Bouaké est prêt. Camion TG 1234 AB.')
   assert.match(DEFAULT_WHATSAPP_TEMPLATES.departed, /{{departureDateTime}}/)
+})
+
+test('createWhatsAppHistoryEntry construit une ligne historique sans secrets et avec aperçu message', () => {
+  const entry = createWhatsAppHistoryEntry({
+    result: { eventType: 'created', recipient: '2250701020304', sent: false, skipped: true, reason: 'Baileys non connecté', messageId: 'MSG-1' },
+    order,
+    message: 'Bonjour Teliman '.repeat(20),
+    source: 'delivery_order',
+    senderPhone: '+225 69 28 93 04',
+    now: () => '2026-05-06T15:00:00.000Z',
+  })
+
+  assert.equal(entry.status, 'skipped')
+  assert.equal(entry.eventType, 'created')
+  assert.equal(entry.orderReference, 'BL-2026-001')
+  assert.equal(entry.client, 'K1 MINE')
+  assert.equal(entry.recipient, '2250701020304')
+  assert.equal(entry.senderPhone, '+225 69 28 93 04')
+  assert.equal(entry.reason, 'Baileys non connecté')
+  assert.equal(entry.sentAt, '2026-05-06T15:00:00.000Z')
+  assert.ok(entry.messagePreview.length <= 180)
+  assert.equal(entry.accessToken, undefined)
 })

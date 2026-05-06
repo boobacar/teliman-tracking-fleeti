@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Copy, MessageCircle, Power, QrCode, RefreshCcw, RotateCcw, Save, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
 import {
   disconnectWhatsApp,
+  loadWhatsAppHistory,
   loadWhatsAppQr,
   loadWhatsAppStatus,
   loadWhatsAppTemplates,
@@ -27,6 +28,7 @@ export function WhatsAppPage() {
   const [whatsAppStatus, setWhatsAppStatus] = useState(null)
   const [whatsAppQr, setWhatsAppQr] = useState(null)
   const [templates, setTemplates] = useState({})
+  const [history, setHistory] = useState([])
   const [statusError, setStatusError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [busyAction, setBusyAction] = useState('')
@@ -44,10 +46,11 @@ export function WhatsAppPage() {
 
   const refreshWhatsAppConnection = useCallback(async () => {
     try {
-      const [status, qr, templatePayload] = await Promise.all([loadWhatsAppStatus(), loadWhatsAppQr(), loadWhatsAppTemplates()])
+      const [status, qr, templatePayload, historyPayload] = await Promise.all([loadWhatsAppStatus(), loadWhatsAppQr(), loadWhatsAppTemplates(), loadWhatsAppHistory()])
       setWhatsAppStatus(status)
       setWhatsAppQr(qr)
       setTemplates(templatePayload.templates || {})
+      setHistory(historyPayload.history || [])
       setStatusError('')
     } catch (error) {
       setStatusError(error?.message || 'Impossible de charger la configuration WhatsApp.')
@@ -184,6 +187,39 @@ export function WhatsAppPage() {
       <section className="panel panel-large">
         <div className="panel-header">
           <div>
+            <h3>Historique WhatsApp</h3>
+            <p>Derniers messages envoyés, échecs et notifications ignorées. Les données sont stockées côté serveur hors Git.</p>
+          </div>
+          <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
+        </div>
+        {history.length ? (
+          <div className="whatsapp-history-list">
+            {history.map((entry) => (
+              <article className={`whatsapp-history-item ${entry.status || 'failed'}`} key={entry.id || `${entry.sentAt}-${entry.recipient}`}>
+                <div className="whatsapp-history-topline">
+                  <span className={`status-pill ${entry.status || 'failed'}`}>{historyStatusLabel(entry.status)}</span>
+                  <strong>{historyEventLabel(entry)}</strong>
+                  <small>{formatHistoryDate(entry.sentAt)}</small>
+                </div>
+                <div className="whatsapp-history-meta">
+                  <span>À : {entry.recipient || '-'}</span>
+                  {entry.senderPhone && <span>Depuis : {entry.senderPhone}</span>}
+                  {entry.client && <span>Client : {entry.client}</span>}
+                  {entry.orderReference && <span>BL : {entry.orderReference}</span>}
+                </div>
+                {entry.reason && <p className="form-hint danger-text">Raison : {entry.reason}</p>}
+                {entry.messagePreview && <p className="whatsapp-message-preview">{entry.messagePreview}</p>}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state small-empty">Aucun historique WhatsApp pour le moment. Les prochains envois et échecs apparaîtront ici.</div>
+        )}
+      </section>
+
+      <section className="panel panel-large">
+        <div className="panel-header">
+          <div>
             <h3>Templates des notifications BL</h3>
             <p>Modifie ici les 2 messages automatiques envoyés aux clients : création de BL et passage du statut à Livré. Les variables entre doubles accolades seront remplacées par les données du BL.</p>
           </div>
@@ -213,4 +249,31 @@ function normalizePhoneForWhatsApp(value) {
   if (digits.startsWith('225')) return digits
   if (digits.length === 10 && digits.startsWith('0')) return `225${digits}`
   return digits
+}
+
+function historyStatusLabel(status) {
+  if (status === 'sent') return 'Envoyé'
+  if (status === 'skipped') return 'Ignoré'
+  return 'Échec'
+}
+
+function historyEventLabel(entry = {}) {
+  if (entry.eventType === 'created') return 'Création BL'
+  if (entry.eventType === 'arrived') return 'Arrivée / statut Livré'
+  if (entry.eventType === 'test') return 'Message test'
+  return entry.source === 'manual_test' ? 'Message test' : 'Notification BL'
+}
+
+function formatHistoryDate(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('fr-FR', {
+    timeZone: 'Africa/Abidjan',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
