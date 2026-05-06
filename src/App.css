@@ -89,6 +89,27 @@ textarea:focus-visible,
   min-height: 126px;
 }
 
+.whatsapp-qr-box {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(134, 239, 172, 0.18);
+  border-radius: var(--radius-lg);
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.whatsapp-qr-box img {
+  width: min(280px, 100%);
+  border-radius: 18px;
+  background: #fff;
+  padding: 10px;
+}
+
+.whatsapp-qr-box small {
+  color: var(--color-muted);
+}
+
 .success-chip {
   display: inline-flex;
   align-items: center;

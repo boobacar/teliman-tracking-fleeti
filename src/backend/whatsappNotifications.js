@@ -79,17 +79,23 @@ export function buildDeliveryOrderWhatsAppMessage(eventType, order = {}) {
 export function buildWhatsAppConfigFromEnv(env = {}) {
   return {
     enabled: String(env.WHATSAPP_NOTIFICATIONS_ENABLED ?? 'true').toLowerCase() !== 'false',
+    provider: String(env.WHATSAPP_PROVIDER || 'meta').trim().toLowerCase() || 'meta',
     accessToken: String(env.WHATSAPP_ACCESS_TOKEN || env.META_WHATSAPP_ACCESS_TOKEN || '').trim(),
     phoneNumberId: String(env.WHATSAPP_PHONE_NUMBER_ID || env.META_WHATSAPP_PHONE_NUMBER_ID || '').trim(),
     apiVersion: String(env.WHATSAPP_API_VERSION || DEFAULT_WHATSAPP_API_VERSION).trim() || DEFAULT_WHATSAPP_API_VERSION,
+    baileysAuthDir: String(env.WHATSAPP_BAILEYS_AUTH_DIR || '').trim(),
   }
 }
 
-export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch } = {}) {
+export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null } = {}) {
   const recipient = normalizeWhatsAppPhone(to)
   if (!recipient) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
   if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
   if (config.enabled === false) return { sent: false, skipped: true, reason: 'Notifications WhatsApp désactivées.' }
+  if (config.provider === 'baileys') {
+    if (!baileysClient) return { sent: false, skipped: true, reason: 'Client Baileys non démarré.' }
+    return baileysClient.sendText(recipient, message)
+  }
   if (!config.accessToken || !config.phoneNumberId) {
     return { sent: false, skipped: true, reason: 'WhatsApp Cloud API non configurée.' }
   }
@@ -127,7 +133,7 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   }
 }
 
-export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch } = {}) {
+export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null } = {}) {
   const events = detectDeliveryOrderWhatsAppEvents(previousOrder, order)
   const recipients = resolveClientWhatsAppRecipients(order, masterData)
 
@@ -145,7 +151,7 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
   for (const eventType of events) {
     const message = buildDeliveryOrderWhatsAppMessage(eventType, order)
     for (const recipient of recipients) {
-      const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl })
+      const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
       results.push({ eventType, recipient, ...result })
     }
   }

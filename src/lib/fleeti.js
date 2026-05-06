@@ -130,6 +130,8 @@ export const loadReportPerformanceDays = (query = '') => getJson(`/api/reports/p
 export const loadReportFuelSummary = (query = '') => getJson(`/api/reports/fuel-summary${query ? `?${query}` : ''}`)
 export const loadReportBatches = (query = '') => getJson(`/api/reports/batches${query ? `?${query}` : ''}`)
 export const loadReportProjects = (query = '') => getJson(`/api/reports/projects${query ? `?${query}` : ''}`)
+export const loadWhatsAppStatus = () => getJson('/api/whatsapp/status')
+export const loadWhatsAppQr = () => getJson('/api/whatsapp/qr')
 export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })

@@ -1,11 +1,14 @@
+import { Buffer } from 'node:buffer'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildDeliveryOrderWhatsAppMessage,
+  buildWhatsAppConfigFromEnv,
   detectDeliveryOrderWhatsAppEvents,
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
+import { createBaileysWhatsAppClient, toBaileysJid } from '../src/backend/baileysWhatsAppClient.js'
 
 const order = {
   id: 101,
@@ -102,4 +105,72 @@ test('sendWhatsAppTextMessage ne bloque pas les BL quand WhatsApp API est désac
   assert.equal(result.sent, false)
   assert.equal(result.skipped, true)
   assert.match(result.reason, /non configurée/i)
+})
+
+test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth persistant', () => {
+  assert.deepEqual(buildWhatsAppConfigFromEnv({
+    WHATSAPP_PROVIDER: 'baileys',
+    WHATSAPP_NOTIFICATIONS_ENABLED: 'true',
+    WHATSAPP_BAILEYS_AUTH_DIR: '/tmp/teliman-wa-auth',
+  }), {
+    enabled: true,
+    provider: 'baileys',
+    accessToken: '',
+    phoneNumberId: '',
+    apiVersion: 'v20.0',
+    baileysAuthDir: '/tmp/teliman-wa-auth',
+  })
+})
+
+test('toBaileysJid transforme un numéro international en identifiant WhatsApp', () => {
+  assert.equal(toBaileysJid('+225 07 01 02 03 04'), '2250701020304@s.whatsapp.net')
+})
+
+test('sendWhatsAppTextMessage délègue l’envoi au client Baileys quand le provider est baileys', async () => {
+  const calls = []
+  const result = await sendWhatsAppTextMessage({
+    to: '+225 07 01 02 03 04',
+    message: 'Bonjour via Baileys',
+    config: { enabled: true, provider: 'baileys' },
+    baileysClient: {
+      sendText: async (to, message) => {
+        calls.push({ to, message })
+        return { sent: true, messageId: 'BAILEYS-1' }
+      },
+    },
+  })
+
+  assert.equal(result.sent, true)
+  assert.equal(result.messageId, 'BAILEYS-1')
+  assert.deepEqual(calls, [{ to: '2250701020304', message: 'Bonjour via Baileys' }])
+})
+
+test('createBaileysWhatsAppClient expose le statut, le QR et envoie un message via socket injectée', async () => {
+  const sent = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      sendMessage: async (jid, payload) => {
+        sent.push({ jid, payload })
+        return { key: { id: 'MSG-1' } }
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async (qr) => `data:image/png;base64,${Buffer.from(qr).toString('base64')}`,
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'connecting', qr: 'QR-CODE-CONTENT' })
+  assert.equal(client.getStatus().state, 'qr')
+  assert.equal(client.getQr().qr, 'QR-CODE-CONTENT')
+  assert.match(client.getQr().qrDataUrl, /^data:image\/png;base64,/)
+
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+225 07 01 02 03 04', 'Message test')
+  assert.equal(result.sent, true)
+  assert.equal(result.messageId, 'MSG-1')
+  assert.deepEqual(sent, [{ jid: '2250701020304@s.whatsapp.net', payload: { text: 'Message test' } }])
 })

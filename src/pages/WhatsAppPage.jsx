@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { CheckCircle2, Copy, MessageCircle, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CheckCircle2, Copy, MessageCircle, QrCode, RefreshCcw, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
+import { loadWhatsAppQr, loadWhatsAppStatus } from '../lib/fleeti.js'
 
 const WHATSAPP_API_PHONE_DISPLAY = '+225 07 00 184 839'
 const WHATSAPP_API_PHONE_E164 = '2250700184839'
@@ -9,12 +10,36 @@ export function WhatsAppPage() {
   const [recipientPhone, setRecipientPhone] = useState('')
   const [message, setMessage] = useState(DEFAULT_MESSAGE)
   const [copied, setCopied] = useState('')
+  const [whatsAppStatus, setWhatsAppStatus] = useState(null)
+  const [whatsAppQr, setWhatsAppQr] = useState(null)
+  const [statusError, setStatusError] = useState('')
 
   const normalizedRecipient = useMemo(() => normalizePhoneForWhatsApp(recipientPhone), [recipientPhone])
   const previewLink = useMemo(() => {
     const target = normalizedRecipient || WHATSAPP_API_PHONE_E164
     return `https://wa.me/${target}?text=${encodeURIComponent(message || DEFAULT_MESSAGE)}`
   }, [message, normalizedRecipient])
+  const connectionLabel = whatsAppStatus?.connected ? 'Connecté' : whatsAppQr?.hasQr ? 'QR à scanner' : whatsAppStatus?.state || 'Chargement…'
+
+  const refreshWhatsAppConnection = useCallback(async () => {
+    try {
+      const [status, qr] = await Promise.all([loadWhatsAppStatus(), loadWhatsAppQr()])
+      setWhatsAppStatus(status)
+      setWhatsAppQr(qr)
+      setStatusError('')
+    } catch (error) {
+      setStatusError(error?.message || 'Impossible de charger le statut WhatsApp.')
+    }
+  }, [])
+
+  useEffect(() => {
+    const initialTimer = window.setTimeout(refreshWhatsAppConnection, 0)
+    const timer = window.setInterval(refreshWhatsAppConnection, 10000)
+    return () => {
+      window.clearTimeout(initialTimer)
+      window.clearInterval(timer)
+    }
+  }, [refreshWhatsAppConnection])
 
   async function copyValue(value, label) {
     try {
@@ -32,8 +57,8 @@ export function WhatsAppPage() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Canal client</p>
-            <h3>WhatsApp Business API</h3>
-            <p>Nouvelle page dédiée au numéro WhatsApp utilisé par l’API Teliman et à la préparation des messages.</p>
+            <h3>WhatsApp Baileys</h3>
+            <p>Connexion simple via QR code WhatsApp Web pour envoyer les notifications BL automatiques aux clients.</p>
           </div>
           <div className="whatsapp-hero-icon"><MessageCircle size={28} /></div>
         </div>
@@ -44,9 +69,9 @@ export function WhatsAppPage() {
             <small>Format API : {WHATSAPP_API_PHONE_E164}</small>
           </div>
           <div className="mission-highlight-card">
-            <span>Statut configuration</span>
-            <strong>Prêt côté interface</strong>
-            <small>En attente des clés Meta/WhatsApp pour l’envoi serveur.</small>
+            <span>Statut connexion</span>
+            <strong>{connectionLabel}</strong>
+            <small>{statusError || (whatsAppStatus?.lastError ? whatsAppStatus.lastError : 'Session stockée côté serveur hors Git.')}</small>
           </div>
           <div className="mission-highlight-card">
             <span>Lien rapide</span>
@@ -57,8 +82,29 @@ export function WhatsAppPage() {
         <div className="table-actions" style={{ marginTop: 18 }}>
           <a className="primary-btn" href={`https://wa.me/${WHATSAPP_API_PHONE_E164}`} target="_blank" rel="noreferrer"><Send size={16} /> Ouvrir WhatsApp</a>
           <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(WHATSAPP_API_PHONE_DISPLAY, 'numéro copié')}><Copy size={16} /> Copier le numéro</button>
+          <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser statut</button>
           {copied && <span className="success-chip"><CheckCircle2 size={14} /> {copied}</span>}
         </div>
+      </section>
+
+      <section className="panel panel-large">
+        <div className="panel-header">
+          <div>
+            <h3>Connexion WhatsApp</h3>
+            <p>Scanne ce QR code avec le téléphone WhatsApp Teliman : WhatsApp → Appareils connectés → Connecter un appareil.</p>
+          </div>
+          <QrCode size={22} />
+        </div>
+        {whatsAppQr?.qrDataUrl ? (
+          <div className="whatsapp-qr-box">
+            <img src={whatsAppQr.qrDataUrl} alt="QR code de connexion WhatsApp" />
+            <small>Le QR code se renouvelle automatiquement. Actualise si besoin.</small>
+          </div>
+        ) : (
+          <div className="empty-state small-empty">
+            {whatsAppStatus?.connected ? 'WhatsApp est déjà connecté.' : 'QR code en attente de génération côté serveur.'}
+          </div>
+        )}
       </section>
 
       <section className="panel panel-large">
@@ -87,7 +133,7 @@ export function WhatsAppPage() {
       <section className="stats-grid stats-grid-tight whatsapp-info-grid">
         <article className="stat-card"><div className="stat-icon"><Smartphone size={18} /></div><div><p>Numéro émetteur</p><strong>{WHATSAPP_API_PHONE_DISPLAY}</strong></div></article>
         <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création, statut, départ, arrivée</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>API Meta</p><strong>WHATSAPP_ACCESS_TOKEN + PHONE_NUMBER_ID</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Provider</p><strong>Baileys / WhatsApp Web</strong></div></article>
       </section>
 
       <section className="panel panel-large">

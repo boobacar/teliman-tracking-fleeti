@@ -7,6 +7,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
+import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, sendDeliveryOrderWhatsAppNotifications } from './src/backend/whatsappNotifications.js'
 
 dotenv.config()
@@ -45,6 +46,9 @@ const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
 const TRACKS_SOURCE = resolveTracksSource(process.env.FLEETI_TRACKS_SOURCE)
 const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
 const WHATSAPP_CONFIG = buildWhatsAppConfigFromEnv(process.env)
+const baileysWhatsAppClient = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys'
+  ? createBaileysWhatsAppClient({ authDir: WHATSAPP_CONFIG.baileysAuthDir || path.join(DATA_DIR, 'whatsapp-auth') })
+  : null
 
 validateRequiredEnv()
 
@@ -345,6 +349,7 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
     order,
     masterData: readMasterData(),
     config: WHATSAPP_CONFIG,
+    baileysClient: baileysWhatsAppClient,
   })
   for (const result of results) {
     if (result.sent) {
@@ -1936,6 +1941,25 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
+app.get('/api/whatsapp/status', (_req, res) => {
+  if (!baileysWhatsAppClient) {
+    return res.json({
+      provider: WHATSAPP_CONFIG.provider,
+      enabled: WHATSAPP_CONFIG.enabled,
+      connected: false,
+      state: WHATSAPP_CONFIG.enabled ? 'not_configured' : 'disabled',
+    })
+  }
+  res.json({ enabled: WHATSAPP_CONFIG.enabled, ...baileysWhatsAppClient.getStatus() })
+})
+
+app.get('/api/whatsapp/qr', (_req, res) => {
+  if (!baileysWhatsAppClient) {
+    return res.json({ provider: WHATSAPP_CONFIG.provider, enabled: WHATSAPP_CONFIG.enabled, hasQr: false, state: 'not_configured' })
+  }
+  res.json({ enabled: WHATSAPP_CONFIG.enabled, ...baileysWhatsAppClient.getQr() })
+})
+
 app.get('/api/dashboard', async (req, res) => {
   try {
     const forceRefresh = req.query.refresh === '1'
@@ -2874,4 +2898,7 @@ app.get('/api/reports/projects', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Teliman Tracking Fleeti API running on http://localhost:${PORT}`)
+  if (baileysWhatsAppClient) {
+    baileysWhatsAppClient.start().catch((error) => console.error(`[baileys] démarrage impossible: ${error?.message || error}`))
+  }
 })
