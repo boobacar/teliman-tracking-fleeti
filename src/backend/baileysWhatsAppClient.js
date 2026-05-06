@@ -134,8 +134,12 @@ function resolveSocketFactory(socketFactory) {
   return async ({ auth }) => {
     const baileys = await import('@whiskeysockets/baileys')
     const makeWASocket = baileys.default || baileys.makeWASocket
+    const { version } = baileys.fetchLatestBaileysVersion
+      ? await baileys.fetchLatestBaileysVersion()
+      : { version: undefined }
     return makeWASocket({
       auth,
+      version,
       printQRInTerminal: false,
       browser: ['Teliman Logistique', 'Chrome', '1.0.0'],
     })
