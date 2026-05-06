@@ -15,11 +15,27 @@ import {
 const FALLBACK_PHONE_DISPLAY = '+225 07 00 184 839'
 const FALLBACK_PHONE_E164 = '2250700184839'
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
-const TEMPLATE_LABELS = {
-  created: 'Création BL',
-  arrived: 'Arrivée / statut Livré',
-}
-const TEMPLATE_HELP = 'Variables disponibles : {{reference}}, {{client}}, {{status}}, {{truckLabel}}, {{driver}}, {{loadingPoint}}, {{destination}}, {{goods}}, {{quantity}}, {{date}}, {{departureDateTime}}, {{arrivalDateTime}}, {{notes}}'
+const TEMPLATE_CARDS = [
+  {
+    key: 'created',
+    label: 'Création BL',
+    eyebrow: 'Déclencheur automatique',
+    description: 'Envoyé dès qu’un nouveau bon de livraison est créé pour un client avec numéro WhatsApp.',
+    accent: 'emerald',
+    icon: MessageCircle,
+    chips: ['Nouveau BL', 'Client notifié'],
+  },
+  {
+    key: 'arrived',
+    label: 'Arrivée / statut Livré',
+    eyebrow: 'Fin de mission',
+    description: 'Envoyé uniquement quand le statut du BL passe à Livré.',
+    accent: 'violet',
+    icon: CheckCircle2,
+    chips: ['Statut Livré', 'Arrivée confirmée'],
+  },
+]
+const TEMPLATE_VARIABLES = ['reference', 'client', 'status', 'truckLabel', 'driver', 'loadingPoint', 'destination', 'goods', 'quantity', 'date', 'departureDateTime', 'arrivalDateTime', 'notes']
 
 export function WhatsAppPage() {
   const [recipientPhone, setRecipientPhone] = useState('')
@@ -217,25 +233,75 @@ export function WhatsAppPage() {
         )}
       </section>
 
-      <section className="panel panel-large">
-        <div className="panel-header">
-          <div>
+      <section className="panel panel-large whatsapp-template-panel">
+        <div className="template-section-hero">
+          <div className="template-section-copy">
+            <span className="template-section-kicker">Messages automatiques BL</span>
             <h3>Templates des notifications BL</h3>
-            <p>Modifie ici les 2 messages automatiques envoyés aux clients : création de BL et passage du statut à Livré. Les variables entre doubles accolades seront remplacées par les données du BL.</p>
+            <p>Personnalise les deux messages envoyés aux clients : création de BL et passage du statut à Livré. Les modifications sont enregistrées côté serveur hors Git.</p>
+          </div>
+          <div className="template-section-metrics" aria-label="Résumé des templates WhatsApp">
+            <div>
+              <strong>2</strong>
+              <span>templates actifs</span>
+            </div>
+            <div>
+              <strong>0</strong>
+              <span>autre déclencheur</span>
+            </div>
           </div>
         </div>
-        <p className="form-hint">{TEMPLATE_HELP}</p>
-        <div className="whatsapp-template-grid">
-          {Object.entries(TEMPLATE_LABELS).map(([key, label]) => (
-            <label key={key}>
-              <span>{label}</span>
-              <textarea rows={7} value={templates[key] || ''} onChange={(event) => updateTemplate(key, event.target.value)} />
-            </label>
+
+        <div className="template-variable-cloud" aria-label="Variables disponibles pour les templates">
+          <span className="template-variable-title">Variables rapides</span>
+          {TEMPLATE_VARIABLES.map((variable) => (
+            <button type="button" key={variable} className="template-variable-chip" onClick={() => copyValue(`{{${variable}}}`, `variable ${variable} copiée`)}>{`{{${variable}}}`}</button>
           ))}
         </div>
-        <div className="table-actions" style={{ marginTop: 16 }}>
-          <button type="button" className="primary-btn" disabled={Boolean(busyAction)} onClick={() => runAction('save-templates', () => saveWhatsAppTemplates(templates))}><Save size={16} /> Enregistrer les templates</button>
-          <button type="button" className="ghost-btn small-btn" disabled={Boolean(busyAction)} onClick={() => runAction('reset-templates', resetWhatsAppTemplates)}><RotateCcw size={16} /> Réinitialiser</button>
+
+        <div className="whatsapp-template-grid redesigned">
+          {TEMPLATE_CARDS.map((card) => {
+            const Icon = card.icon
+            const value = templates[card.key] || ''
+            return (
+              <article className={`whatsapp-template-card ${card.accent}`} key={card.key}>
+                <div className="template-card-header">
+                  <div className="template-card-icon"><Icon size={19} /></div>
+                  <div>
+                    <span>{card.eyebrow}</span>
+                    <h4>{card.label}</h4>
+                  </div>
+                </div>
+                <p className="template-card-description">{card.description}</p>
+                <div className="template-card-chips">
+                  {card.chips.map((chip) => <span key={chip}>{chip}</span>)}
+                </div>
+                <label className="template-editor-label">
+                  <span>Texte du message</span>
+                  <textarea rows={8} value={value} onChange={(event) => updateTemplate(card.key, event.target.value)} placeholder="Rédige le message WhatsApp…" />
+                </label>
+                <div className="template-card-footer">
+                  <span>{value.length} caractères</span>
+                  <span>{(value.match(/{{/g) || []).length} variables</span>
+                </div>
+                <div className="template-preview-bubble">
+                  <span>Aperçu client</span>
+                  <p>{value || 'Le message apparaîtra ici pendant la saisie.'}</p>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        <div className="template-actions-bar">
+          <div>
+            <strong>Prêt à publier ?</strong>
+            <span>Enregistre pour appliquer les textes aux prochains BL. Les anciens messages ne sont pas modifiés.</span>
+          </div>
+          <div className="table-actions">
+            <button type="button" className="primary-btn" disabled={Boolean(busyAction)} onClick={() => runAction('save-templates', () => saveWhatsAppTemplates(templates))}><Save size={16} /> Enregistrer les templates</button>
+            <button type="button" className="ghost-btn small-btn" disabled={Boolean(busyAction)} onClick={() => runAction('reset-templates', resetWhatsAppTemplates)}><RotateCcw size={16} /> Réinitialiser</button>
+          </div>
         </div>
       </section>
     </div>

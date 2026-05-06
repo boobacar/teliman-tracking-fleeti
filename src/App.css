@@ -110,18 +110,285 @@ textarea:focus-visible,
   color: var(--color-muted);
 }
 
+.whatsapp-template-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(113, 112, 255, 0.18);
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 34%),
+    radial-gradient(circle at top right, rgba(113, 112, 255, 0.16), transparent 30%),
+    rgba(15, 23, 42, 0.76);
+}
+
+.template-section-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.template-section-copy h3 {
+  margin: 6px 0 8px;
+  color: #f7f8f8;
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: -0.04em;
+}
+
+.template-section-copy p {
+  max-width: 720px;
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.65;
+}
+
+.template-section-kicker {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border: 1px solid rgba(134, 239, 172, 0.2);
+  border-radius: 999px;
+  color: #bbf7d0;
+  background: rgba(16, 185, 129, 0.1);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.template-section-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(112px, 1fr));
+  gap: 10px;
+  min-width: min(280px, 100%);
+}
+
+.template-section-metrics div {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(2, 6, 23, 0.38);
+}
+
+.template-section-metrics strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.template-section-metrics span {
+  display: block;
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.template-variable-cloud {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 18px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.template-variable-title {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 800;
+  margin-right: 4px;
+}
+
+.template-variable-chip {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #c4b5fd;
+  background: rgba(113, 112, 255, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.template-variable-chip:hover {
+  border-color: rgba(196, 181, 253, 0.5);
+  background: rgba(113, 112, 255, 0.16);
+}
+
 .whatsapp-template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 18px;
 }
 
-.whatsapp-template-grid textarea {
-  min-height: 170px;
+.whatsapp-template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 50px rgba(2, 6, 23, 0.28);
+}
+
+.whatsapp-template-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent 34%);
+  opacity: 0.6;
+}
+
+.whatsapp-template-card.emerald {
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.whatsapp-template-card.violet {
+  border-color: rgba(113, 112, 255, 0.26);
+}
+
+.template-card-header {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.template-card-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  color: #ecfeff;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.34), rgba(113, 112, 255, 0.24));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.template-card-header span,
+.template-editor-label > span,
+.template-preview-bubble > span {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.template-card-header h4 {
+  margin: 2px 0 0;
+  color: #f8fafc;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.template-card-description {
+  position: relative;
+  margin: 0;
+  color: #a8b3c7;
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.template-card-chips {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-card-chips span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.09);
+  border: 1px solid rgba(147, 197, 253, 0.14);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.template-editor-label {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.template-editor-label textarea {
+  min-height: 220px;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  line-height: 1.45;
+  line-height: 1.55;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.56);
+  color: #e2e8f0;
+  box-shadow: inset 0 1px 10px rgba(0, 0, 0, 0.18);
+}
+
+.template-card-footer {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.template-preview-bubble {
+  position: relative;
+  padding: 14px;
+  border-radius: 18px 18px 6px 18px;
+  border: 1px solid rgba(134, 239, 172, 0.16);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(15, 23, 42, 0.72));
+}
+
+.template-preview-bubble p {
+  margin: 8px 0 0;
+  color: #e5f7ed;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.template-actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(2, 6, 23, 0.34);
+}
+
+.template-actions-bar strong,
+.template-actions-bar span {
+  display: block;
+}
+
+.template-actions-bar strong {
+  color: #f8fafc;
+}
+
+.template-actions-bar span {
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 .success-text {
@@ -198,6 +465,12 @@ textarea:focus-visible,
 }
 
 @media (max-width: 860px) {
+  .template-section-hero,
+  .template-actions-bar {
+    flex-direction: column;
+  }
+
+  .template-section-metrics,
   .whatsapp-template-grid {
     grid-template-columns: 1fr;
   }
