@@ -59,6 +59,12 @@ export function WhatsAppPage() {
     return `https://wa.me/${target}?text=${encodeURIComponent(message || DEFAULT_MESSAGE)}`
   }, [displayedSenderRaw, message, normalizedRecipient])
   const connectionLabel = whatsAppStatus?.connected ? 'Connecté' : whatsAppQr?.hasQr ? 'QR à scanner' : whatsAppStatus?.state || 'Chargement…'
+  const connectionStateClass = whatsAppStatus?.connected ? 'connected' : whatsAppQr?.hasQr ? 'pairing' : 'pending'
+  const connectionHelperText = whatsAppStatus?.connected
+    ? `Session active avec ${displayedSender}. Tu peux déconnecter ce compte avant de scanner un autre téléphone.`
+    : whatsAppQr?.hasQr
+      ? 'QR prêt : ouvre WhatsApp sur le téléphone, puis scanne le code dans Appareils connectés.'
+      : 'Lance la génération d’un QR pour connecter ou remplacer le compte WhatsApp.'
 
   const refreshWhatsAppConnection = useCallback(async () => {
     try {
@@ -144,30 +150,64 @@ export function WhatsAppPage() {
         </div>
       </section>
 
-      <section className="panel panel-large">
-        <div className="panel-header">
-          <div>
+      <section className="panel panel-large whatsapp-connection-panel">
+        <div className="whatsapp-connection-hero">
+          <div className="connection-hero-copy">
+            <span className="connection-kicker"><ShieldCheck size={14} /> Session sécurisée</span>
             <h3>Connexion / reconfiguration WhatsApp</h3>
-            <p>Déconnecte la session actuelle puis scanne un nouveau QR avec WhatsApp → Appareils connectés → Connecter un appareil.</p>
+            <p>Gère le téléphone connecté, remplace la session si besoin et génère un nouveau QR sans quitter Teliman.</p>
           </div>
-          <QrCode size={22} />
+          <div className={`connection-status-orb ${connectionStateClass}`} aria-label={`Statut WhatsApp : ${connectionLabel}`}>
+            <span />
+            <strong>{connectionLabel}</strong>
+          </div>
         </div>
-        <div className="table-actions" style={{ marginBottom: 16 }}>
-          <button type="button" className="danger-btn" disabled={Boolean(busyAction)} onClick={() => runAction('disconnect', () => disconnectWhatsApp(true))}><Power size={16} /> Déconnecter ce WhatsApp</button>
-          <button type="button" className="primary-btn" disabled={Boolean(busyAction)} onClick={() => runAction('reconnect', () => reconnectWhatsApp(true))}><QrCode size={16} /> Générer un nouveau QR</button>
-          <button type="button" className="ghost-btn small-btn" disabled={Boolean(busyAction)} onClick={() => runAction('soft-reconnect', () => reconnectWhatsApp(false))}><RefreshCcw size={16} /> Relancer la connexion</button>
+
+        <div className="connection-console-grid">
+          <article className="connection-control-card">
+            <div className="connection-card-header">
+              <div className="connection-card-icon"><Smartphone size={20} /></div>
+              <div>
+                <span>Compte connecté</span>
+                <strong>{displayedSender}</strong>
+              </div>
+            </div>
+            <p>{connectionHelperText}</p>
+            <div className="connection-step-list" aria-label="Étapes de connexion WhatsApp">
+              <span><b>1</b> Déconnecter l’ancien compte si nécessaire</span>
+              <span><b>2</b> Générer un nouveau QR</span>
+              <span><b>3</b> Scanner avec WhatsApp → Appareils connectés</span>
+            </div>
+            <div className="connection-action-stack">
+              <button type="button" className="danger-btn" disabled={Boolean(busyAction)} onClick={() => runAction('disconnect', () => disconnectWhatsApp(true))}><Power size={16} /> Déconnecter ce WhatsApp</button>
+              <button type="button" className="primary-btn" disabled={Boolean(busyAction)} onClick={() => runAction('reconnect', () => reconnectWhatsApp(true))}><QrCode size={16} /> Générer un nouveau QR</button>
+              <button type="button" className="ghost-btn small-btn" disabled={Boolean(busyAction)} onClick={() => runAction('soft-reconnect', () => reconnectWhatsApp(false))}><RefreshCcw size={16} /> Relancer la connexion</button>
+            </div>
+          </article>
+
+          <article className={`connection-qr-card ${whatsAppQr?.qrDataUrl ? 'has-qr' : 'no-qr'}`}>
+            <div className="connection-qr-topline">
+              <div>
+                <span>QR de connexion</span>
+                <strong>{whatsAppQr?.qrDataUrl ? 'Prêt à scanner' : whatsAppStatus?.connected ? 'Compte déjà actif' : 'En attente'}</strong>
+              </div>
+              <QrCode size={22} />
+            </div>
+            {whatsAppQr?.qrDataUrl ? (
+              <div className="whatsapp-qr-box redesigned">
+                <img src={whatsAppQr.qrDataUrl} alt="QR code de connexion WhatsApp" />
+                <small>Scanne ce QR avec le nouveau téléphone WhatsApp à connecter.</small>
+              </div>
+            ) : (
+              <div className="connection-empty-qr">
+                <QrCode size={42} />
+                <strong>{whatsAppStatus?.connected ? 'Aucun QR nécessaire' : 'QR non généré'}</strong>
+                <span>{whatsAppStatus?.connected ? `WhatsApp est connecté avec ${displayedSender}.` : 'Clique sur “Générer un nouveau QR” pour démarrer l’appairage.'}</span>
+              </div>
+            )}
+          </article>
         </div>
-        {whatsAppQr?.qrDataUrl ? (
-          <div className="whatsapp-qr-box">
-            <img src={whatsAppQr.qrDataUrl} alt="QR code de connexion WhatsApp" />
-            <small>Scanne ce QR avec le nouveau téléphone WhatsApp à connecter.</small>
-          </div>
-        ) : (
-          <div className="empty-state small-empty">
-            {whatsAppStatus?.connected ? `WhatsApp est connecté avec ${displayedSender}.` : 'QR code en attente de génération côté serveur.'}
-          </div>
-        )}
-        {actionMessage && <p className="form-hint success-text">{actionMessage}</p>}
+        {actionMessage && <p className="connection-action-message"><CheckCircle2 size={15} /> {actionMessage}</p>}
       </section>
 
       <section className="panel panel-large">
