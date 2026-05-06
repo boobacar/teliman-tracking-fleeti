@@ -15,10 +15,8 @@ const FALLBACK_PHONE_DISPLAY = '+225 07 00 184 839'
 const FALLBACK_PHONE_E164 = '2250700184839'
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
 const TEMPLATE_LABELS = {
-  created: 'Création de BL',
-  status_changed: 'Changement de statut',
-  departed: 'Départ',
-  arrived: 'Arrivée',
+  created: 'Création BL',
+  arrived: 'Arrivée / statut Livré',
 }
 const TEMPLATE_HELP = 'Variables disponibles : {{reference}}, {{client}}, {{status}}, {{truckLabel}}, {{driver}}, {{loadingPoint}}, {{destination}}, {{goods}}, {{quantity}}, {{date}}, {{departureDateTime}}, {{arrivalDateTime}}, {{notes}}'
 
@@ -98,7 +96,7 @@ export function WhatsAppPage() {
           <div>
             <p className="eyebrow">Canal client</p>
             <h3>WhatsApp Baileys</h3>
-            <p>Configuration complète : connexion, déconnexion, test d’envoi et templates des notifications BL.</p>
+            <p>Configuration complète : connexion, déconnexion, test d’envoi et templates actifs des notifications BL.</p>
           </div>
           <div className="whatsapp-hero-icon"><MessageCircle size={28} /></div>
         </div>
@@ -179,7 +177,7 @@ export function WhatsAppPage() {
 
       <section className="stats-grid stats-grid-tight whatsapp-info-grid">
         <article className="stat-card"><div className="stat-icon"><Smartphone size={18} /></div><div><p>Numéro émetteur</p><strong>{displayedSender}</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création, statut, départ, arrivée</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création BL, statut Livré</strong></div></article>
         <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Provider</p><strong>Baileys / WhatsApp Web</strong></div></article>
       </section>
 
@@ -187,7 +185,7 @@ export function WhatsAppPage() {
         <div className="panel-header">
           <div>
             <h3>Templates des notifications BL</h3>
-            <p>Modifie ici les messages automatiques envoyés aux clients. Les variables entre doubles accolades seront remplacées par les données du BL.</p>
+            <p>Modifie ici les 2 messages automatiques envoyés aux clients : création de BL et passage du statut à Livré. Les variables entre doubles accolades seront remplacées par les données du BL.</p>
           </div>
         </div>
         <p className="form-hint">{TEMPLATE_HELP}</p>

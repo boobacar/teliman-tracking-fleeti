@@ -38,12 +38,14 @@ test('resolveClientWhatsAppRecipients retrouve et normalise les téléphones du 
   }), ['2250501020304', '2250701020304'])
 })
 
-test('detectDeliveryOrderWhatsAppEvents déclenche création, changement statut, départ et arrivée', () => {
+test('detectDeliveryOrderWhatsAppEvents déclenche seulement création BL et passage au statut Livré', () => {
   assert.deepEqual(detectDeliveryOrderWhatsAppEvents(null, order), ['created'])
 
-  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, status: 'Prévu' }, { ...order, status: 'En cours' }), ['status_changed'])
-  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, departureDateTime: null }, order), ['departed'])
-  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, arrivalDateTime: null }, order), ['arrived'])
+  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, status: 'Prévu' }, { ...order, status: 'En cours' }), [])
+  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, status: 'En cours' }, { ...order, status: 'Livré' }), ['arrived'])
+  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, status: 'En cours' }, { ...order, status: 'livre' }), ['arrived'])
+  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, departureDateTime: null }, order), [])
+  assert.deepEqual(detectDeliveryOrderWhatsAppEvents({ ...order, arrivalDateTime: null }, order), [])
 })
 
 test('buildDeliveryOrderWhatsAppMessage inclut tous les détails importants du BL', () => {

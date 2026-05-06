@@ -41,20 +41,11 @@ export function resolveClientWhatsAppRecipients(order = {}, masterData = {}) {
 export function detectDeliveryOrderWhatsAppEvents(previousOrder = null, nextOrder = {}) {
   if (!previousOrder) return ['created']
 
-  const events = []
-  const previousStatus = String(previousOrder?.status || '').trim()
-  const nextStatus = String(nextOrder?.status || '').trim()
-  if (previousStatus && nextStatus && previousStatus !== nextStatus) events.push('status_changed')
+  const previousStatus = normalizeDeliveryStatus(previousOrder?.status)
+  const nextStatus = normalizeDeliveryStatus(nextOrder?.status)
+  if (previousStatus !== 'livre' && nextStatus === 'livre') return ['arrived']
 
-  const previousDeparture = normalizeComparableDate(previousOrder?.departureDateTime)
-  const nextDeparture = normalizeComparableDate(nextOrder?.departureDateTime)
-  if (!previousDeparture && nextDeparture) events.push('departed')
-
-  const previousArrival = normalizeComparableDate(previousOrder?.arrivalDateTime)
-  const nextArrival = normalizeComparableDate(nextOrder?.arrivalDateTime)
-  if (!previousArrival && nextArrival) events.push('arrived')
-
-  return events
+  return []
 }
 
 export function buildDeliveryOrderWhatsAppMessage(eventType, order = {}) {
@@ -179,10 +170,12 @@ function templateValue(key, order = {}) {
   return display(order[key])
 }
 
-function normalizeComparableDate(value) {
-  if (!value) return ''
-  const timestamp = Date.parse(value)
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : String(value)
+function normalizeDeliveryStatus(value) {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
 }
 
 function formatDateTime(value) {
