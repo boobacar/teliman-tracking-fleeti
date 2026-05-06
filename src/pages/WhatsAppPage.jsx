@@ -86,8 +86,23 @@ export function WhatsAppPage() {
 
       <section className="stats-grid stats-grid-tight whatsapp-info-grid">
         <article className="stat-card"><div className="stat-icon"><Smartphone size={18} /></div><div><p>Numéro émetteur</p><strong>{WHATSAPP_API_PHONE_DISPLAY}</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Webhook</p><strong>À connecter</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>API Meta</p><strong>Sécurisée côté serveur</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création, statut, départ, arrivée</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>API Meta</p><strong>WHATSAPP_ACCESS_TOKEN + PHONE_NUMBER_ID</strong></div></article>
+      </section>
+
+      <section className="panel panel-large">
+        <div className="panel-header">
+          <div>
+            <h3>Notifications automatiques BL</h3>
+            <p>Les clients avec un téléphone renseigné dans Données → Téléphones clients recevront automatiquement un message détaillé.</p>
+          </div>
+        </div>
+        <div className="data-list-grid">
+          <article className="data-item-card"><div className="data-item-main"><span className="data-item-title">Création de BL</span><small>Référence, client, camion, chauffeur, chargement, destination, marchandise, quantité et notes.</small></div></article>
+          <article className="data-item-card"><div className="data-item-main"><span className="data-item-title">Changement de statut</span><small>Message envoyé quand le statut passe par exemple de Prévu à En cours ou Livré.</small></div></article>
+          <article className="data-item-card"><div className="data-item-main"><span className="data-item-title">Départ</span><small>Message envoyé quand la date/heure de départ est renseignée pour la première fois.</small></div></article>
+          <article className="data-item-card"><div className="data-item-main"><span className="data-item-title">Arrivée</span><small>Message envoyé quand la date/heure d’arrivée est renseignée pour la première fois.</small></div></article>
+        </div>
       </section>
     </div>
   )

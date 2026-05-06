@@ -7,6 +7,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
+import { buildWhatsAppConfigFromEnv, sendDeliveryOrderWhatsAppNotifications } from './src/backend/whatsappNotifications.js'
 
 dotenv.config()
 
@@ -43,6 +44,7 @@ const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || ''
 const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
 const TRACKS_SOURCE = resolveTracksSource(process.env.FLEETI_TRACKS_SOURCE)
 const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
+const WHATSAPP_CONFIG = buildWhatsAppConfigFromEnv(process.env)
 
 validateRequiredEnv()
 
@@ -335,6 +337,23 @@ function readMasterData() {
 
 function writeMasterData(data) {
   fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(buildMasterDataPayload(data), null, 2))
+}
+
+async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
+  const results = await sendDeliveryOrderWhatsAppNotifications({
+    previousOrder,
+    order,
+    masterData: readMasterData(),
+    config: WHATSAPP_CONFIG,
+  })
+  for (const result of results) {
+    if (result.sent) {
+      console.log(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} envoyé à ${result.recipient}`)
+    } else {
+      console.warn(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} non envoyé: ${result.reason || 'raison inconnue'}`)
+    }
+  }
+  return results
 }
 
 function ensureValidTrackerId(value) {
@@ -2340,7 +2359,7 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
   })
 })
 
-app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), (req, res) => {
+app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const items = readDeliveryOrders()
     const preparedBody = preprocessDeliveryProofPhotos(req.body)
@@ -2348,13 +2367,14 @@ app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), (r
     const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
     normalized.unshift(payload)
     writeDeliveryOrders(normalized)
-    res.status(201).json({ ok: true, item: payload })
+    const whatsappNotifications = await notifyDeliveryOrderWhatsApp(null, payload)
+    res.status(201).json({ ok: true, item: payload, whatsappNotifications })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
@@ -2376,7 +2396,8 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
     })
 
     writeDeliveryOrders(updatedItems)
-    res.json({ ok: true, item: updatedItem })
+    const whatsappNotifications = await notifyDeliveryOrderWhatsApp(current, updatedItem)
+    res.json({ ok: true, item: updatedItem, whatsappNotifications })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
