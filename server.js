@@ -209,7 +209,7 @@ function hasPermission(user, permission) {
 }
 
 function normalizeUserPermissions(role, permissions = []) {
-  const basePages = ['page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports']
+  const basePages = ['page_dashboard', 'page_map', 'page_fleet', 'page_whatsapp', 'page_alerts', 'page_analytics', 'page_reports']
   if (role === 'admin') return ['*']
   const normalized = Array.from(new Set((permissions || []).map((entry) => String(entry || '').trim()).filter(Boolean)))
   const withBase = Array.from(new Set([...basePages, ...normalized]))

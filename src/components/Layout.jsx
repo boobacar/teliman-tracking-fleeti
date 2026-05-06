@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Camera, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
+import { BarChart3, Camera, ChevronRight, Database, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, MessageCircle, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
 
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
   { id: '/map', label: 'Live Map', icon: Map, permission: 'page_map' },
   { id: '/fleet', label: 'Flotte', icon: Car, permission: 'page_fleet' },
   { id: '/cameras', label: 'Caméras', icon: Camera, permission: 'page_fleet' },
+  { id: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, permission: 'page_whatsapp' },
   { id: '/alerts', label: 'Alertes', icon: Siren, permission: 'page_alerts' },
   { id: '/analytics', label: 'Analytics', icon: BarChart3, permission: 'page_analytics' },
   { id: '/reports', label: 'Rapports', icon: FileSpreadsheet, permission: 'page_reports' },

@@ -13,6 +13,7 @@ import { DashboardPage } from './pages/DashboardPage'
 const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
 const CamerasPage = lazy(() => import('./pages/CamerasPage').then((module) => ({ default: module.CamerasPage })))
+const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage').then((module) => ({ default: module.WhatsAppPage })))
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
@@ -334,6 +335,7 @@ function App() {
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
           <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/cameras" element={<CamerasPage />} />
+          <Route path="/whatsapp" element={<WhatsAppPage />} />
           <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
