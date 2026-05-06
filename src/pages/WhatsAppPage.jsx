@@ -114,7 +114,7 @@ export function WhatsAppPage() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Canal client</p>
-            <h3>WhatsApp Baileys</h3>
+            <h3>WhatsApp</h3>
             <p>Configuration complète : connexion, déconnexion, test d’envoi et templates actifs des notifications BL.</p>
           </div>
           <div className="whatsapp-hero-icon"><MessageCircle size={28} /></div>
@@ -173,7 +173,7 @@ export function WhatsAppPage() {
       <section className="panel panel-large">
         <div className="panel-header">
           <div>
-            <h3>Envoyer un message test avec Baileys</h3>
+            <h3>Envoyer un message test WhatsApp</h3>
             <p>Ce bouton envoie directement depuis le WhatsApp connecté, sans ouvrir WhatsApp Web.</p>
           </div>
         </div>
@@ -188,7 +188,7 @@ export function WhatsAppPage() {
           </label>
         </div>
         <div className="table-actions" style={{ marginTop: 16 }}>
-          <button type="button" className="primary-btn" disabled={Boolean(busyAction) || !recipientPhone || !message} onClick={() => runAction('test-message', () => sendWhatsAppTestMessage({ to: recipientPhone, message }))}><MessageCircle size={16} /> Envoyer test Baileys</button>
+          <button type="button" className="primary-btn" disabled={Boolean(busyAction) || !recipientPhone || !message} onClick={() => runAction('test-message', () => sendWhatsAppTestMessage({ to: recipientPhone, message }))}><MessageCircle size={16} /> Envoyer le test</button>
           <a className="ghost-btn small-btn" href={previewLink} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Prévisualiser wa.me</a>
           <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(previewLink, 'lien copié')}><Copy size={16} /> Copier le lien</button>
         </div>
@@ -197,7 +197,7 @@ export function WhatsAppPage() {
       <section className="stats-grid stats-grid-tight whatsapp-info-grid">
         <article className="stat-card"><div className="stat-icon"><Smartphone size={18} /></div><div><p>Numéro émetteur</p><strong>{displayedSender}</strong></div></article>
         <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création BL, statut Livré</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Provider</p><strong>Baileys / WhatsApp Web</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Canal</p><strong>WhatsApp connecté</strong></div></article>
       </section>
 
       <section className="panel panel-large">
