@@ -157,6 +157,7 @@ test('createBaileysWhatsAppClient expose le statut, le QR et envoie un message v
     authDir: '/tmp/teliman-wa-test',
     socketFactory: async () => ({
       ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
       sendMessage: async (jid, payload) => {
         sent.push({ jid, payload })
         return { key: { id: 'MSG-1' } }
@@ -178,6 +179,38 @@ test('createBaileysWhatsAppClient expose le statut, le QR et envoie un message v
   assert.equal(result.sent, true)
   assert.equal(result.messageId, 'MSG-1')
   assert.deepEqual(sent, [{ jid: '2250701020304@s.whatsapp.net', payload: { text: 'Message test' } }])
+})
+
+test('createBaileysWhatsAppClient vérifie le compte WhatsApp réel avant envoi international', async () => {
+  const checked = []
+  const sent = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => {
+        checked.push(jid)
+        return [{ jid: '2250769289304@s.whatsapp.net', exists: true }]
+      },
+      sendMessage: async (jid, payload) => {
+        sent.push({ jid, payload })
+        return { key: { id: 'MSG-CI' } }
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async (qr) => `data:image/png;base64,${Buffer.from(qr).toString('base64')}`,
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+2250769289304', 'Message Côte d’Ivoire')
+
+  assert.equal(result.sent, true)
+  assert.equal(result.messageId, 'MSG-CI')
+  assert.deepEqual(checked, ['2250769289304@s.whatsapp.net'])
+  assert.deepEqual(sent, [{ jid: '2250769289304@s.whatsapp.net', payload: { text: 'Message Côte d’Ivoire' } }])
 })
 
 test('createBaileysWhatsAppClient expose le vrai numéro connecté et peut se déconnecter puis redémarrer', async () => {

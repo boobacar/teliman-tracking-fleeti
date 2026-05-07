@@ -56,7 +56,9 @@ export function createBaileysWhatsAppClient({
     }
 
     try {
-      const result = await socket.sendMessage(jid, { text: message })
+      const recipientJid = await resolveWhatsAppAccountJid(socket, jid)
+      if (!recipientJid) return { sent: false, skipped: false, reason: 'Aucun compte WhatsApp trouvé pour ce numéro.' }
+      const result = await socket.sendMessage(recipientJid, { text: message })
       return { sent: true, messageId: result?.key?.id || '' }
     } catch (error) {
       lastError = error?.message || 'Erreur envoi Baileys.'
@@ -149,6 +151,15 @@ export function createBaileysWhatsAppClient({
   }
 
   return { start, reconnect, disconnect, sendText, getStatus, getQr }
+}
+
+async function resolveWhatsAppAccountJid(socket, jid) {
+  if (!socket?.onWhatsApp) return jid
+  const accounts = await socket.onWhatsApp(jid)
+  const account = Array.isArray(accounts)
+    ? accounts.find((entry) => entry?.exists !== false && entry?.jid)
+    : null
+  return account?.jid || ''
 }
 
 function normalizeBaileysUser(rawUser = null) {
