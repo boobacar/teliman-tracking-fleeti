@@ -1155,10 +1155,12 @@ async function buildFleetiApiTrackBundle(trackerId, from, to, extra = {}, assets
   const trackRows = extractArrayPayload(tracksPayload, ['results', 'items', 'list', 'data', 'result'])
   if (!trackRows.length) return buildPublicCacheTrackBundle(trackerId, from, to, extra)
 
-  const bundle = buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows })
-  const lastTwoPoints = []
+  const cacheBundle = buildTrackBundleFromPublicCache(trackerId, from, to)
+  const bundle = buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows, fallbackPoints: cacheBundle.points || [] })
+  const lastTwoPoints = bundle.points.length >= 2 ? bundle.points.slice(-2) : []
   return {
     ...bundle,
+    events: cacheBundle.events || [],
     lastTwoPoints,
     assetId: asset.id,
     customerReference,

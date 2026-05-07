@@ -132,6 +132,32 @@ test('buildFleetiProviderTrackBundle normalise les segments reçus depuis l’AP
   assert.equal(bundle.segments[0].started_at, '2026-05-05T05:20:01.000Z')
 })
 
+test('buildFleetiProviderTrackBundle conserve les points cache quand l’API trajets ne renvoie que des segments', () => {
+  const bundle = buildFleetiProviderTrackBundle({
+    trackerId: 3537762,
+    from: '2026-05-07T00:00:00Z',
+    to: '2026-05-08T00:00:00Z',
+    trackRows: [
+      {
+        trackId: '1096',
+        startAt: '2026-05-07T08:00:00Z',
+        endAt: '2026-05-07T08:30:00Z',
+        length: 20.8,
+        pointsCount: 95,
+      },
+    ],
+    fallbackPoints: [
+      { lat: 8.34, lng: -6.57, speed: 31, time: '2026-05-07T08:05:00Z' },
+      { latitude: 8.35, longitude: -6.58, speed: 42, time: '2026-05-07T08:20:00Z' },
+      { lat: 8.9, lng: -6.9, speed: 0, time: '2026-05-09T08:20:00Z' },
+    ],
+  })
+
+  assert.equal(bundle.segments.length, 1)
+  assert.equal(bundle.points.length, 2)
+  assert.deepEqual(bundle.points.map((point) => [point.lat, point.lng]), [[8.34, -6.57], [8.35, -6.58]])
+})
+
 test('buildTrackBundleFromTelemetryCache fournit tracé et alertes quand l’API privée tracks est vide', () => {
   const bundle = buildTrackBundleFromTelemetryCache({
     trackerId: 3580652,

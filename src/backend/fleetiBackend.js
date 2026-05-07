@@ -247,7 +247,7 @@ function sameTracker(row = {}, trackerId, trackerLabel = '') {
   return Boolean(rowLabel && wantedLabel && rowLabel === wantedLabel)
 }
 
-export function buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows = [], pointRowsByTrackId = {} } = {}) {
+export function buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows = [], pointRowsByTrackId = {}, fallbackPoints = [] } = {}) {
   const normalizedTrackerId = Number(trackerId)
   const rows = (Array.isArray(trackRows) ? trackRows : [])
     .filter((row) => row && typeof row === 'object')
@@ -276,7 +276,7 @@ export function buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows 
     }
   })
 
-  const points = rows.flatMap((row) => {
+  const pointsFromTracks = rows.flatMap((row) => {
     const trackPoints = pointRowsByTrackId?.[row.trackId] || pointRowsByTrackId?.[String(row.trackId)] || []
     return trackPoints
       .map((point) => normalizeTrackPoint({
@@ -286,7 +286,13 @@ export function buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows 
         time: point.getAt ?? point.time,
       }))
       .filter(Boolean)
-  }).sort(comparePointTime)
+  })
+
+  const points = (pointsFromTracks.length ? pointsFromTracks : fallbackPoints
+    .map(normalizeTrackPoint)
+    .filter(Boolean)
+    .filter((point) => isWithinRange(point.time, from, to)))
+    .sort(comparePointTime)
 
   return {
     trackerId: normalizedTrackerId,
