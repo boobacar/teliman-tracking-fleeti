@@ -66,6 +66,8 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
     `Position: ${position}`,
     mapsUrl ? `Carte: ${mapsUrl}` : '',
     `Heure: ${time}`,
+    '',
+    'Alerte générée automatiquement par Teliman Tracking.',
   ]
   return lines.filter((line) => line !== '').join('\n')
 }

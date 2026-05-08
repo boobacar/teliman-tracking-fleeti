@@ -80,7 +80,7 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
   assert.match(message, /maps\.google\.com/)
   assert.match(message, /07\/05\/2026/)
   assert.doesNotMatch(message, /TELIMAN LOGISTIQUE/)
-  assert.doesNotMatch(message, /Alerte générée automatiquement/)
+  assert.match(message, /\nAlerte générée automatiquement par Teliman Tracking\.$/)
 })
 
 test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assigné', () => {
@@ -98,7 +98,7 @@ test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assign
   assert.match(message, /3100WWCI01/)
   assert.doesNotMatch(message, /Chauffeur:/)
   assert.doesNotMatch(message, /Non assigné/)
-  assert.doesNotMatch(message, /Alerte générée automatiquement/)
+  assert.match(message, /\nAlerte générée automatiquement par Teliman Tracking\.$/)
 })
 
 test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinataires du type d’alerte', async () => {
