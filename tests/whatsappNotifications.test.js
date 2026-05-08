@@ -71,6 +71,7 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
     address: '5.34500, -4.02400',
   })
 
+  assert.match(message, /^ALERTE 🚨/)
   assert.match(message, /Excès de vitesse/)
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
@@ -78,6 +79,26 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
   assert.match(message, /5\.34500, -4\.02400/)
   assert.match(message, /maps\.google\.com/)
   assert.match(message, /07\/05\/2026/)
+  assert.doesNotMatch(message, /TELIMAN LOGISTIQUE/)
+  assert.doesNotMatch(message, /Alerte générée automatiquement/)
+})
+
+test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assigné', () => {
+  const message = buildFleetAlertWhatsAppMessage({
+    event: 'excessive_parking',
+    truckLabel: '3100WWCI01',
+    driver: 'Non assigné',
+    time: '2026-05-08T09:09:00.000Z',
+    lat: 5.5774149,
+    lng: -3.1890516,
+  })
+
+  assert.match(message, /^ALERTE 🚨/)
+  assert.match(message, /Stationnement prolongé/)
+  assert.match(message, /3100WWCI01/)
+  assert.doesNotMatch(message, /Chauffeur:/)
+  assert.doesNotMatch(message, /Non assigné/)
+  assert.doesNotMatch(message, /Alerte générée automatiquement/)
 })
 
 test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinataires du type d’alerte', async () => {

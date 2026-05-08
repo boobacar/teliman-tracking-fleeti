@@ -55,18 +55,17 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
   const speedLine = Number.isFinite(speed) && speed > 0 ? `Vitesse: ${speed} km/h` : ''
   const position = display(event.address || buildAlertCoordinates(event))
   const mapsUrl = buildGoogleMapsUrl(event)
+  const driverLine = isUnassignedDriver(driver) ? '' : `Chauffeur: ${driver}`
   const lines = [
-    `TELIMAN LOGISTIQUE - ${label}`,
+    'ALERTE 🚨',
     '',
     `Véhicule: ${truckLabel}`,
-    `Chauffeur: ${driver}`,
+    driverLine,
     `Type d’alerte: ${label}`,
     speedLine,
     `Position: ${position}`,
     mapsUrl ? `Carte: ${mapsUrl}` : '',
     `Heure: ${time}`,
-    '',
-    'Alerte générée automatiquement par Teliman Tracking.',
   ]
   return lines.filter((line) => line !== '').join('\n')
 }
@@ -302,6 +301,16 @@ function formatDateTime(value) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function isUnassignedDriver(value) {
+  const text = String(value ?? '').trim()
+  if (!text || text === '-') return true
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+  return ['non assigne', 'non-assigne', 'non affecte', 'non-affecte'].includes(normalized)
 }
 
 function display(value) {
