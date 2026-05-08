@@ -92,7 +92,7 @@ export function DataPage() {
   const [supplierValue, setSupplierValue] = useState('')
   const [clientPhoneClient, setClientPhoneClient] = useState('')
   const [clientPhoneValue, setClientPhoneValue] = useState('')
-  const [alertRecipientType, setAlertRecipientType] = useState('speedup')
+  const [alertRecipientTypes, setAlertRecipientTypes] = useState(['speedup', 'excessive_parking'])
   const [alertRecipientPhone, setAlertRecipientPhone] = useState('')
   const [manualTruckLabel, setManualTruckLabel] = useState('')
   const [manualDriverName, setManualDriverName] = useState('')
@@ -136,10 +136,19 @@ export function DataPage() {
 
   async function addAlertRecipient() {
     const phone = alertRecipientPhone.trim()
-    if (!phone) return
-    await addMasterDataItem('alertWhatsAppRecipients', phone, { eventType: alertRecipientType, phone })
+    if (!phone || alertRecipientTypes.length === 0) return
+    for (const eventType of alertRecipientTypes) {
+      await addMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone })
+    }
     setAlertRecipientPhone('')
     await refresh()
+  }
+
+  function toggleAlertRecipientType(eventType) {
+    setAlertRecipientTypes((current) => {
+      if (current.includes(eventType)) return current.filter((item) => item !== eventType)
+      return [...current, eventType]
+    })
   }
 
   async function removeAlertRecipient(eventType, phone) {
@@ -403,17 +412,28 @@ export function DataPage() {
           />
 
           <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
-            <label className="field-stack">
-              <span>Type d’alerte</span>
-              <select
-                aria-label="Type d’alerte WhatsApp flotte"
-                value={alertRecipientType}
-                onChange={(e) => setAlertRecipientType(e.target.value)}
-              >
-                <option value="speedup">Excès de vitesse</option>
-                <option value="excessive_parking">Stationnement prolongé</option>
-              </select>
-            </label>
+            <div className="field-stack">
+              <span>Alertes à recevoir</span>
+              <label className="toggle-row">
+                <input
+                  aria-label="Recevoir les alertes excès de vitesse"
+                  type="checkbox"
+                  checked={alertRecipientTypes.includes('speedup')}
+                  onChange={() => toggleAlertRecipientType('speedup')}
+                />
+                <span>Excès de vitesse</span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  aria-label="Recevoir les alertes stationnement prolongé"
+                  type="checkbox"
+                  checked={alertRecipientTypes.includes('excessive_parking')}
+                  onChange={() => toggleAlertRecipientType('excessive_parking')}
+                />
+                <span>Stationnement prolongé</span>
+              </label>
+              <small className="form-hint">Cochez une seule alerte ou les deux pour le même numéro.</small>
+            </div>
             <label className="field-stack">
               <span>Numéro WhatsApp destinataire</span>
               <input
@@ -425,7 +445,7 @@ export function DataPage() {
               />
               <small className="form-hint">Le numéro recevra véhicule, chauffeur, type d’alerte, position et heure dès l’événement.</small>
             </label>
-            <button type="button" className="primary-btn" onClick={addAlertRecipient}>Enregistrer</button>
+            <button type="button" className="primary-btn" onClick={addAlertRecipient} disabled={alertRecipientTypes.length === 0}>Enregistrer</button>
           </div>
 
           <div className="data-list-grid">
