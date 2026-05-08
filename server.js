@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
-import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 
 dotenv.config()
 
@@ -410,6 +410,34 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
       console.log(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} envoyé à ${result.recipient}`)
     } else {
       console.warn(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} non envoyé: ${result.reason || 'raison inconnue'}`)
+    }
+  }
+  return results
+}
+
+async function notifyFleetAlertWhatsApp(event) {
+  const results = await sendFleetAlertWhatsAppNotifications({
+    event,
+    masterData: readMasterData(),
+    config: WHATSAPP_CONFIG,
+    baileysClient: baileysWhatsAppClient,
+  })
+  for (const result of results) {
+    appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result,
+      order: {
+        id: event?.tracker_id || event?.trackerId || '',
+        reference: event?.truckLabel || event?.trackerLabel || event?.label || '',
+        client: result.eventType || event?.event || '',
+      },
+      message: result.message,
+      source: 'fleet_alert',
+      senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+    }))
+    if (result.sent) {
+      console.log(`[whatsapp] Alerte flotte ${result.eventType} envoyée à ${result.recipient}`)
+    } else if (!result.skipped || result.reason) {
+      console.warn(`[whatsapp] Alerte flotte ${result.eventType || '-'} non envoyée: ${result.reason || 'raison inconnue'}`)
     }
   }
   return results
@@ -1134,6 +1162,15 @@ function customerReferenceFromAsset(asset = {}) {
   return String(asset?.customer?.reference || asset?.customerReference || '').trim()
 }
 
+function publicAssetDriverName(asset = {}, gateway = {}) {
+  const driver = asset?.driver || asset?.employee || asset?.assignedDriver || gateway?.driver || gateway?.employee || {}
+  const fullName = [driver?.first_name || driver?.firstName || driver?.firstname || driver?.name, driver?.last_name || driver?.lastName || driver?.lastname]
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .join(' ')
+  return String(fullName || asset?.driverName || asset?.employeeName || gateway?.driverName || gateway?.employeeName || 'Non assigné').trim()
+}
+
 async function resolvePublicAssetForTracker(trackerId, assets = null) {
   const rows = Array.isArray(assets) ? assets : await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
   return rows.find((asset) => assetMatchesTrackerId(asset, trackerId)) || null
@@ -1185,6 +1222,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
   const trackersMap = new Map()
   const states = {}
   const mileage = {}
+  const newFleetAlertEvents = []
   const retentionMs = 72 * 3600 * 1000
   const now = Date.now()
 
@@ -1200,6 +1238,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
 
     const label = String(asset?.name || gateway?.name || asset?.properties?.licensePlate || `Tracker ${trackerId}`).trim()
     const model = String(gateway?.model || asset?.model || 'Modèle inconnu').trim()
+    const driver = publicAssetDriverName(asset, gateway)
     const state = gateway?.state || {}
     const speed = pickFirstFinite(state?.speed, state?.position?.speed, state?.position?.location?.speed)
     const location = state?.position?.location
@@ -1268,7 +1307,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
 
     const previousSpeed = Number(cacheEntry?.speed || 0)
     if (speed >= 80 && previousSpeed < 80) {
-      telemetryCache.events.push({
+      const alertEvent = {
         tracker_id: trackerId,
         event: 'speedup',
         speed,
@@ -1278,12 +1317,16 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
         time: lastUpdate,
         message: `${label} dépasse 80 km/h`,
         address: buildPublicAddress(normalizedLocation),
-      })
+        truckLabel: label,
+        driver,
+      }
+      telemetryCache.events.push(alertEvent)
+      newFleetAlertEvents.push(alertEvent)
     }
 
     const previousMovement = String(cacheEntry?.movement_status || '')
     if (movementStatus === 'idle' && previousMovement === 'moving' && connectionStatus === 'active') {
-      telemetryCache.events.push({
+      const alertEvent = {
         tracker_id: trackerId,
         event: 'excessive_parking',
         speed,
@@ -1293,7 +1336,11 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
         time: lastUpdate,
         message: `${label} vient de passer à l'arrêt`,
         address: buildPublicAddress(normalizedLocation),
-      })
+        truckLabel: label,
+        driver,
+      }
+      telemetryCache.events.push(alertEvent)
+      newFleetAlertEvents.push(alertEvent)
     }
 
     const existingPoints = Array.isArray(cacheEntry?.points) ? cacheEntry.points : []
@@ -1340,6 +1387,11 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     .slice(0, 400)
 
   writePublicTelemetryCache(telemetryCache)
+  for (const alertEvent of newFleetAlertEvents) {
+    notifyFleetAlertWhatsApp(alertEvent).catch((error) => {
+      console.warn(`[whatsapp] notification alerte flotte échouée: ${error?.message || error}`)
+    })
+  }
 
   return {
     trackers: sanitizeTrackers(scopedTrackers),
@@ -2360,7 +2412,7 @@ app.get('/api/master-data', (_req, res) => {
 
 app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'alertWhatsAppRecipients', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -2379,6 +2431,17 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     if (!client || !phone) return res.status(400).json({ ok: false, error: 'Client et numéro de téléphone obligatoires' })
     const currentPhones = Array.isArray(data.clientPhones?.[client]) ? data.clientPhones[client] : (data.clientPhones?.[client] ? [data.clientPhones[client]] : [])
     data.clientPhones = { ...(data.clientPhones || {}), [client]: Array.from(new Set([...currentPhones, phone])).sort((a, b) => a.localeCompare(b)) }
+    writeMasterData(data)
+    return res.status(201).json({ ok: true, data: readMasterData() })
+  }
+
+  if (listName === 'alertWhatsAppRecipients') {
+    const eventType = String(req.body?.eventType || req.body?.alertType || '').trim()
+    const phone = String(req.body?.phone || req.body?.value || '').trim()
+    if (!['speedup', 'excessive_parking'].includes(eventType)) return res.status(400).json({ ok: false, error: 'Type d’alerte invalide' })
+    if (!phone) return res.status(400).json({ ok: false, error: 'Numéro WhatsApp obligatoire' })
+    const currentPhones = Array.isArray(data.alertWhatsAppRecipients?.[eventType]) ? data.alertWhatsAppRecipients[eventType] : (data.alertWhatsAppRecipients?.[eventType] ? [data.alertWhatsAppRecipients[eventType]] : [])
+    data.alertWhatsAppRecipients = { ...(data.alertWhatsAppRecipients || {}), [eventType]: Array.from(new Set([...currentPhones, phone])).sort((a, b) => a.localeCompare(b)) }
     writeMasterData(data)
     return res.status(201).json({ ok: true, data: readMasterData() })
   }
@@ -2406,7 +2469,7 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
 
 app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
-  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
+  if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'alertWhatsAppRecipients', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
   const data = readMasterData()
 
@@ -2433,6 +2496,23 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
       delete next[client]
     }
     data.clientPhones = next
+    writeMasterData(data)
+    return res.json({ ok: true, data: readMasterData() })
+  }
+
+  if (listName === 'alertWhatsAppRecipients') {
+    const eventType = String(req.query.eventType || req.query.alertType || '').trim()
+    const phone = String(req.query.phone || req.query.value || '').trim()
+    if (!['speedup', 'excessive_parking'].includes(eventType)) return res.status(400).json({ ok: false, error: 'Type d’alerte invalide' })
+    const next = { ...(data.alertWhatsAppRecipients || {}) }
+    if (phone) {
+      const remaining = (Array.isArray(next[eventType]) ? next[eventType] : (next[eventType] ? [next[eventType]] : [])).filter((item) => item !== phone)
+      if (remaining.length > 0) next[eventType] = remaining
+      else delete next[eventType]
+    } else {
+      delete next[eventType]
+    }
+    data.alertWhatsAppRecipients = next
     writeMasterData(data)
     return res.json({ ok: true, data: readMasterData() })
   }

@@ -209,10 +209,25 @@ function resolveSocketFactory(socketFactory) {
     return makeWASocket({
       auth,
       version,
+      logger: createSilentBaileysLogger(),
       printQRInTerminal: false,
       browser: ['Teliman Logistique', 'Chrome', '1.0.0'],
     })
   }
+}
+
+function createSilentBaileysLogger() {
+  const logger = {
+    level: 'silent',
+    child: () => logger,
+    trace: () => {},
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    fatal: () => {},
+  }
+  return logger
 }
 
 function resolveQrCodeFactory(qrCodeFactory) {

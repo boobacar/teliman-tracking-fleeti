@@ -35,7 +35,64 @@ export function resolveClientWhatsAppRecipients(order = {}, masterData = {}) {
   const rawPhones = exactPhones ?? caseInsensitiveEntry?.[1] ?? []
   const phoneList = Array.isArray(rawPhones) ? rawPhones : [rawPhones]
 
-  return Array.from(new Set(phoneList.map(normalizeWhatsAppPhone).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  return normalizeWhatsAppPhoneList(phoneList)
+}
+
+export function resolveAlertWhatsAppRecipients(eventType, masterData = {}) {
+  const normalizedEvent = normalizeFleetAlertEventType(eventType)
+  if (!normalizedEvent) return []
+  const recipients = masterData?.alertWhatsAppRecipients?.[normalizedEvent] ?? []
+  return normalizeWhatsAppPhoneList(recipients)
+}
+
+export function buildFleetAlertWhatsAppMessage(event = {}) {
+  const eventType = normalizeFleetAlertEventType(event.event || event.eventType)
+  const label = fleetAlertLabel(eventType)
+  const truckLabel = display(event.truckLabel || event.trackerLabel || event.label || event.registration || event.plate || event.tracker_id)
+  const driver = display(event.driver || event.driverName || event.employeeName)
+  const time = formatDateTime(event.time || event.createdAt || event.sentAt)
+  const speed = Number(event.speed)
+  const speedLine = Number.isFinite(speed) && speed > 0 ? `Vitesse: ${speed} km/h` : ''
+  const position = display(event.address || buildAlertCoordinates(event))
+  const mapsUrl = buildGoogleMapsUrl(event)
+  const lines = [
+    `TELIMAN LOGISTIQUE - ${label}`,
+    '',
+    `Véhicule: ${truckLabel}`,
+    `Chauffeur: ${driver}`,
+    `Type d’alerte: ${label}`,
+    speedLine,
+    `Position: ${position}`,
+    mapsUrl ? `Carte: ${mapsUrl}` : '',
+    `Heure: ${time}`,
+    '',
+    'Alerte générée automatiquement par Teliman Tracking.',
+  ]
+  return lines.filter((line) => line !== '').join('\n')
+}
+
+export async function sendFleetAlertWhatsAppNotifications({ event, masterData = {}, config, fetchImpl = fetch, baileysClient = null } = {}) {
+  const eventType = normalizeFleetAlertEventType(event?.event || event?.eventType)
+  const recipients = resolveAlertWhatsAppRecipients(eventType, masterData)
+  if (!eventType) return []
+  const message = buildFleetAlertWhatsAppMessage({ ...event, event: eventType })
+  if (!recipients.length) {
+    return [{
+      source: 'fleet_alert',
+      eventType,
+      sent: false,
+      skipped: true,
+      reason: `Aucun numéro WhatsApp configuré pour l’alerte ${fleetAlertLabel(eventType)}.`,
+      message,
+    }]
+  }
+
+  const results = []
+  for (const recipient of recipients) {
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
+    results.push({ source: 'fleet_alert', eventType, recipient, message, ...result })
+  }
+  return results
 }
 
 export function detectDeliveryOrderWhatsAppEvents(previousOrder = null, nextOrder = {}) {
@@ -188,6 +245,36 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
 function templateValue(key, order = {}) {
   if (key === 'date' || key === 'departureDateTime' || key === 'arrivalDateTime') return formatDateTime(order[key])
   return display(order[key])
+}
+
+function normalizeWhatsAppPhoneList(value) {
+  const items = Array.isArray(value) ? value : [value]
+  return Array.from(new Set(items.map(normalizeWhatsAppPhone).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+}
+
+function normalizeFleetAlertEventType(value) {
+  const eventType = String(value || '').trim()
+  return ['speedup', 'excessive_parking'].includes(eventType) ? eventType : ''
+}
+
+function fleetAlertLabel(eventType) {
+  if (eventType === 'speedup') return 'Excès de vitesse'
+  if (eventType === 'excessive_parking') return 'Stationnement prolongé'
+  return 'Alerte flotte'
+}
+
+function buildAlertCoordinates(event = {}) {
+  const lat = Number(event.lat ?? event.location?.lat)
+  const lng = Number(event.lng ?? event.location?.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+}
+
+function buildGoogleMapsUrl(event = {}) {
+  const lat = Number(event.lat ?? event.location?.lat)
+  const lng = Number(event.lng ?? event.location?.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+  return `https://maps.google.com/?q=${lat},${lng}`
 }
 
 function truncateMessagePreview(value) {

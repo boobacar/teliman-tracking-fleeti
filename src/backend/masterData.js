@@ -26,6 +26,18 @@ export function normalizeClientPhonesMap(value) {
   )
 }
 
+const ALERT_WHATSAPP_RECIPIENT_TYPES = ['excessive_parking', 'speedup']
+
+export function normalizeAlertWhatsAppRecipientsMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    ALERT_WHATSAPP_RECIPIENT_TYPES
+      .map((eventType) => [eventType, normalizePhoneList(value[eventType])])
+      .filter((entry) => entry[1].length > 0)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+  )
+}
+
 export function normalizeManualTrackers(value) {
   if (!Array.isArray(value)) return []
   return value
@@ -60,6 +72,7 @@ export function buildMasterDataPayload(data = {}) {
     suppliers: normalizeStringList(data.suppliers),
     purchaseOrders: normalizePurchaseOrdersMap(data.purchaseOrders),
     clientPhones: normalizeClientPhonesMap(data.clientPhones),
+    alertWhatsAppRecipients: normalizeAlertWhatsAppRecipientsMap(data.alertWhatsAppRecipients),
     manualTrackers: normalizeManualTrackers(data.manualTrackers),
   }
 }

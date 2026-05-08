@@ -83,6 +83,7 @@ export function DataPage() {
     suppliers: [],
     purchaseOrders: {},
     clientPhones: {},
+    alertWhatsAppRecipients: {},
     manualTrackers: [],
   })
   const [clientValue, setClientValue] = useState('')
@@ -91,6 +92,8 @@ export function DataPage() {
   const [supplierValue, setSupplierValue] = useState('')
   const [clientPhoneClient, setClientPhoneClient] = useState('')
   const [clientPhoneValue, setClientPhoneValue] = useState('')
+  const [alertRecipientType, setAlertRecipientType] = useState('speedup')
+  const [alertRecipientPhone, setAlertRecipientPhone] = useState('')
   const [manualTruckLabel, setManualTruckLabel] = useState('')
   const [manualDriverName, setManualDriverName] = useState('')
   const [purchaseOrderClient, setPurchaseOrderClient] = useState('')
@@ -131,6 +134,19 @@ export function DataPage() {
     await refresh()
   }
 
+  async function addAlertRecipient() {
+    const phone = alertRecipientPhone.trim()
+    if (!phone) return
+    await addMasterDataItem('alertWhatsAppRecipients', phone, { eventType: alertRecipientType, phone })
+    setAlertRecipientPhone('')
+    await refresh()
+  }
+
+  async function removeAlertRecipient(eventType, phone) {
+    await deleteMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone })
+    await refresh()
+  }
+
   async function addManualTracker() {
     const label = manualTruckLabel.trim()
     const driver = manualDriverName.trim()
@@ -162,6 +178,11 @@ export function DataPage() {
         label: 'Téléphones clients',
         value: Object.keys(data.clientPhones || {}).length || 0,
         helper: 'contact par client',
+      },
+      {
+        label: 'Alertes WhatsApp',
+        value: Object.values(data.alertWhatsAppRecipients || {}).reduce((sum, phones) => sum + (Array.isArray(phones) ? phones.length : (phones ? 1 : 0)), 0),
+        helper: 'vitesse & stationnement',
       },
       {
         label: 'N° bons commande',
@@ -365,6 +386,63 @@ export function DataPage() {
                     className="ghost-btn small-btn danger-btn icon-btn"
                     onClick={() => removeClientPhone(client, phone)}
                     aria-label="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel panel-large data-card-panel">
+          <SectionHeader
+            title="Destinataires alertes WhatsApp"
+            description="Numéros qui reçoivent instantanément les alertes d’excès de vitesse et de stationnement prolongé."
+            right={<div className="stat-icon"><Phone size={18} /></div>}
+          />
+
+          <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
+            <label className="field-stack">
+              <span>Type d’alerte</span>
+              <select
+                aria-label="Type d’alerte WhatsApp flotte"
+                value={alertRecipientType}
+                onChange={(e) => setAlertRecipientType(e.target.value)}
+              >
+                <option value="speedup">Excès de vitesse</option>
+                <option value="excessive_parking">Stationnement prolongé</option>
+              </select>
+            </label>
+            <label className="field-stack">
+              <span>Numéro WhatsApp destinataire</span>
+              <input
+                aria-label="Numéro WhatsApp pour les alertes flotte"
+                placeholder="Ex: +225 07 69 28 93 04"
+                type="tel"
+                value={alertRecipientPhone}
+                onChange={(e) => setAlertRecipientPhone(e.target.value)}
+              />
+              <small className="form-hint">Le numéro recevra véhicule, chauffeur, type d’alerte, position et heure dès l’événement.</small>
+            </label>
+            <button type="button" className="primary-btn" onClick={addAlertRecipient}>Enregistrer</button>
+          </div>
+
+          <div className="data-list-grid">
+            {Object.values(data.alertWhatsAppRecipients || {}).every((phones) => !(Array.isArray(phones) ? phones.length : phones)) && <div className="empty-banner">Aucun destinataire WhatsApp d’alerte enregistré.</div>}
+            {Object.entries(data.alertWhatsAppRecipients || {}).flatMap(([eventType, phones]) => (Array.isArray(phones) ? phones : [phones]).filter(Boolean).map((phone) => ({ eventType, phone }))).map(({ eventType, phone }, index) => (
+              <article key={`${eventType}-${phone}`} className="data-item-card">
+                <div className="data-item-main">
+                  <span className="data-item-title">{eventType === 'speedup' ? 'Excès de vitesse' : 'Stationnement prolongé'}</span>
+                  <small>WhatsApp: {phone}</small>
+                </div>
+                <div className="data-item-actions">
+                  <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn small-btn danger-btn icon-btn"
+                    onClick={() => removeAlertRecipient(eventType, phone)}
+                    aria-label="Supprimer destinataire alerte WhatsApp"
                   >
                     <Trash2 size={16} />
                   </button>

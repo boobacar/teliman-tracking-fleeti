@@ -8,6 +8,9 @@ import {
   DEFAULT_WHATSAPP_TEMPLATES,
   createWhatsAppHistoryEntry,
   detectDeliveryOrderWhatsAppEvents,
+  resolveAlertWhatsAppRecipients,
+  buildFleetAlertWhatsAppMessage,
+  sendFleetAlertWhatsAppNotifications,
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
@@ -37,6 +40,70 @@ test('resolveClientWhatsAppRecipients retrouve et normalise les téléphones du 
       AUTRE: ['+225 01 00 00 00 00'],
     },
   }), ['2250501020304', '2250701020304'])
+})
+
+test('resolveAlertWhatsAppRecipients normalise les destinataires par type d’alerte flotte', () => {
+  assert.deepEqual(resolveAlertWhatsAppRecipients('speedup', {
+    alertWhatsAppRecipients: {
+      speedup: [' +225 07 69 28 93 04 ', '00221776260020', '+225 07 69 28 93 04'],
+      excessive_parking: ['+225 05 00 00 00 00'],
+    },
+  }), ['221776260020', '2250769289304'])
+
+  assert.deepEqual(resolveAlertWhatsAppRecipients('excessive_parking', {
+    alertWhatsAppRecipients: {
+      speedup: ['+221 77 626 00 20'],
+      excessive_parking: '+225 05 00 00 00 00',
+    },
+  }), ['2250500000000'])
+})
+
+test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position et heure', () => {
+  const message = buildFleetAlertWhatsAppMessage({
+    event: 'speedup',
+    tracker_id: 42,
+    truckLabel: 'TG 1234 AB',
+    driver: 'Kouadio Jean',
+    speed: 96,
+    time: '2026-05-07T12:34:00.000Z',
+    lat: 5.345,
+    lng: -4.024,
+    address: '5.34500, -4.02400',
+  })
+
+  assert.match(message, /Excès de vitesse/)
+  assert.match(message, /TG 1234 AB/)
+  assert.match(message, /Kouadio Jean/)
+  assert.match(message, /96 km\/h/)
+  assert.match(message, /5\.34500, -4\.02400/)
+  assert.match(message, /maps\.google\.com/)
+  assert.match(message, /07\/05\/2026/)
+})
+
+test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinataires du type d’alerte', async () => {
+  const calls = []
+  const results = await sendFleetAlertWhatsAppNotifications({
+    event: {
+      event: 'excessive_parking',
+      truckLabel: 'CI-2026-TL',
+      driver: 'Awa Diarra',
+      time: '2026-05-07T09:00:00.000Z',
+      address: 'Zone industrielle Yopougon',
+    },
+    masterData: { alertWhatsAppRecipients: { excessive_parking: ['+225 07 00 00 00 00', '+221 77 626 00 20'] } },
+    config: { enabled: true, provider: 'baileys' },
+    baileysClient: {
+      sendText: async (to, message) => {
+        calls.push({ to, message })
+        return { sent: true, messageId: `MSG-${to}` }
+      },
+    },
+  })
+
+  assert.equal(results.length, 2)
+  assert.deepEqual(calls.map((call) => call.to), ['221776260020', '2250700000000'])
+  assert.ok(calls.every((call) => call.message.includes('Stationnement prolongé')))
+  assert.ok(results.every((result) => result.sent && result.source === 'fleet_alert'))
 })
 
 test('detectDeliveryOrderWhatsAppEvents déclenche seulement création BL et passage au statut Livré', () => {
