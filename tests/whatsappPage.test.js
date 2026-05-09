@@ -24,3 +24,15 @@ test('le numéro API WhatsApp Teliman est centralisé sur la page', () => {
 test('les utilisateurs opérationnels reçoivent la permission page_whatsapp par défaut', () => {
   assert.match(serverSource, /page_whatsapp/)
 })
+
+test('l’historique WhatsApp est paginé pour éviter une longue liste d’alertes', () => {
+  const pageSource = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
+
+  assert.match(pageSource, /HISTORY_PAGE_SIZE\s*=\s*10/)
+  assert.match(pageSource, /historyPage/)
+  assert.match(pageSource, /visibleHistory/)
+  assert.match(pageSource, /slice\(historyStartIndex, historyEndIndex\)/)
+  assert.match(pageSource, /Page \{historyPage\}\/\{historyTotalPages\}/)
+  assert.match(pageSource, /Précédent/)
+  assert.match(pageSource, /Suivant/)
+})

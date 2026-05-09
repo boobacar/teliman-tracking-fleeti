@@ -15,6 +15,7 @@ import {
 const FALLBACK_PHONE_DISPLAY = '+225 07 00 184 839'
 const FALLBACK_PHONE_E164 = '2250700184839'
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
+const HISTORY_PAGE_SIZE = 10
 const TEMPLATE_CARDS = [
   {
     key: 'created',
@@ -45,6 +46,7 @@ export function WhatsAppPage() {
   const [whatsAppQr, setWhatsAppQr] = useState(null)
   const [templates, setTemplates] = useState({})
   const [history, setHistory] = useState([])
+  const [historyPage, setHistoryPage] = useState(1)
   const [statusError, setStatusError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [busyAction, setBusyAction] = useState('')
@@ -65,6 +67,12 @@ export function WhatsAppPage() {
     : whatsAppQr?.hasQr
       ? 'QR prêt : ouvre WhatsApp sur le téléphone, puis scanne le code dans Appareils connectés.'
       : 'Lance la génération d’un QR pour connecter ou remplacer le compte WhatsApp.'
+  const historyTotalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE))
+  const historyStartIndex = (historyPage - 1) * HISTORY_PAGE_SIZE
+  const historyEndIndex = historyStartIndex + HISTORY_PAGE_SIZE
+  const visibleHistory = useMemo(() => history.slice(historyStartIndex, historyEndIndex), [history, historyEndIndex, historyStartIndex])
+  const displayedHistoryStart = history.length ? historyStartIndex + 1 : 0
+  const displayedHistoryEnd = Math.min(historyEndIndex, history.length)
 
   const refreshWhatsAppConnection = useCallback(async () => {
     try {
@@ -87,6 +95,12 @@ export function WhatsAppPage() {
       window.clearInterval(timer)
     }
   }, [refreshWhatsAppConnection])
+
+  useEffect(() => {
+    if (historyPage > historyTotalPages) {
+      setHistoryPage(historyTotalPages)
+    }
+  }, [historyPage, historyTotalPages])
 
   async function runAction(label, action) {
     setBusyAction(label)
@@ -241,33 +255,63 @@ export function WhatsAppPage() {
       </section>
 
       <section className="panel panel-large">
-        <div className="panel-header">
+        <div className="panel-header whatsapp-history-header">
           <div>
             <h3>Historique WhatsApp</h3>
             <p>Derniers messages envoyés, échecs et notifications ignorées. Les données sont stockées côté serveur hors Git.</p>
           </div>
-          <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
+          <div className="whatsapp-history-header-actions">
+            {history.length > 0 && <span className="whatsapp-history-count">{history.length} alerte{history.length > 1 ? 's' : ''}</span>}
+            <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
+          </div>
         </div>
         {history.length ? (
-          <div className="whatsapp-history-list">
-            {history.map((entry) => (
-              <article className={`whatsapp-history-item ${entry.status || 'failed'}`} key={entry.id || `${entry.sentAt}-${entry.recipient}`}>
-                <div className="whatsapp-history-topline">
-                  <span className={`status-pill ${entry.status || 'failed'}`}>{historyStatusLabel(entry.status)}</span>
-                  <strong>{historyEventLabel(entry)}</strong>
-                  <small>{formatHistoryDate(entry.sentAt)}</small>
-                </div>
-                <div className="whatsapp-history-meta">
-                  <span>À : {entry.recipient || '-'}</span>
-                  {entry.senderPhone && <span>Depuis : {entry.senderPhone}</span>}
-                  {entry.client && <span>Client : {entry.client}</span>}
-                  {entry.orderReference && <span>BL : {entry.orderReference}</span>}
-                </div>
-                {entry.reason && <p className="form-hint danger-text">Raison : {entry.reason}</p>}
-                {entry.messagePreview && <p className="whatsapp-message-preview">{entry.messagePreview}</p>}
-              </article>
-            ))}
-          </div>
+          <>
+            <div className="whatsapp-history-summary">
+              <span>Affichage {displayedHistoryStart}-{displayedHistoryEnd} sur {history.length}</span>
+              <strong>Page {historyPage}/{historyTotalPages}</strong>
+            </div>
+            <div className="whatsapp-history-list">
+              {visibleHistory.map((entry) => (
+                <article className={`whatsapp-history-item ${entry.status || 'failed'}`} key={entry.id || `${entry.sentAt}-${entry.recipient}`}>
+                  <div className="whatsapp-history-topline">
+                    <span className={`status-pill ${entry.status || 'failed'}`}>{historyStatusLabel(entry.status)}</span>
+                    <strong>{historyEventLabel(entry)}</strong>
+                    <small>{formatHistoryDate(entry.sentAt)}</small>
+                  </div>
+                  <div className="whatsapp-history-meta">
+                    <span>À : {entry.recipient || '-'}</span>
+                    {entry.senderPhone && <span>Depuis : {entry.senderPhone}</span>}
+                    {entry.client && <span>Client : {entry.client}</span>}
+                    {entry.orderReference && <span>BL : {entry.orderReference}</span>}
+                  </div>
+                  {entry.reason && <p className="form-hint danger-text">Raison : {entry.reason}</p>}
+                  {entry.messagePreview && <p className="whatsapp-message-preview">{entry.messagePreview}</p>}
+                </article>
+              ))}
+            </div>
+            {historyTotalPages > 1 && (
+              <div className="whatsapp-history-pagination" aria-label="Pagination historique WhatsApp">
+                <button
+                  type="button"
+                  className="ghost-btn small-btn"
+                  disabled={historyPage === 1}
+                  onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                >
+                  Précédent
+                </button>
+                <span>Page {historyPage}/{historyTotalPages}</span>
+                <button
+                  type="button"
+                  className="ghost-btn small-btn"
+                  disabled={historyPage === historyTotalPages}
+                  onClick={() => setHistoryPage((page) => Math.min(historyTotalPages, page + 1))}
+                >
+                  Suivant
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="empty-state small-empty">Aucun historique WhatsApp pour le moment. Les prochains envois et échecs apparaîtront ici.</div>
         )}
