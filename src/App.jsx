@@ -6,13 +6,12 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { employeeFallback, fallbackEvents } from './data/mock'
-import { getCurrentUser, loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData, logout } from './lib/fleeti'
+import { getCurrentUser, loadFleetData, logout } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
 const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
-const CamerasPage = lazy(() => import('./pages/CamerasPage').then((module) => ({ default: module.CamerasPage })))
 const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage').then((module) => ({ default: module.WhatsAppPage })))
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
@@ -63,9 +62,9 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [refreshToastVisible, setRefreshToastVisible] = useState(false)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
+  const search = ''
   const [filter, setFilter] = useState('all')
-  const [selectedTrackerId, setSelectedTrackerId] = useState(3488326)
+  const [, setSelectedTrackerId] = useState(3488326)
   const [reports, setReports] = useState({ summary: {}, rows: [] })
   const [deliveryOrders, setDeliveryOrders] = useState([])
   const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
@@ -325,7 +324,7 @@ function App() {
   }
 
   return (
-    <Layout loading={loading} refreshData={refreshData} search={search} setSearch={setSearch} dataset={dataset} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null) }}>
+    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null) }}>
       {error && <div className="error-banner">{error}</div>}
       {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
@@ -334,7 +333,6 @@ function App() {
           <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
           <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-          <Route path="/cameras" element={<CamerasPage />} />
           <Route path="/whatsapp" element={<WhatsAppPage />} />
           <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
