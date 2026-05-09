@@ -15,7 +15,7 @@ import {
 const FALLBACK_PHONE_DISPLAY = '+225 07 00 184 839'
 const FALLBACK_PHONE_E164 = '2250700184839'
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
-const HISTORY_PAGE_SIZE = 10
+const HISTORY_PAGE_SIZE = 5
 const TEMPLATE_CARDS = [
   {
     key: 'created',
@@ -67,12 +67,13 @@ export function WhatsAppPage() {
     : whatsAppQr?.hasQr
       ? 'QR prêt : ouvre WhatsApp sur le téléphone, puis scanne le code dans Appareils connectés.'
       : 'Lance la génération d’un QR pour connecter ou remplacer le compte WhatsApp.'
-  const historyTotalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE))
+  const filteredHistory = useMemo(() => history.filter((entry) => entry.status !== 'skipped'), [history])
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE))
   const historyStartIndex = (historyPage - 1) * HISTORY_PAGE_SIZE
   const historyEndIndex = historyStartIndex + HISTORY_PAGE_SIZE
-  const visibleHistory = useMemo(() => history.slice(historyStartIndex, historyEndIndex), [history, historyEndIndex, historyStartIndex])
-  const displayedHistoryStart = history.length ? historyStartIndex + 1 : 0
-  const displayedHistoryEnd = Math.min(historyEndIndex, history.length)
+  const visibleHistory = useMemo(() => filteredHistory.slice(historyStartIndex, historyEndIndex), [filteredHistory, historyEndIndex, historyStartIndex])
+  const displayedHistoryStart = filteredHistory.length ? historyStartIndex + 1 : 0
+  const displayedHistoryEnd = Math.min(historyEndIndex, filteredHistory.length)
 
   const refreshWhatsAppConnection = useCallback(async () => {
     try {
@@ -258,17 +259,17 @@ export function WhatsAppPage() {
         <div className="panel-header whatsapp-history-header">
           <div>
             <h3>Historique WhatsApp</h3>
-            <p>Derniers messages envoyés, échecs et notifications ignorées. Les données sont stockées côté serveur hors Git.</p>
+            <p>Derniers messages envoyés et échecs. Les notifications ignorées sont masquées pour garder la liste lisible.</p>
           </div>
           <div className="whatsapp-history-header-actions">
-            {history.length > 0 && <span className="whatsapp-history-count">{history.length} alerte{history.length > 1 ? 's' : ''}</span>}
+            {filteredHistory.length > 0 && <span className="whatsapp-history-count">{filteredHistory.length} notification{filteredHistory.length > 1 ? 's' : ''}</span>}
             <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
           </div>
         </div>
-        {history.length ? (
+        {filteredHistory.length ? (
           <>
             <div className="whatsapp-history-summary">
-              <span>Affichage {displayedHistoryStart}-{displayedHistoryEnd} sur {history.length}</span>
+              <span>Affichage {displayedHistoryStart}-{displayedHistoryEnd} sur {filteredHistory.length}</span>
               <strong>Page {historyPage}/{historyTotalPages}</strong>
             </div>
             <div className="whatsapp-history-list">
@@ -313,7 +314,7 @@ export function WhatsAppPage() {
             )}
           </>
         ) : (
-          <div className="empty-state small-empty">Aucun historique WhatsApp pour le moment. Les prochains envois et échecs apparaîtront ici.</div>
+          <div className="empty-state small-empty">Aucun envoi ou échec WhatsApp à afficher. Les notifications ignorées sont masquées.</div>
         )}
       </section>
 

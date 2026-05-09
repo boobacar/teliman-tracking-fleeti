@@ -25,11 +25,13 @@ test('les utilisateurs opérationnels reçoivent la permission page_whatsapp par
   assert.match(serverSource, /page_whatsapp/)
 })
 
-test('l’historique WhatsApp est paginé pour éviter une longue liste d’alertes', () => {
+test('l’historique WhatsApp est filtré et paginé pour éviter une longue liste d’alertes', () => {
   const pageSource = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
 
-  assert.match(pageSource, /HISTORY_PAGE_SIZE\s*=\s*10/)
+  assert.match(pageSource, /HISTORY_PAGE_SIZE\s*=\s*5/)
   assert.match(pageSource, /historyPage/)
+  assert.match(pageSource, /filteredHistory/)
+  assert.match(pageSource, /entry\.status !== 'skipped'/)
   assert.match(pageSource, /visibleHistory/)
   assert.match(pageSource, /slice\(historyStartIndex, historyEndIndex\)/)
   assert.match(pageSource, /Page \{historyPage\}\/\{historyTotalPages\}/)
