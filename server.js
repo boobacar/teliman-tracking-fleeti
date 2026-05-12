@@ -65,7 +65,7 @@ const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS |
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
 app.use(express.json({ limit: '10mb' }))
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+app.use('/uploads', express.static(UPLOADS_BASE_DIR))
 app.use(requestLogger)
 app.use(protectApi)
 app.use(protectAppSession)
