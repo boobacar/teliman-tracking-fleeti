@@ -31,6 +31,21 @@ function fileToDataUrl(file) {
   })
 }
 
+function matchesFuelVoucherSearch(item = {}, query = '') {
+  const normalizedQuery = String(query || '').trim().toLowerCase()
+  if (!normalizedQuery) return true
+  const haystack = [
+    item.voucherNumber,
+    item.truckLabel,
+    item.driver,
+    item.supplier,
+    item.quantityLiters,
+    item.unitPrice,
+    item.amount,
+  ].map((value) => String(value ?? '').toLowerCase()).join(' ')
+  return haystack.includes(normalizedQuery)
+}
+
 function exportCsv(rows) {
   const headers = ['Camion', 'Numéro bon', 'Date', 'Quantité (L)', 'Prix/L', 'Montant', 'Photo']
   const csvRows = rows.map((item) => {
@@ -68,6 +83,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [loading, setLoading] = useState(false)
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [liveFuel, setLiveFuel] = useState([])
   const [liveFuelLoading, setLiveFuelLoading] = useState(false)
 
@@ -115,8 +131,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
     const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
     const dateOk = !selectedDateKey ? true : String(item.dateTime || '').slice(0, 10) === selectedDateKey
-    return trackerOk && dateOk
-  }), [items, trackerFilter, dateFilter])
+    const searchOk = matchesFuelVoucherSearch(item, searchQuery)
+    return trackerOk && dateOk && searchOk
+  }), [items, trackerFilter, dateFilter, searchQuery])
 
   const onTruckChange = (value) => {
     const tracker = enrichedTrackers.find((item) => String(item.id) === String(value))
@@ -241,6 +258,17 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large delivery-table-panel">
         <SectionHeader title="Historique bons carburant" />
         <div className="filters filter-row ops-filter-row">
+          <label className="field-stack">
+            <span>Recherche carburant</span>
+            <input
+              aria-label="Recherche bons de carburant"
+              className="filter-control"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Numéro, camion, chauffeur, fournisseur…"
+            />
+          </label>
           <label className="field-stack">
             <span>Camion</span>
             <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>

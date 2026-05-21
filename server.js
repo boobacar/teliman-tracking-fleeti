@@ -9,6 +9,7 @@ import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chu
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { dedupeDeliveryOrders, normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 
 dotenv.config()
 
@@ -312,14 +313,16 @@ function getAlertSeverity(eventType) {
 
 function readDeliveryOrders() {
   try {
-    return JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
+    const parsed = JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
+    return dedupeDeliveryOrders(parsed).rows
   } catch {
     return []
   }
 }
 
 function writeDeliveryOrders(rows) {
-  fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(rows, null, 2))
+  const { rows: normalizedRows } = dedupeDeliveryOrders(rows)
+  fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(normalizedRows, null, 2))
 }
 
 function readFuelVouchers() {
@@ -586,7 +589,7 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     loadingPoint: String(body.loadingPoint ?? current?.loadingPoint ?? '').trim(),
     destination: String(body.destination ?? current?.destination ?? '').trim(),
     goods: String(body.goods ?? current?.goods ?? '').trim(),
-    quantity: String(body.quantity ?? current?.quantity ?? '').trim(),
+    quantity: normalizeDeliveryQuantity(body.quantity ?? current?.quantity) || String(body.quantity ?? current?.quantity ?? '').trim(),
     status: String(body.status ?? current?.status ?? 'Prévu').trim(),
     date,
     departureDateTime,
@@ -1546,7 +1549,7 @@ function buildReportDataset(data, filters = {}) {
 }
 
 function toNumber(value) {
-  return Number(String(value ?? '0').replace(',', '.')) || 0
+  return parseDeliveryQuantity(value)
 }
 
 function formatDateKey(value) {
@@ -1789,7 +1792,10 @@ async function buildReportsPayload(filters = {}) {
 
   let hash = null
   if (includeFuelSensors && dataset.trackerRows.length) {
-    hash = await authenticate()
+    hash = await authenticate().catch((error) => {
+      console.warn(`[reports] capteurs carburant API privée indisponibles (${error?.message || error}); rapport généré sans carburant live.`)
+      return null
+    })
   }
 
   const fleetRows = await Promise.all(dataset.trackerRows.map(async (row) => {
@@ -1943,7 +1949,17 @@ async function getDashboardData(forceRefresh = false) {
 
   const { from, to, todayKey, yesterdayKey } = getDateRange('48h')
 
-  const hash = await authenticate()
+  const hash = await authenticate().catch(async (error) => {
+    if (PUBLIC_API_KEY) {
+      console.warn(`[dashboard] authentification privée Fleeti indisponible (${error?.message || error}); fallback Asset/Search public.`)
+      const payload = await buildDashboardDataFromPublicApi(todayKey, yesterdayKey)
+      dashboardCache = { data: payload, ts: Date.now() }
+      return null
+    }
+    throw error
+  })
+
+  if (!hash) return dashboardCache.data
 
   const sanitizedTrackers = await fetchTrackersPrivate(hash).catch((error) => {
     console.warn(`[dashboard] tracker/list indisponible: ${error?.message || error}`)

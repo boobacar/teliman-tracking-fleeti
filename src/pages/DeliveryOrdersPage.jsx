@@ -4,15 +4,7 @@ import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
-
-function formatFrenchQuantity(value, digits = 3) {
-  const normalized = Number(String(value ?? '').replace(',', '.'))
-  if (!Number.isFinite(normalized)) return value || '-'
-  return normalized.toLocaleString('fr-FR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })
-}
+import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
 
 async function fileToDataUrl(file) {
   const objectUrl = URL.createObjectURL(file)
@@ -117,6 +109,24 @@ const initialForm = {
   active: true,
 }
 
+function matchesDeliveryOrderSearch(item = {}, query = '') {
+  const normalizedQuery = String(query || '').trim().toLowerCase()
+  if (!normalizedQuery) return true
+  const haystack = [
+    item.reference,
+    item.truckLabel,
+    item.driver,
+    item.client,
+    item.destination,
+    item.loadingPoint,
+    item.goods,
+    item.quantity,
+    item.status,
+    item.notes,
+  ].map((value) => String(value ?? '').toLowerCase()).join(' ')
+  return haystack.includes(normalizedQuery)
+}
+
 export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, setDeliveryOrders, setDeliveryOrdersSummary, masterData = { clients: [], goods: [], destinations: [] }, setMasterData }) {
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
@@ -124,6 +134,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [clientFilter, setClientFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [pageLoading, setPageLoading] = useState(false)
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
@@ -273,7 +284,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     const itemDate = String(item.date || '').slice(0, 10)
     const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
     const dateOk = !selectedDateKey ? true : itemDate === selectedDateKey
-    return statusOk && trackerOk && clientOk && dateOk
+    const searchOk = matchesDeliveryOrderSearch(item, searchQuery)
+    return statusOk && trackerOk && clientOk && dateOk && searchOk
   })
 
   const groupedByTracker = enrichedTrackers
@@ -421,6 +433,17 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </div>
       <div className="filters filter-row ops-filter-row">
         <label className="field-stack">
+          <span>Recherche BL</span>
+          <input
+            aria-label="Recherche bons de livraison"
+            className="filter-control"
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Référence, camion, chauffeur, client, destination…"
+          />
+        </label>
+        <label className="field-stack">
           <span>Camion</span>
           <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
             <option value="all">Tous les camions</option>
@@ -485,7 +508,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                   <td>{item.client}</td>
                   <td>{item.destination}</td>
                   <td>{item.goods}</td>
-                  <td>{formatFrenchQuantity(item.quantity)}</td>
+                  <td>{formatDeliveryQuantity(item.quantity)}</td>
                   <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td>
                   <td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>

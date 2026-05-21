@@ -2,7 +2,27 @@ import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
-import { loadDeliveryOrders, loadFuelVouchers, loadMasterData } from '../lib/fleeti'
+import {
+  loadDeliveryOrders,
+  loadFuelVouchers,
+  loadMasterData,
+  loadReportAlerts,
+  loadReportBatches,
+  loadReportByClient,
+  loadReportByDestination,
+  loadReportByGoods,
+  loadReportByTruck,
+  loadReportDetailedDeliveries,
+  loadReportFleet,
+  loadReportFuelSummary,
+  loadReportMissions,
+  loadReportPerformanceDays,
+  loadReportPerformanceDrivers,
+  loadReportPivot,
+  loadReportProjects,
+  loadReportSummary,
+} from '../lib/fleeti'
+import { parseDeliveryQuantity } from '../lib/deliveryOrders.js'
 
 const STATIC_REPORT_TYPES = [
   { value: 'reco-k1', label: 'ETAT RECONCILIATION K1' },
@@ -10,6 +30,26 @@ const STATIC_REPORT_TYPES = [
   { value: 'reco-lafarge', label: 'ETAT RECONCILIATION LAFARGE' },
   { value: 'fuel', label: 'SUIVI BON DE CARBURANT' },
 ]
+
+const OPERATIONAL_REPORT_TYPES = [
+  { value: 'ops-summary', label: 'SYNTHESE OPERATIONNELLE', loader: loadReportSummary },
+  { value: 'ops-fleet', label: 'FLOTTE & TRAJETS', loader: loadReportFleet },
+  { value: 'ops-alerts', label: 'ALERTES', loader: loadReportAlerts },
+  { value: 'ops-missions', label: 'MISSIONS', loader: loadReportMissions },
+  { value: 'ops-pivot', label: 'TABLEAU CROISE', loader: loadReportPivot },
+  { value: 'ops-detailed-deliveries', label: 'LIVRAISONS DETAILLEES', loader: loadReportDetailedDeliveries },
+  { value: 'ops-by-client', label: 'PAR CLIENT', loader: loadReportByClient },
+  { value: 'ops-by-goods', label: 'PAR PRODUIT', loader: loadReportByGoods },
+  { value: 'ops-by-truck', label: 'PAR CAMION', loader: loadReportByTruck },
+  { value: 'ops-by-destination', label: 'PAR DESTINATION', loader: loadReportByDestination },
+  { value: 'ops-performance-drivers', label: 'PERFORMANCE CHAUFFEURS', loader: loadReportPerformanceDrivers },
+  { value: 'ops-performance-days', label: 'PERFORMANCE JOURNALIERE', loader: loadReportPerformanceDays },
+  { value: 'ops-fuel-summary', label: 'SYNTHESE CARBURANT', loader: loadReportFuelSummary },
+  { value: 'ops-batches', label: 'LOTS / OBJECTIFS', loader: loadReportBatches },
+  { value: 'ops-projects', label: 'PROJETS', loader: loadReportProjects },
+]
+
+const OPERATIONAL_REPORTS_BY_VALUE = Object.fromEntries(OPERATIONAL_REPORT_TYPES.map((item) => [item.value, item]))
 
 function toDate(value) {
   const d = new Date(value)
@@ -22,10 +62,7 @@ function formatDateTime(value) {
 }
 
 function toQtyNumber(value) {
-  if (value === null || value === undefined || value === '') return 0
-  const normalized = typeof value === 'string' ? value.replace(',', '.').replace(/\s+/g, '') : value
-  const n = Number(normalized)
-  return Number.isFinite(n) ? n : 0
+  return parseDeliveryQuantity(value)
 }
 
 function formatQty(value, digits = 2) {
@@ -201,6 +238,58 @@ function drawPdfFooter(doc) {
   }
 }
 
+function formatCellValue(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('fr-FR') : value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })
+  if (typeof value === 'boolean') return value ? 'Oui' : 'Non'
+  if (Array.isArray(value)) return value.length ? value.map(formatCellValue).join(', ') : '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function titleFromKey(key) {
+  return String(key || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase())
+}
+
+function extractRows(payload = {}) {
+  if (Array.isArray(payload.rows)) return payload.rows
+  if (Array.isArray(payload.items)) return payload.items
+  if (Array.isArray(payload.pivot?.rows)) return payload.pivot.rows
+  if (Array.isArray(payload.fleet?.rows)) return payload.fleet.rows
+  return []
+}
+
+function extractSummaries(payload = {}) {
+  const entries = []
+  const pushObject = (prefix, value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return
+    Object.entries(value).forEach(([key, entry]) => {
+      if (entry && typeof entry === 'object') return
+      entries.push({ label: prefix ? `${prefix} ${titleFromKey(key)}` : titleFromKey(key), value: formatCellValue(entry) })
+    })
+  }
+  pushObject('', payload.summary)
+  pushObject('Flotte', payload.fleet)
+  pushObject('Alertes', payload.alerts)
+  pushObject('Missions', payload.missions)
+  return entries.slice(0, 12)
+}
+
+function buildOperationalQuery() {
+  const params = new URLSearchParams()
+  params.set('period', '7d')
+  return params.toString()
+}
+
+function buildGenericColumns(rows = []) {
+  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 10)
+  return keys.map((key) => ({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) }))
+}
+
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
   return (
     <section className="panel panel-large">
@@ -238,6 +327,9 @@ export function ReportsPage() {
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
   const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
   const [goodsFilter, setGoodsFilter] = useState('')
+  const [operationalPayload, setOperationalPayload] = useState(null)
+  const [operationalLoading, setOperationalLoading] = useState(false)
+  const [operationalError, setOperationalError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -289,7 +381,7 @@ export function ReportsPage() {
     label: `HIGH LEVEL ${group.clientName.toUpperCase()}`,
   })), [clientGroups])
 
-  const reportTypes = useMemo(() => [...dynamicReportTypes, ...STATIC_REPORT_TYPES], [dynamicReportTypes])
+  const reportTypes = useMemo(() => [...dynamicReportTypes, ...STATIC_REPORT_TYPES, ...OPERATIONAL_REPORT_TYPES], [dynamicReportTypes])
 
   useEffect(() => {
     if (!reportTypes.length) return
@@ -297,6 +389,39 @@ export function ReportsPage() {
       setType(reportTypes[0].value)
     }
   }, [reportTypes, type])
+
+  const selectedOperationalReport = OPERATIONAL_REPORTS_BY_VALUE[type] || null
+
+  useEffect(() => {
+    if (!selectedOperationalReport) {
+      setOperationalPayload(null)
+      setOperationalError('')
+      setOperationalLoading(false)
+      return undefined
+    }
+    let cancelled = false
+    async function run() {
+      setOperationalLoading(true)
+      setOperationalError('')
+      try {
+        const payload = await selectedOperationalReport.loader(buildOperationalQuery())
+        if (!cancelled) setOperationalPayload(payload || {})
+      } catch (e) {
+        if (!cancelled) {
+          setOperationalPayload(null)
+          setOperationalError(e.message || 'Erreur chargement rapport')
+        }
+      } finally {
+        if (!cancelled) setOperationalLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [selectedOperationalReport])
+
+  const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
+  const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])
+  const operationalColumns = useMemo(() => buildGenericColumns(operationalRows), [operationalRows])
 
   const selectedClientGroup = useMemo(() => (
     type.startsWith('client:') ? clientGroups.find((group) => `client:${group.clientKey}` === type) || null : null
@@ -346,6 +471,20 @@ export function ReportsPage() {
   const currentClientPurchaseOrder = selectedClientGroup ? (masterData.purchaseOrders?.[selectedClientGroup.clientName] || masterData.purchaseOrders?.[selectedClientGroup.clientKey] || '') : ''
 
   const getCurrentReportForExport = () => {
+    if (selectedOperationalReport) {
+      const title = selectedOperationalReport.label
+      return {
+        title,
+        clientName: '',
+        sections: [{
+          title: 'Détail',
+          headers: operationalColumns.map((column) => column.label),
+          rows: operationalRows.map((row) => operationalColumns.map((column) => formatCellValue(row[column.key]))),
+          footerRows: [],
+        }],
+      }
+    }
+
     if (selectedClientGroup) {
       return {
         title: `HIGH LEVEL ${selectedClientGroup.clientName.toUpperCase()}`,
@@ -594,8 +733,33 @@ export function ReportsPage() {
           </div>
         </div>
         {loading && <LoadingBanner message="Chargement des données…" />}
-        <ErrorBanner message={error} />
+        {operationalLoading && <LoadingBanner message="Chargement du rapport opérationnel…" />}
+        <ErrorBanner message={error || operationalError} />
       </section>
+
+      {selectedOperationalReport && (
+        <>
+          {operationalSummary.length > 0 && (
+            <section className="panel panel-large">
+              <div className="panel-header"><div><h3>{selectedOperationalReport.label} – Indicateurs</h3><p>Données sur les 7 derniers jours</p></div></div>
+              <div className="kpi-grid">
+                {operationalSummary.map((item) => (
+                  <div className="mini-kpi" key={`${item.label}-${item.value}`}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          <Table
+            title={selectedOperationalReport.label}
+            subtitle={`${operationalRows.length} ligne(s) • période opérationnelle 7 jours`}
+            rows={operationalRows}
+            columns={operationalColumns.length ? operationalColumns : [{ key: 'empty', label: 'Donnée' }]}
+          />
+        </>
+      )}
 
       {selectedClientGroup && (
         <>

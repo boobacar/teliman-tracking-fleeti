@@ -1,3 +1,5 @@
+import { formatDeliveryQuantity, parseDeliveryQuantity } from './deliveryOrders.js'
+
 export function toDate(value) {
   if (!value) return null
   const direct = new Date(value)
@@ -19,17 +21,11 @@ export function ymdToDate(value) {
 }
 
 export function parseQuantity(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
-  const raw = String(value || '').trim().replace(',', '.')
-  if (!raw) return 0
-  const match = raw.match(/-?\d+(?:\.\d+)?/)
-  return match ? Number(match[0]) : 0
+  return parseDeliveryQuantity(value)
 }
 
 export function formatQty(value) {
-  const num = parseQuantity(value)
-  if (!Number.isFinite(num)) return value || '-'
-  return `${num.toLocaleString('fr-FR')} t`
+  return formatDeliveryQuantity(value, { digits: 2, unit: true })
 }
 
 export function deliveryActivityDate(order = {}) {
