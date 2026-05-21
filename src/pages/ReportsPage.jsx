@@ -238,12 +238,19 @@ function drawPdfFooter(doc) {
   }
 }
 
+function formatObjectAsInlineSummary(value = {}) {
+  const entries = Object.entries(value || {})
+    .filter(([, entry]) => entry !== null && entry !== undefined && entry !== '')
+    .map(([key, entry]) => `${titleFromKey(key)}: ${formatCellValue(entry)}`)
+  return entries.length ? entries.join(' · ') : '-'
+}
+
 function formatCellValue(value) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('fr-FR') : value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })
   if (typeof value === 'boolean') return value ? 'Oui' : 'Non'
   if (Array.isArray(value)) return value.length ? value.map(formatCellValue).join(', ') : '-'
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object') return formatObjectAsInlineSummary(value)
   return String(value)
 }
 
@@ -286,8 +293,28 @@ function buildOperationalQuery() {
 }
 
 function buildGenericColumns(rows = []) {
-  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 10)
-  return keys.map((key) => ({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) }))
+  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 12)
+  const columns = []
+  keys.forEach((key) => {
+    const firstObject = rows.find((row) => row && typeof row[key] === 'object' && !Array.isArray(row[key]) && row[key] !== null)?.[key]
+    if (!firstObject) {
+      columns.push({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) })
+      return
+    }
+    const nestedKeys = Object.keys(firstObject).slice(0, 8)
+    if (!nestedKeys.length) {
+      columns.push({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) })
+      return
+    }
+    nestedKeys.forEach((nestedKey) => {
+      columns.push({
+        key: `${key}.${nestedKey}`,
+        label: titleFromKey(nestedKey),
+        render: (_value, row) => formatCellValue(row?.[key]?.[nestedKey]),
+      })
+    })
+  })
+  return columns
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
