@@ -352,7 +352,17 @@ function buildOperationalQuery() {
 
 function buildGenericColumns(rows = [], options = {}) {
   const { reportType = '' } = options
-  const hiddenFleetKeys = new Set(['tracker_id', 'trackerid', 'tracker_label', 'trackerlabel', 'driver_name', 'drivername'])
+  const hiddenFleetKeys = new Set([
+    'tracker_id',
+    'trackerid',
+    'tracker_label',
+    'trackerlabel',
+    'driver_name',
+    'drivername',
+    'model',
+    'phone',
+    'status',
+  ])
   const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}))))
     .filter((key) => {
       if (reportType !== 'ops-fleet') return true
