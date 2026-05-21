@@ -41,3 +41,10 @@ test('la table générique déplie les sous-clés des colonnes objet \(ex: pivot
   assert.match(reportsPageSource, /nestedKeys\.forEach/)
   assert.match(reportsPageSource, /key: `\$\{key\}\.\$\{nestedKey\}`/)
 })
+
+test('le rapport flotte masque les colonnes tracker/driver techniques et privilégie le conducteur mappé', () => {
+  assert.match(reportsPageSource, /hiddenFleetKeys = new Set\(\['tracker_id'.*'tracker_label'.*'driver_name'/s)
+  assert.match(reportsPageSource, /type !== 'ops-fleet'/)
+  assert.match(reportsPageSource, /deriveFleetDriverLookup/)
+  assert.match(reportsPageSource, /conducteur: mappedDriver \|\| currentDriver \|\| fallbackDriver \|\| 'Non assigné'/)
+})

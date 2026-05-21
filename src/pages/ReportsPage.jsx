@@ -262,6 +262,64 @@ function titleFromKey(key) {
     .replace(/^./, (c) => c.toUpperCase())
 }
 
+function normalizeDriverName(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const normalized = raw.toLowerCase()
+  if (
+    normalized === 'non assigné'
+    || normalized === 'non assigne'
+    || normalized === 'n/a'
+    || normalized === 'na'
+    || normalized === '-'
+  ) {
+    return ''
+  }
+  return raw
+}
+
+function rowTruckIdentity(row = {}) {
+  const candidates = [
+    row.immatriculation,
+    row.truckLabel,
+    row.truck_label,
+    row.truck,
+    row.tracker_label,
+    row.trackerLabel,
+    row.label,
+  ]
+  return String(candidates.find((value) => String(value || '').trim()) || '').trim().toUpperCase()
+}
+
+function deriveFleetDriverLookup({ deliveries = [], fuel = [], fleetRows = [] }) {
+  const map = new Map()
+  const register = (truckValue, driverValue) => {
+    const truck = String(truckValue || '').trim().toUpperCase()
+    const driver = normalizeDriverName(driverValue)
+    if (!truck || !driver || map.has(truck)) return
+    map.set(truck, driver)
+  }
+
+  deliveries.forEach((row) => {
+    register(row?.truckLabel, row?.driver)
+    register(row?.immatriculation, row?.driver)
+  })
+
+  fuel.forEach((row) => {
+    register(row?.truckLabel, row?.driver)
+    register(row?.immatriculation, row?.driver)
+  })
+
+  fleetRows.forEach((row) => {
+    const truck = rowTruckIdentity(row)
+    register(truck, row?.conducteur)
+    register(truck, row?.driver_name)
+    register(truck, row?.driverName)
+  })
+
+  return map
+}
+
 function extractRows(payload = {}) {
   if (Array.isArray(payload.rows)) return payload.rows
   if (Array.isArray(payload.items)) return payload.items
@@ -292,8 +350,15 @@ function buildOperationalQuery() {
   return params.toString()
 }
 
-function buildGenericColumns(rows = []) {
-  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 12)
+function buildGenericColumns(rows = [], options = {}) {
+  const { reportType = '' } = options
+  const hiddenFleetKeys = new Set(['tracker_id', 'trackerid', 'tracker_label', 'trackerlabel', 'driver_name', 'drivername'])
+  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}))))
+    .filter((key) => {
+      if (reportType !== 'ops-fleet') return true
+      return !hiddenFleetKeys.has(String(key || '').replace(/\s+/g, '').toLowerCase())
+    })
+    .slice(0, 12)
   const columns = []
   keys.forEach((key) => {
     const firstObject = rows.find((row) => row && typeof row[key] === 'object' && !Array.isArray(row[key]) && row[key] !== null)?.[key]
@@ -446,9 +511,27 @@ export function ReportsPage() {
     return () => { cancelled = true }
   }, [selectedOperationalReport])
 
-  const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
+  const operationalRows = useMemo(() => {
+    const baseRows = extractRows(operationalPayload || {})
+    if (type !== 'ops-fleet') return baseRows
+
+    const driverByTruck = deriveFleetDriverLookup({ deliveries, fuel, fleetRows: baseRows })
+    return baseRows.map((row) => {
+      const truckKey = rowTruckIdentity(row)
+      const mappedDriver = driverByTruck.get(truckKey)
+      const currentDriver = normalizeDriverName(row?.conducteur)
+      const fallbackDriver = normalizeDriverName(row?.driver_name) || normalizeDriverName(row?.driverName)
+      return {
+        ...row,
+        conducteur: mappedDriver || currentDriver || fallbackDriver || 'Non assigné',
+      }
+    })
+  }, [operationalPayload, type, deliveries, fuel])
   const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])
-  const operationalColumns = useMemo(() => buildGenericColumns(operationalRows), [operationalRows])
+  const operationalColumns = useMemo(
+    () => buildGenericColumns(operationalRows, { reportType: type }),
+    [operationalRows, type],
+  )
 
   const selectedClientGroup = useMemo(() => (
     type.startsWith('client:') ? clientGroups.find((group) => `client:${group.clientKey}` === type) || null : null
