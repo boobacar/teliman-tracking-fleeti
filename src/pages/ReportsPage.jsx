@@ -427,6 +427,9 @@ export function ReportsPage() {
   const [deliveries, setDeliveries] = useState([])
   const [fuel, setFuel] = useState([])
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+  const [deliveriesLoaded, setDeliveriesLoaded] = useState(false)
+  const [fuelLoaded, setFuelLoaded] = useState(false)
+  const [masterDataLoaded, setMasterDataLoaded] = useState(false)
   const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
   const [goodsFilter, setGoodsFilter] = useState('')
   const [operationalPayload, setOperationalPayload] = useState(null)
@@ -436,14 +439,14 @@ export function ReportsPage() {
   useEffect(() => {
     let cancelled = false
     async function run() {
+      if (masterDataLoaded) return
       setLoading(true)
       setError('')
       try {
-        const [d, f, m] = await Promise.all([loadDeliveryOrders(), loadFuelVouchers(), loadMasterData()])
+        const m = await loadMasterData()
         if (!cancelled) {
-          setDeliveries(d?.items || [])
-          setFuel(f?.items || [])
           setMasterData(m || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
+          setMasterDataLoaded(true)
         }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Erreur chargement rapports')
@@ -453,7 +456,55 @@ export function ReportsPage() {
     }
     run()
     return () => { cancelled = true }
-  }, [])
+  }, [masterDataLoaded])
+
+  useEffect(() => {
+    const needsDeliveries = type.startsWith('client:') || type === 'reco-k1' || type === 'reco-caderac' || type === 'reco-lafarge'
+    if (!needsDeliveries || deliveriesLoaded) return undefined
+
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      setError('')
+      try {
+        const d = await loadDeliveryOrders()
+        if (!cancelled) {
+          setDeliveries(d?.items || [])
+          setDeliveriesLoaded(true)
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message || 'Erreur chargement BL')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [type, deliveriesLoaded])
+
+  useEffect(() => {
+    const needsFuel = type === 'fuel'
+    if (!needsFuel || fuelLoaded) return undefined
+
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      setError('')
+      try {
+        const f = await loadFuelVouchers()
+        if (!cancelled) {
+          setFuel(f?.items || [])
+          setFuelLoaded(true)
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message || 'Erreur chargement carburant')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [type, fuelLoaded])
 
   const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => {
     if (!inRange(r.date, from, to)) return false
