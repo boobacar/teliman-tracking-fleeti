@@ -7,6 +7,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
+import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { dedupeDeliveryOrders, normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
@@ -62,9 +63,6 @@ let authCache = { hash: '', ts: 0 }
 let tracksBatchCache = new Map()
 const AUTH_CACHE_TTL_MS = Number(process.env.FLEETI_AUTH_CACHE_TTL_MS || 50 * 60 * 1000)
 const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS || 45 * 1000)
-const REPORTS_CACHE_TTL_MS = Number(process.env.REPORTS_CACHE_TTL_MS || 20 * 1000)
-const reportsPayloadCache = new Map()
-const reportsPayloadInflight = new Map()
 
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
@@ -84,51 +82,6 @@ function parseCsv(value) {
 function parseNumberList(value) {
   const items = parseCsv(value).map((item) => Number(item)).filter(Number.isFinite)
   return items.length ? items : null
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
-  }
-  if (value && typeof value === 'object') {
-    const keys = Object.keys(value).sort()
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value)
-}
-
-function buildReportsCacheKey(filters = {}, options = {}) {
-  return stableStringify({ filters, options })
-}
-
-async function getCachedReportsPayload(filters = {}, options = {}) {
-  const bypassCache = filters.forceRefresh === true
-  const cacheKey = buildReportsCacheKey(filters, options)
-  const now = Date.now()
-
-  if (!bypassCache) {
-    const cachedEntry = reportsPayloadCache.get(cacheKey)
-    if (cachedEntry && now - cachedEntry.ts < REPORTS_CACHE_TTL_MS) {
-      return cachedEntry.data
-    }
-
-    const inflight = reportsPayloadInflight.get(cacheKey)
-    if (inflight) {
-      return inflight
-    }
-  }
-
-  const run = buildReportsPayload(filters, options)
-    .then((payload) => {
-      reportsPayloadCache.set(cacheKey, { ts: Date.now(), data: payload })
-      return payload
-    })
-    .finally(() => {
-      reportsPayloadInflight.delete(cacheKey)
-    })
-
-  reportsPayloadInflight.set(cacheKey, run)
-  return run
 }
 
 function validateRequiredEnv() {
@@ -1330,11 +1283,13 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
       asset?.dailyMileageKm,
     ))
 
-    const todayMileageValue = Number.isFinite(odometer)
-      ? (hasPreviousDayStart
-        ? Math.max(0, Number((odometer - dayStartOdometer).toFixed(2)))
-        : Math.max(todayMileageFromState, odometer))
-      : Math.max(0, Number(cacheEntry?.todayMileage || 0), todayMileageFromState)
+    const todayMileageValue = computeTodayMileage({
+      odometer,
+      dayStartOdometer,
+      todayMileageFromState,
+      cachedTodayMileage: Number(cacheEntry?.todayMileage || 0),
+      hasPreviousDayStart,
+    })
 
     mileage[trackerId] = {
       [todayKey]: { mileage: todayMileageValue },
@@ -1833,9 +1788,7 @@ function buildPivotTable({ trackerRows = [], alertRows = [], missionRows = [] },
   return { rowsKey, colsKey, metric, columns, rows }
 }
 
-async function buildReportsPayload(filters = {}, options = {}) {
-  const includeBusiness = options.includeBusiness !== false
-  const includePivot = options.includePivot !== false
+async function buildReportsPayload(filters = {}) {
   const data = await getDashboardData(filters.forceRefresh === true)
   const dataset = buildReportDataset(data, filters)
   const includeFuelSensors = filters.includeFuelSensors === true
@@ -1902,8 +1855,8 @@ async function buildReportsPayload(filters = {}, options = {}) {
     fleet: { summary: fleetSummary, rows: fleetRows },
     alerts: { summary: alertsSummary, rows: dataset.alertRows },
     missions: { summary: missionsSummary, rows: dataset.missionRows },
-    business: includeBusiness ? buildBusinessReports(dataset.missionRows, fleetRows) : null,
-    pivot: includePivot ? buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters) : null,
+    business: buildBusinessReports(dataset.missionRows, fleetRows),
+    pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters),
   }
 }
 
@@ -2968,7 +2921,7 @@ app.post('/api/tracks/batch', async (req, res) => {
 app.get('/api/reports', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     const rows = payload.fleet.rows.map((row) => ({
       immatriculation: row.immatriculation,
       conducteur: row.conducteur,
@@ -2990,7 +2943,7 @@ app.get('/api/reports', async (req, res) => {
 app.get('/api/reports/summary', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.summary, fleet: payload.fleet.summary, alerts: payload.alerts.summary, missions: payload.missions.summary, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3000,7 +2953,7 @@ app.get('/api/reports/summary', async (req, res) => {
 app.get('/api/reports/fleet', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.fleet.summary, rows: payload.fleet.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3010,7 +2963,7 @@ app.get('/api/reports/fleet', async (req, res) => {
 app.get('/api/reports/alerts', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.alerts.summary, rows: payload.alerts.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3020,7 +2973,7 @@ app.get('/api/reports/alerts', async (req, res) => {
 app.get('/api/reports/missions', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ summary: payload.missions.summary, rows: payload.missions.rows, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3030,7 +2983,7 @@ app.get('/api/reports/missions', async (req, res) => {
 app.get('/api/reports/pivot', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ pivot: payload.pivot, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3040,13 +2993,8 @@ app.get('/api/reports/pivot', async (req, res) => {
 app.get('/api/reports/detailed-deliveries', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
-    const sourceRows = Array.isArray(payload.business?.detailed) ? payload.business.detailed : []
-    const page = Math.max(1, Number(req.query.page || 1))
-    const pageSize = Math.min(500, Math.max(1, Number(req.query.pageSize || sourceRows.length || 1)))
-    const start = (page - 1) * pageSize
-    const pagedRows = sourceRows.slice(start, start + pageSize)
-    res.json({ rows: pagedRows, total: sourceRows.length, page, pageSize, generatedAt: payload.generatedAt, filters: payload.filters })
+    const payload = await buildReportsPayload(filters)
+    res.json({ rows: payload.business.detailed, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }
@@ -3055,7 +3003,7 @@ app.get('/api/reports/detailed-deliveries', async (req, res) => {
 app.get('/api/reports/by-client', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.byClient, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3065,7 +3013,7 @@ app.get('/api/reports/by-client', async (req, res) => {
 app.get('/api/reports/by-goods', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.byGoods, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3075,7 +3023,7 @@ app.get('/api/reports/by-goods', async (req, res) => {
 app.get('/api/reports/by-truck', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.byTruck, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3085,7 +3033,7 @@ app.get('/api/reports/by-truck', async (req, res) => {
 app.get('/api/reports/by-destination', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.byDestination, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3095,7 +3043,7 @@ app.get('/api/reports/by-destination', async (req, res) => {
 app.get('/api/reports/performance-drivers', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.performanceByDriver, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3105,7 +3053,7 @@ app.get('/api/reports/performance-drivers', async (req, res) => {
 app.get('/api/reports/performance-days', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.performanceByDay, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3115,7 +3063,7 @@ app.get('/api/reports/performance-days', async (req, res) => {
 app.get('/api/reports/fuel-summary', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: true }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.fuelSummary, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3125,7 +3073,7 @@ app.get('/api/reports/fuel-summary', async (req, res) => {
 app.get('/api/reports/batches', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     const targetQuantity = Number(filters.targetQuantity || 0)
     const rows = payload.business.batches.map((row) => ({
       ...row,
@@ -3142,7 +3090,7 @@ app.get('/api/reports/batches', async (req, res) => {
 app.get('/api/reports/projects', async (req, res) => {
   try {
     const filters = { ...parseReportFilters(req.query), includeFuelSensors: false }
-    const payload = await getCachedReportsPayload(filters)
+    const payload = await buildReportsPayload(filters)
     res.json({ rows: payload.business.projects, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
