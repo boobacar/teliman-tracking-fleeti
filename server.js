@@ -570,6 +570,24 @@ function sanitizeOptionalDateField(value, fallback = null, { defaultNow = false 
   return defaultNow ? new Date().toISOString() : null
 }
 
+function validateDeliveryReference(value, current = null) {
+  const ref = String(value ?? '').trim()
+  if (!ref) {
+    throw new Error('La référence BL est obligatoire')
+  }
+  // Reject references that look like image filenames
+  const imageExtensionPattern = /\.(jpe?g|png|webp|heic|heif|gif|bmp|svg|tiff?)(\s*$|[^a-z0-9])/i
+  if (imageExtensionPattern.test(ref)) {
+    throw new Error('La référence BL ne peut pas être un nom de fichier image. Veuillez saisir une référence valide (ex: 0001234).')
+  }
+  // Reject references that start with common filename prefixes
+  const filenamePrefixPattern = /^(BLLF-|IMG[-_]|DSC[-_]|PHOTO[-_]|CAPTURE[-_]|CAPTURED[-_]|Screenshot[-_]|image[-_]|photo[-_])/i
+  if (filenamePrefixPattern.test(ref)) {
+    throw new Error('La référence BL ne peut pas être un nom de fichier. Veuillez saisir une référence valide (ex: 0001234).')
+  }
+  return ref
+}
+
 function sanitizeDeliveryOrderPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) {
@@ -585,7 +603,7 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     trackerId,
     truckLabel: String(body.truckLabel ?? current?.truckLabel ?? '').trim(),
     driver: String(body.driver ?? current?.driver ?? '').trim(),
-    reference: String(body.reference ?? current?.reference ?? '').trim(),
+    reference: validateDeliveryReference(String(body.reference ?? current?.reference ?? '').trim(), current),
     client: String(body.client ?? current?.client ?? '').trim(),
     loadingPoint: String(body.loadingPoint ?? current?.loadingPoint ?? '').trim(),
     destination: String(body.destination ?? current?.destination ?? '').trim(),
