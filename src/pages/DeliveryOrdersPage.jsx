@@ -338,7 +338,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           </label>
           <label className="field-stack">
             <span>Référence BL</span>
-            <input aria-label="Référence BL" placeholder="Référence BL" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required />
+            <input
+              aria-label="Référence BL"
+              placeholder="Référence BL (ex: 0001234)"
+              value={form.reference}
+              onChange={(e) => setForm({ ...form, reference: e.target.value })}
+              required
+              pattern="^(?!.*\.(jpe?g|png|webp|heic|heif|gif|bmp|svg|tiff?)($|\s|[^a-z0-9])).+"
+              title="La référence ne peut pas être un nom de fichier image. Ex: 0001234"
+            />
           </label>
           <label className="field-stack">
             <span>Client</span>
