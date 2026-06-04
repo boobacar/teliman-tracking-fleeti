@@ -60,6 +60,7 @@ validateRequiredEnv()
 const app = express()
 let dashboardCache = { data: null, ts: 0 }
 let authCache = { hash: '', ts: 0 }
+let fuelLiveCache = { data: null, ts: 0 }
 let tracksBatchCache = new Map()
 const AUTH_CACHE_TTL_MS = Number(process.env.FLEETI_AUTH_CACHE_TTL_MS || 50 * 60 * 1000)
 const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS || 45 * 1000)
@@ -2667,10 +2668,23 @@ app.get('/api/fuel-voucher/:id', (req, res) => {
   res.json({ item })
 })
 
-app.get('/api/fuel-live', async (_req, res) => {
+const FUEL_LIVE_CACHE_TTL_MS = Number(process.env.FUEL_LIVE_CACHE_TTL_MS || 60 * 1000)
+
+app.get('/api/fuel-live', async (req, res) => {
   try {
-    res.json(await loadLiveFuelLevels())
+    const forceRefresh = String(req.query.refresh || '').trim() === '1'
+    if (!forceRefresh && fuelLiveCache.data && Date.now() - fuelLiveCache.ts < FUEL_LIVE_CACHE_TTL_MS) {
+      return res.json({ ...fuelLiveCache.data, cached: true })
+    }
+
+    const data = await loadLiveFuelLevels()
+    fuelLiveCache = { data, ts: Date.now() }
+    res.json({ ...data, cached: false })
   } catch (error) {
+    // Return stale cache on error if available
+    if (fuelLiveCache.data) {
+      return res.json({ ...fuelLiveCache.data, cached: true, degraded: true, warning: 'Données en cache (API Flotte indisponible).' })
+    }
     res.status(500).json({ ok: false, error: error.message || 'Impossible de charger les niveaux de carburant live.' })
   }
 })

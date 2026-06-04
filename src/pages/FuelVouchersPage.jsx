@@ -109,18 +109,21 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     async function loadData() {
       setLoading(true)
       try {
-        const [payload, masterData, liveFuelPayload] = await Promise.all([
+        const [payload, masterData] = await Promise.all([
           loadFuelVouchers(),
           loadMasterData(),
-          loadLiveFuelLevels().catch(() => ({ items: [] })),
         ])
         if (!cancelled) {
           setItems(payload.items ?? [])
           setSuppliers(masterData?.suppliers || [])
-          setLiveFuel(liveFuelPayload?.items || [])
         }
       } finally {
         if (!cancelled) setLoading(false)
+      }
+
+      // Charger les niveaux de carburant en arrière-plan sans bloquer l'affichage
+      if (!cancelled) {
+        reloadLiveFuel()
       }
     }
     loadData()
