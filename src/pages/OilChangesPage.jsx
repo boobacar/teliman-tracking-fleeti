@@ -363,7 +363,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
               <input type="number" step="0.5" min="0" value={form.oilQuantityL} onChange={(e) => setForm((c) => ({ ...c, oilQuantityL: e.target.value }))} placeholder="Litres" />
             </label>
           </div>
-          <label className="field-stack" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <label className="field-stack" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <span style={{ cursor: 'pointer' }} onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}>Filtre à huile changé</span>
             <button
               type="button"
