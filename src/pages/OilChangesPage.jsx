@@ -37,6 +37,14 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
   const [odometerLoading, setOdometerLoading] = useState(false)
   const [odometerError, setOdometerError] = useState('')
 
+  // Filtrer les véhicules : exclure les labels contenant "plateau"
+  const truckOptions = useMemo(() => {
+    return enrichedTrackers.filter((t) => {
+      const label = String(t.label || '').toLowerCase()
+      return !label.includes('plateau')
+    })
+  }, [enrichedTrackers])
+
   const reload = async () => {
     const payload = await loadOilChanges()
     setItems(payload.items ?? [])
@@ -82,7 +90,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
 
   // Tableau de bord par camion : fusion trackers enrichis + live + historique
   const fleetRows = useMemo(() => {
-    return enrichedTrackers.map((tracker) => {
+    return truckOptions.map((tracker) => {
       const live = truckOdometerMap[String(tracker.id)]
       // Chercher la dernière vidange pour ce tracker
       const lastChange = items.find((item) => String(item.trackerId) === String(tracker.id))
@@ -106,7 +114,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
         totalChanges: items.filter((item) => String(item.trackerId) === String(tracker.id)).length,
       }
     })
-  }, [enrichedTrackers, truckOdometerMap, items])
+  }, [truckOptions, truckOdometerMap, items])
 
   // Filtrage combiné camion + statut
   const filteredFleet = useMemo(() => {
@@ -129,7 +137,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
   }, [items, trackerFilter])
 
   const onTruckChange = (value) => {
-    const tracker = enrichedTrackers.find((item) => String(item.id) === String(value))
+    const tracker = truckOptions.find((item) => String(item.id) === String(value))
     const live = truckOdometerMap[String(value)]
     setForm((current) => ({
       ...current,
@@ -171,7 +179,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
 
   // Trouver le tracker label par id
   const getTruckLabel = (trackerId) => {
-    const tracker = enrichedTrackers.find((t) => String(t.id) === String(trackerId))
+    const tracker = truckOptions.find((t) => String(t.id) === String(trackerId))
     return tracker?.label || `Tracker ${trackerId}`
   }
 
@@ -188,7 +196,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
           </div>
           <div className="mission-highlight-card">
             <span>Véhicules suivis</span>
-            <strong>{trucksWithHistory}/{enrichedTrackers.length}</strong>
+            <strong>{trucksWithHistory}/{truckOptions.length}</strong>
             <small>avec historique</small>
           </div>
           <div className="mission-highlight-card">
@@ -229,7 +237,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             <span>Camion</span>
             <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
               <option value="all">Tous les camions</option>
-              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+              {truckOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
             </select>
           </label>
           <label className="field-stack">
@@ -240,7 +248,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
           </label>
           <div className="field-stack">
             <span>Kilométrage live</span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>{trucksWithOdometer}/{enrichedTrackers.length} véhicules</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{trucksWithOdometer}/{truckOptions.length} véhicules</span>
           </div>
         </div>
 
@@ -310,7 +318,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             <span>Camion</span>
             <select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
               <option value="">Sélectionner un camion</option>
-              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+              {truckOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
             </select>
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -356,6 +364,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             </label>
           </div>
           <label className="field-stack" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <span style={{ cursor: 'pointer' }} onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}>Filtre à huile changé</span>
             <button
               type="button"
               role="switch"
@@ -386,7 +395,6 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
               }} />
             </button>
-            <span style={{ cursor: 'pointer' }} onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}>Filtre à huile changé</span>
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label className="field-stack">
@@ -425,7 +433,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)} style={{ width: 180 }}>
                 <option value="all">Tous les camions</option>
-                {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
+                {truckOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
               </select>
             </div>
           }
