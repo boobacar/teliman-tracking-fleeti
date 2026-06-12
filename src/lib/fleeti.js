@@ -1,9 +1,6 @@
 import { normalizeBackendUrl } from './backendUrl.js'
 
 const BACKEND_URL = normalizeBackendUrl(import.meta.env.VITE_BACKEND_URL)
-const GET_CACHE_TTL_MS = 60_000
-const getJsonCache = new Map()
-const getJsonInflight = new Map()
 
 function isBrowser() {
   return typeof window !== 'undefined'
@@ -25,35 +22,15 @@ export function resolveMediaUrl(path) {
 }
 
 async function getJson(path) {
-  const headers = { ...getSessionHeaders() }
-  const cacheKey = `${path}::${headers['x-user-email'] || ''}`
-  const now = Date.now()
-  const cached = getJsonCache.get(cacheKey)
-  if (cached && (now - cached.at) < GET_CACHE_TTL_MS) {
-    return cached.data
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, { headers: { ...getSessionHeaders() } })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    return data
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    throw error
   }
-
-  if (getJsonInflight.has(cacheKey)) {
-    return getJsonInflight.get(cacheKey)
-  }
-
-  const request = (async () => {
-    try {
-      const response = await fetch(`${BACKEND_URL}${path}`, { headers })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
-      getJsonCache.set(cacheKey, { at: Date.now(), data })
-      return data
-    } catch (error) {
-      if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
-      throw error
-    } finally {
-      getJsonInflight.delete(cacheKey)
-    }
-  })()
-
-  getJsonInflight.set(cacheKey, request)
-  return request
 }
 
 async function postJson(path, body) {
@@ -233,6 +210,25 @@ export const updateFuelVoucher = async (id, payload) => {
 }
 export const deleteFuelVoucher = async (id) => {
   const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
+export const loadLiveOdometer = () => getJson('/api/live-odometer')
+export const loadOilChanges = () => getJson('/api/oil-changes')
+export const createOilChange = (payload) => postJson('/api/oil-changes', payload)
+export const updateOilChange = async (id, payload) => {
+  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify(payload),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data?.error || 'Backend error')
+  return data
+}
+export const deleteOilChange = async (id) => {
+  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data

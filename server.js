@@ -27,6 +27,7 @@ const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.
 const WHATSAPP_TEMPLATES_FILE = path.join(DATA_DIR, 'whatsapp-templates.json')
 const WHATSAPP_HISTORY_FILE = path.join(DATA_DIR, 'whatsapp-history.json')
 const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
+const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
@@ -348,6 +349,44 @@ function writeFuelVouchers(rows) {
   fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
   // Invalider le cache pour que la prochaine lecture recharge le fichier
   fuelVouchersCache = { data: null, mtime: 0 }
+}
+
+function readOilChanges() {
+  try {
+    return JSON.parse(fs.readFileSync(OIL_CHANGES_FILE, 'utf8'))
+  } catch {
+    return []
+  }
+}
+
+function writeOilChanges(rows) {
+  fs.writeFileSync(OIL_CHANGES_FILE, JSON.stringify(rows, null, 2))
+}
+
+function sanitizeOilChangePayload(body = {}, current = null) {
+  const now = new Date().toISOString()
+  const id = current ? current.id : (Date.now() * 1000 + Math.floor(Math.random() * 1000))
+  const trackerId = String(body.trackerId ?? current?.trackerId ?? '').trim()
+  const truckLabel = String(body.truckLabel ?? current?.truckLabel ?? '').trim()
+  const date = String(body.date ?? current?.date ?? now.slice(0, 10)).trim()
+  const odometerKm = Number.isFinite(Number(body.odometerKm)) ? Number(body.odometerKm) : (Number(current?.odometerKm) || 0)
+  const oilType = String(body.oilType ?? current?.oilType ?? '').trim()
+  const oilQuantityL = Number.isFinite(Number(body.oilQuantityL)) ? Number(body.oilQuantityL) : (Number(current?.oilQuantityL) || 0)
+  const filterChanged = Boolean(body.filterChanged ?? current?.filterChanged ?? true)
+  const nextChangeKm = Number.isFinite(Number(body.nextChangeKm)) ? Number(body.nextChangeKm) : (Number(current?.nextChangeKm) || 0)
+  const nextChangeDate = String(body.nextChangeDate ?? current?.nextChangeDate ?? '').trim()
+  const notes = String(body.notes ?? current?.notes ?? '').trim()
+  const createdAt = current?.createdAt || now
+  const updatedAt = now
+
+  if (!trackerId || !truckLabel) {
+    throw new Error('Le camion est obligatoire.')
+  }
+  if (!date) {
+    throw new Error('La date est obligatoire.')
+  }
+
+  return { id, trackerId, truckLabel, date, odometerKm, oilType, oilQuantityL, filterChanged, nextChangeKm, nextChangeDate, notes, createdAt, updatedAt }
 }
 
 function readMasterData() {
@@ -946,6 +985,55 @@ async function loadLiveFuelLevels() {
       })),
     }
   }))
+
+  return {
+    items: items.sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr')),
+    generatedAt: new Date().toISOString(),
+    source: 'private',
+  }
+}
+
+async function loadLiveOdometer() {
+  if (!PRIVATE_API_CONFIGURED) {
+    throw new Error('API privée Fleeti non configurée')
+  }
+
+  const hash = await authenticate()
+  const trackersResponse = await apiCall('tracker/list', { hash })
+  const trackers = sanitizeTrackers(extractArrayPayload(trackersResponse, ['list', 'trackers', 'items', 'results', 'result', 'data']))
+
+  const trackerIds = trackers
+    .map((tracker) => Number(tracker.id))
+    .filter((trackerId) => Number.isFinite(trackerId) && (!TRACKER_IDS.length || TRACKER_IDS.includes(trackerId)))
+
+  const statesResponse = trackerIds.length
+    ? await apiCall('tracker/get_states', { hash, trackers: trackerIds }).catch(() => ({ states: {} }))
+    : { states: {} }
+  const states = extractObjectPayload(statesResponse, ['states', 'result', 'data'])
+
+  const items = trackerIds.map((trackerId) => {
+    const tracker = trackers.find((entry) => Number(entry.id) === trackerId)
+    const state = states?.[trackerId] || states?.[String(trackerId)] || {}
+    // L'odomètre peut être dans state.odometer, state.odometre, state.total_km, ou state.gps.odometer
+    const odometer = Number.isFinite(Number(state.odometer)) ? Number(state.odometer)
+      : Number.isFinite(Number(state.odometre)) ? Number(state.odometre)
+      : Number.isFinite(Number(state.total_km)) ? Number(state.total_km)
+      : Number.isFinite(Number(state.gps?.odometer)) ? Number(state.gps.odometer)
+      : Number.isFinite(Number(state.odometer_km)) ? Number(state.odometer_km)
+      : null
+
+    return {
+      trackerId,
+      truckLabel: tracker?.label || `Tracker ${trackerId}`,
+      imei: tracker?.imei || '',
+      odometer,
+      isOnline: state?.connection_status === 'online' || state?.connectionStatus === 'online' || null,
+      movementStatus: state?.movement_status ?? state?.movementStatus ?? null,
+      connectionStatus: state?.connection_status ?? state?.connectionStatus ?? null,
+      position: state?.gps ? { lat: state.gps.latitude ?? state.gps.lat, lng: state.gps.longitude ?? state.gps.lng } : null,
+      lastUpdate: state?.last_update || state?.updated_at || state?.updatedAt || null,
+    }
+  })
 
   return {
     items: items.sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr')),
@@ -2744,6 +2832,68 @@ app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), 
   const items = readFuelVouchers()
   const filtered = items.filter((item) => Number(item.id) !== id)
   writeFuelVouchers(filtered)
+  res.json({ ok: true })
+})
+
+// --- Vidange (oil changes) ---
+let odometerLiveCache = { data: null, ts: 0 }
+const ODOMETER_LIVE_CACHE_TTL_MS = Number(process.env.ODOMETER_LIVE_CACHE_TTL_MS || 120 * 1000)
+
+app.get('/api/live-odometer', async (req, res) => {
+  try {
+    const forceRefresh = String(req.query.refresh || '').trim() === '1'
+    if (!forceRefresh && odometerLiveCache.data && Date.now() - odometerLiveCache.ts < ODOMETER_LIVE_CACHE_TTL_MS) {
+      return res.json({ ...odometerLiveCache.data, cached: true })
+    }
+    const data = await loadLiveOdometer()
+    odometerLiveCache = { data, ts: Date.now() }
+    res.json({ ...data, cached: false })
+  } catch (error) {
+    if (odometerLiveCache.data) {
+      return res.json({ ...odometerLiveCache.data, cached: true, degraded: true, warning: 'Données en cache (API Flotte indisponible).' })
+    }
+    res.status(500).json({ ok: false, error: error.message || 'Impossible de charger le kilométrage live.' })
+  }
+})
+
+app.get('/api/oil-changes', (_req, res) => {
+  res.json({ items: readOilChanges() })
+})
+
+app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), (req, res) => {
+  try {
+    const items = readOilChanges()
+    const payload = sanitizeOilChangePayload(req.body)
+    items.unshift(payload)
+    writeOilChanges(items)
+    res.status(201).json({ ok: true, item: payload })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const items = readOilChanges()
+    const current = items.find((item) => Number(item.id) === id)
+    if (!current) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
+    const updated = sanitizeOilChangePayload(req.body, current)
+    const next = items.map((item) => Number(item.id) === id ? updated : item)
+    writeOilChanges(next)
+    res.json({ ok: true, item: updated })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+  const items = readOilChanges()
+  const filtered = items.filter((item) => Number(item.id) !== id)
+  writeOilChanges(filtered)
   res.json({ ok: true })
 })
 
