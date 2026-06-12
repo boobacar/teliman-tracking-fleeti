@@ -327,9 +327,18 @@ function writeDeliveryOrders(rows) {
   fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(normalizedRows, null, 2))
 }
 
+// Cache mémoire pour éviter de parser 60+ MB de JSON à chaque requête
+let fuelVouchersCache = { data: null, mtime: 0 }
+
 function readFuelVouchers() {
   try {
-    return JSON.parse(fs.readFileSync(FUEL_VOUCHERS_FILE, 'utf8'))
+    const stat = fs.statSync(FUEL_VOUCHERS_FILE)
+    if (fuelVouchersCache.data && fuelVouchersCache.mtime === stat.mtimeMs) {
+      return fuelVouchersCache.data
+    }
+    const data = JSON.parse(fs.readFileSync(FUEL_VOUCHERS_FILE, 'utf8'))
+    fuelVouchersCache = { data, mtime: stat.mtimeMs }
+    return data
   } catch {
     return []
   }
@@ -337,6 +346,8 @@ function readFuelVouchers() {
 
 function writeFuelVouchers(rows) {
   fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
+  // Invalider le cache pour que la prochaine lecture recharge le fichier
+  fuelVouchersCache = { data: null, mtime: 0 }
 }
 
 function readMasterData() {
