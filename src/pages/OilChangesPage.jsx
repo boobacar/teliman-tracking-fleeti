@@ -24,6 +24,7 @@ const initialForm = {
   nextChangeKm: '',
   nextChangeDate: '',
   notes: '',
+  receiptExpiryDate: '',
 }
 
 export function OilChangesPage({ enrichedTrackers = [] }) {
@@ -418,6 +419,16 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             <span>Notes</span>
             <textarea rows={2} value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Observations, type de filtre, garage..." />
           </label>
+          <label className="field-stack">
+            <span>Date d'expiration récépissé</span>
+            <StableDatePicker
+              value={form.receiptExpiryDate ? new Date(form.receiptExpiryDate + 'T00:00:00') : null}
+              onChange={(value) => setForm((c) => ({ ...c, receiptExpiryDate: value ? value.toISOString().slice(0, 10) : '' }))}
+              placeholder="Date expiration récépissé"
+              clearable
+              className="filter-control modern-date-input"
+            />
+          </label>
           <button type="submit" className="primary-btn" disabled={saving}>
             {saving ? 'Enregistrement…' : 'Enregistrer la vidange'}
           </button>
@@ -449,6 +460,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
                   <th>Huile</th>
                   <th>Qté</th>
                   <th>Filtre</th>
+                  <th>Récépissé</th>
                   <th>Prochaine échéance</th>
                   <th>Notes</th>
                   <th></th>
@@ -463,6 +475,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
                     <td>{item.oilType || '-'}</td>
                     <td>{item.oilQuantityL ? `${item.oilQuantityL} L` : '-'}</td>
                     <td>{item.filterChanged ? <CheckCircle size={14} style={{ color: '#22c55e' }} /> : <AlertCircle size={14} style={{ color: '#64748b' }} />}</td>
+                    <td>{item.receiptExpiryDate ? new Date(item.receiptExpiryDate + 'T00:00:00').toLocaleDateString('fr-FR') : '-'}</td>
                     <td>
                       {item.nextChangeKm ? `${Number(item.nextChangeKm).toLocaleString('fr-FR')} km` : ''}
                       {item.nextChangeKm && item.nextChangeDate ? ' / ' : ''}

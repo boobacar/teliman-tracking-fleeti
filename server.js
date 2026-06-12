@@ -376,6 +376,7 @@ function sanitizeOilChangePayload(body = {}, current = null) {
   const nextChangeKm = Number.isFinite(Number(body.nextChangeKm)) ? Number(body.nextChangeKm) : (Number(current?.nextChangeKm) || 0)
   const nextChangeDate = String(body.nextChangeDate ?? current?.nextChangeDate ?? '').trim()
   const notes = String(body.notes ?? current?.notes ?? '').trim()
+  const receiptExpiryDate = String(body.receiptExpiryDate ?? current?.receiptExpiryDate ?? '').trim()
   const createdAt = current?.createdAt || now
   const updatedAt = now
 
@@ -386,7 +387,7 @@ function sanitizeOilChangePayload(body = {}, current = null) {
     throw new Error('La date est obligatoire.')
   }
 
-  return { id, trackerId, truckLabel, date, odometerKm, oilType, oilQuantityL, filterChanged, nextChangeKm, nextChangeDate, notes, createdAt, updatedAt }
+  return { id, trackerId, truckLabel, date, odometerKm, oilType, oilQuantityL, filterChanged, nextChangeKm, nextChangeDate, notes, receiptExpiryDate, createdAt, updatedAt }
 }
 
 function readMasterData() {
