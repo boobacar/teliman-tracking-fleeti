@@ -994,51 +994,32 @@ async function loadLiveFuelLevels() {
 }
 
 async function loadLiveOdometer() {
-  if (!PRIVATE_API_CONFIGURED) {
-    throw new Error('API privée Fleeti non configurée')
-  }
+  // Utilise l'API publique Fleeti (comme le dashboard) — l'odomètre est dans les gateways/sensors publics
+  const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
 
-  const hash = await authenticate()
-  const trackersResponse = await apiCall('tracker/list', { hash })
-  const trackers = sanitizeTrackers(extractArrayPayload(trackersResponse, ['list', 'trackers', 'items', 'results', 'result', 'data']))
-
-  const trackerIds = trackers
-    .map((tracker) => Number(tracker.id))
-    .filter((trackerId) => Number.isFinite(trackerId) && (!TRACKER_IDS.length || TRACKER_IDS.includes(trackerId)))
-
-  const statesResponse = trackerIds.length
-    ? await apiCall('tracker/get_states', { hash, trackers: trackerIds }).catch(() => ({ states: {} }))
-    : { states: {} }
-  const states = extractObjectPayload(statesResponse, ['states', 'result', 'data'])
-
-  const items = trackerIds.map((trackerId) => {
-    const tracker = trackers.find((entry) => Number(entry.id) === trackerId)
-    const state = states?.[trackerId] || states?.[String(trackerId)] || {}
-    // L'odomètre peut être dans state.odometer, state.odometre, state.total_km, ou state.gps.odometer
-    const odometer = Number.isFinite(Number(state.odometer)) ? Number(state.odometer)
-      : Number.isFinite(Number(state.odometre)) ? Number(state.odometre)
-      : Number.isFinite(Number(state.total_km)) ? Number(state.total_km)
-      : Number.isFinite(Number(state.gps?.odometer)) ? Number(state.gps.odometer)
-      : Number.isFinite(Number(state.odometer_km)) ? Number(state.odometer_km)
-      : null
+  const items = assets.map((asset) => {
+    const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0] || {}
+    const odometer = pickPublicOdometerKm(asset, gateway)
+    const state = gateway?.state || {}
 
     return {
-      trackerId,
-      truckLabel: tracker?.label || `Tracker ${trackerId}`,
-      imei: tracker?.imei || '',
+      trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
+      assetId: asset.id || '',
+      truckLabel: asset.name || gateway?.name || asset.properties?.licensePlate || 'Camion sans nom',
       odometer,
-      isOnline: state?.connection_status === 'online' || state?.connectionStatus === 'online' || null,
-      movementStatus: state?.movement_status ?? state?.movementStatus ?? null,
-      connectionStatus: state?.connection_status ?? state?.connectionStatus ?? null,
-      position: state?.gps ? { lat: state.gps.latitude ?? state.gps.lat, lng: state.gps.longitude ?? state.gps.lng } : null,
-      lastUpdate: state?.last_update || state?.updated_at || state?.updatedAt || null,
+      isOnline: Boolean(gateway?.isOnline),
+      movementStatus: state?.movementStatus ?? null,
+      connectionStatus: state?.connectionStatus ?? null,
+      position: state?.location ? { lat: state.location.lat, lng: state.location.lng } : null,
+      lastUpdate: state?.lastUpdate || state?.updatedAt || null,
+      speed: Number.isFinite(Number(state?.gps?.speed)) ? Number(state.gps.speed) : (Number.isFinite(Number(state?.speed)) ? Number(state.speed) : null),
     }
   })
 
   return {
     items: items.sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr')),
     generatedAt: new Date().toISOString(),
-    source: 'private',
+    source: 'public',
   }
 }
 
