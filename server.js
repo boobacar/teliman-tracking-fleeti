@@ -997,24 +997,26 @@ async function loadLiveOdometer() {
   // Utilise l'API publique Fleeti (comme le dashboard) — l'odomètre est dans les gateways/sensors publics
   const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
 
-  const items = assets.map((asset) => {
-    const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0] || {}
-    const odometer = pickPublicOdometerKm(asset, gateway)
-    const state = gateway?.state || {}
+  const items = assets
+    .filter((asset) => !isCameraLike(asset)) // exclure les caméras
+    .map((asset) => {
+      const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0] || {}
+      const odometer = pickPublicOdometerKm(asset, gateway)
+      const state = gateway?.state || {}
 
-    return {
-      trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
-      assetId: asset.id || '',
-      truckLabel: asset.name || gateway?.name || asset.properties?.licensePlate || 'Camion sans nom',
-      odometer,
-      isOnline: Boolean(gateway?.isOnline),
-      movementStatus: state?.movementStatus ?? null,
-      connectionStatus: state?.connectionStatus ?? null,
-      position: state?.location ? { lat: state.location.lat, lng: state.location.lng } : null,
-      lastUpdate: state?.lastUpdate || state?.updatedAt || null,
-      speed: Number.isFinite(Number(state?.gps?.speed)) ? Number(state.gps.speed) : (Number.isFinite(Number(state?.speed)) ? Number(state.speed) : null),
-    }
-  })
+      return {
+        trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
+        assetId: asset.id || '',
+        truckLabel: asset.name || gateway?.name || asset.properties?.licensePlate || 'Camion sans nom',
+        odometer,
+        isOnline: Boolean(gateway?.isOnline),
+        movementStatus: state?.movementStatus ?? null,
+        connectionStatus: state?.connectionStatus ?? null,
+        position: state?.location ? { lat: state.location.lat, lng: state.location.lng } : null,
+        lastUpdate: state?.lastUpdate || state?.updatedAt || null,
+        speed: Number.isFinite(Number(state?.gps?.speed)) ? Number(state.gps.speed) : (Number.isFinite(Number(state?.speed)) ? Number(state.speed) : null),
+      }
+    })
 
   return {
     items: items.sort((a, b) => String(a.truckLabel || '').localeCompare(String(b.truckLabel || ''), 'fr')),
