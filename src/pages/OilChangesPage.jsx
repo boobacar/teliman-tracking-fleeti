@@ -355,9 +355,38 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
               <input type="number" step="0.5" min="0" value={form.oilQuantityL} onChange={(e) => setForm((c) => ({ ...c, oilQuantityL: e.target.value }))} placeholder="Litres" />
             </label>
           </div>
-          <label className="field-stack" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={form.filterChanged} onChange={(e) => setForm((c) => ({ ...c, filterChanged: e.target.checked }))} />
-            <span>Filtre à huile changé</span>
+          <label className="field-stack" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.filterChanged}
+              aria-label="Filtre à huile changé"
+              onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}
+              style={{
+                width: 44,
+                height: 24,
+                borderRadius: 12,
+                border: 'none',
+                cursor: 'pointer',
+                background: form.filterChanged ? '#22c55e' : '#334155',
+                position: 'relative',
+                transition: 'background 0.2s',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: 2,
+                left: form.filterChanged ? 22 : 2,
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                background: '#fff',
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+            </button>
+            <span style={{ cursor: 'pointer' }} onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}>Filtre à huile changé</span>
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label className="field-stack">
