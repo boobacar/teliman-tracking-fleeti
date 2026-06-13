@@ -70,6 +70,7 @@ const AUTH_CACHE_TTL_MS = Number(process.env.FLEETI_AUTH_CACHE_TTL_MS || 50 * 60
 const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS || 45 * 1000)
 
 app.disable('x-powered-by')
+app.set('trust proxy', 1)
 app.use(cors(buildCorsOptions()))
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
