@@ -3517,7 +3517,7 @@ app.get('/api/sensors-live', async (_req, res) => {
     const hash = await authenticate()
     const trackers = await fetchTrackersPrivate(hash)
     if (!trackers.length) {
-      return res.json({ trackers: [], cached: false })
+      return res.json({ sensors: [], cached: false })
     }
 
     const results = []
@@ -3546,7 +3546,7 @@ app.get('/api/sensors-live', async (_req, res) => {
       }
     }
 
-    const payload = { trackers: results }
+    const payload = { sensors: results }
     sensorsLiveCache = { data: payload, ts: Date.now() }
     res.json({ ...payload, cached: false })
   } catch (error) {
