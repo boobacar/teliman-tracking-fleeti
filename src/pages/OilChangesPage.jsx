@@ -51,16 +51,19 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
     setItems(payload.items ?? [])
   }
 
-  const reloadOdometer = async () => {
-    setOdometerLoading(true)
-    setOdometerError('')
+  const reloadOdometer = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setOdometerLoading(true)
+      setOdometerError('')
+    }
     try {
       const payload = await loadLiveOdometer()
       setLiveOdometer(payload?.items || [])
+      if (!silent) setOdometerError('')
     } catch (err) {
-      setOdometerError(err.message || 'Impossible de charger le kilométrage live')
+      if (!silent) setOdometerError(err.message || 'Impossible de charger le kilométrage live')
     } finally {
-      setOdometerLoading(false)
+      if (!silent) setOdometerLoading(false)
     }
   }
 
@@ -77,7 +80,16 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
       if (!cancelled) reloadOdometer()
     }
     loadData()
-    return () => { cancelled = true }
+
+    // Auto-refresh odometer every 60 seconds
+    const odometerInterval = setInterval(() => {
+      if (!cancelled) reloadOdometer({ silent: true })
+    }, 60_000)
+
+    return () => {
+      cancelled = true
+      clearInterval(odometerInterval)
+    }
   }, [])
 
   // Fusion kilométrage live avec trackers enrichis

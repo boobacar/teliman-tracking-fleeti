@@ -2592,32 +2592,6 @@ textarea:focus-visible,
   gap: 12px;
 }
 
-.reports-excel .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.reports-excel .kpi-grid .mini-kpi {
-  min-height: 84px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-}
-
-.reports-excel .kpi-grid .mini-kpi span {
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.reports-excel .kpi-grid .mini-kpi strong {
-  margin-top: 0;
-  font-size: 27px;
-  line-height: 1;
-}
-
 .reports-v2-hero {
   display: grid;
   gap: 14px;
@@ -2679,7 +2653,7 @@ textarea:focus-visible,
 }
 
 .ops-page-stack {
-  gap: 20px;
+  gap: 28px;
 }
 
 .upload-progress-wrap {
@@ -3422,15 +3396,6 @@ textarea:focus-visible,
   .mission-highlight-grid,
   .data-page-grid {
     grid-template-columns: 1fr !important;
-  }
-
-  .reports-excel .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .reports-excel .kpi-grid .mini-kpi {
-    min-height: 72px;
   }
 
   .data-page-grid > .data-card-panel,
