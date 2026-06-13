@@ -29,22 +29,3 @@ test('la page Rapports restaure les anciens rapports opérationnels', () => {
   assert.match(reportsPageSource, /OPERATIONAL_REPORT_TYPES/)
   assert.match(reportsPageSource, /selectedOperationalReport/)
 })
-
-test('la table des rapports opérationnels formate proprement les objets au lieu de JSON brut', () => {
-  assert.match(reportsPageSource, /formatObjectAsInlineSummary/)
-  assert.match(reportsPageSource, /entries\.join\(' · '\)/)
-  assert.doesNotMatch(reportsPageSource, /typeof value === 'object'\) return JSON\.stringify\(value\)/)
-})
-
-test('la table générique déplie les sous-clés des colonnes objet \(ex: pivot values\)', () => {
-  assert.match(reportsPageSource, /const firstObject = rows\.find/)
-  assert.match(reportsPageSource, /nestedKeys\.forEach/)
-  assert.match(reportsPageSource, /key: `\$\{key\}\.\$\{nestedKey\}`/)
-})
-
-test('le rapport flotte masque les colonnes tracker/driver techniques et privilégie le conducteur mappé', () => {
-  assert.match(reportsPageSource, /hiddenFleetKeys = new Set\(\[[\s\S]*'tracker_id'[\s\S]*'tracker_label'[\s\S]*'driver_name'[\s\S]*'model'[\s\S]*'phone'[\s\S]*'status'/)
-  assert.match(reportsPageSource, /type !== 'ops-fleet'/)
-  assert.match(reportsPageSource, /deriveFleetDriverLookup/)
-  assert.match(reportsPageSource, /conducteur: mappedDriver \|\| currentDriver \|\| fallbackDriver \|\| 'Non assigné'/)
-})

@@ -136,6 +136,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [dateFilter, setDateFilter] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [pageLoading, setPageLoading] = useState(false)
+  const [error, setError] = useState('')
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const navigate = useNavigate()
@@ -186,6 +187,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const submit = async (e) => {
     e.preventDefault()
     setSaving(true)
+    setError('')
     try {
       await createDeliveryOrder(form)
       setForm(initialForm)
@@ -201,36 +203,48 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       } else {
         await refreshData()
       }
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la création du bon de livraison.')
     } finally {
       setSaving(false)
     }
   }
 
   const markDelivered = async (item) => {
-    await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
-    if (setDeliveryOrders && setDeliveryOrdersSummary) {
-      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
-        loadDeliveryOrders(),
-        loadDeliveryOrdersSummary(),
-      ])
-      setDeliveryOrders(ordersPayload.items ?? [])
-      setDeliveryOrdersSummary(ordersSummaryPayload)
-    } else {
-      await refreshData()
+    setError('')
+    try {
+      await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
+      if (setDeliveryOrders && setDeliveryOrdersSummary) {
+        const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+          loadDeliveryOrders(),
+          loadDeliveryOrdersSummary(),
+        ])
+        setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
+      } else {
+        await refreshData()
+      }
+    } catch (err) {
+      setError(err.message || 'Erreur lors du marquage livré.')
     }
   }
 
   const removeOrder = async (item) => {
-    await deleteDeliveryOrder(item.id)
-    if (setDeliveryOrders && setDeliveryOrdersSummary) {
-      const [ordersPayload, ordersSummaryPayload] = await Promise.all([
-        loadDeliveryOrders(),
-        loadDeliveryOrdersSummary(),
-      ])
-      setDeliveryOrders(ordersPayload.items ?? [])
-      setDeliveryOrdersSummary(ordersSummaryPayload)
-    } else {
-      await refreshData()
+    setError('')
+    try {
+      await deleteDeliveryOrder(item.id)
+      if (setDeliveryOrders && setDeliveryOrdersSummary) {
+        const [ordersPayload, ordersSummaryPayload] = await Promise.all([
+          loadDeliveryOrders(),
+          loadDeliveryOrdersSummary(),
+        ])
+        setDeliveryOrders(ordersPayload.items ?? [])
+        setDeliveryOrdersSummary(ordersSummaryPayload)
+      } else {
+        await refreshData()
+      }
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la suppression du bon.')
     }
   }
 
@@ -307,6 +321,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
   return <PageStack>
     {pageLoading && <div className="info-banner">Chargement des bons de livraison…</div>}
+    {error && <div className="info-banner" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>{error}</div>}
     <section className="panel panel-large delivery-hero-panel">
       <SectionHeader title="Centre de missions & bons de livraison" right={<div className="mission-hero-badge">BL Ops</div>} />
       <div className="mission-highlight-grid">

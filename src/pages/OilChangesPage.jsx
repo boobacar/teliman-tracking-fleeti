@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Calendar, Filter, Trash2, AlertCircle, Clock } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Trash2, AlertCircle, Clock } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { StableDatePicker } from '../components/StableDatePicker'

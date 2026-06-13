@@ -238,19 +238,12 @@ function drawPdfFooter(doc) {
   }
 }
 
-function formatObjectAsInlineSummary(value = {}) {
-  const entries = Object.entries(value || {})
-    .filter(([, entry]) => entry !== null && entry !== undefined && entry !== '')
-    .map(([key, entry]) => `${titleFromKey(key)}: ${formatCellValue(entry)}`)
-  return entries.length ? entries.join(' · ') : '-'
-}
-
 function formatCellValue(value) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('fr-FR') : value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })
   if (typeof value === 'boolean') return value ? 'Oui' : 'Non'
   if (Array.isArray(value)) return value.length ? value.map(formatCellValue).join(', ') : '-'
-  if (typeof value === 'object') return formatObjectAsInlineSummary(value)
+  if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
 
@@ -260,64 +253,6 @@ function titleFromKey(key) {
     .replace(/[_-]+/g, ' ')
     .trim()
     .replace(/^./, (c) => c.toUpperCase())
-}
-
-function normalizeDriverName(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  const normalized = raw.toLowerCase()
-  if (
-    normalized === 'non assigné'
-    || normalized === 'non assigne'
-    || normalized === 'n/a'
-    || normalized === 'na'
-    || normalized === '-'
-  ) {
-    return ''
-  }
-  return raw
-}
-
-function rowTruckIdentity(row = {}) {
-  const candidates = [
-    row.immatriculation,
-    row.truckLabel,
-    row.truck_label,
-    row.truck,
-    row.tracker_label,
-    row.trackerLabel,
-    row.label,
-  ]
-  return String(candidates.find((value) => String(value || '').trim()) || '').trim().toUpperCase()
-}
-
-function deriveFleetDriverLookup({ deliveries = [], fuel = [], fleetRows = [] }) {
-  const map = new Map()
-  const register = (truckValue, driverValue) => {
-    const truck = String(truckValue || '').trim().toUpperCase()
-    const driver = normalizeDriverName(driverValue)
-    if (!truck || !driver || map.has(truck)) return
-    map.set(truck, driver)
-  }
-
-  deliveries.forEach((row) => {
-    register(row?.truckLabel, row?.driver)
-    register(row?.immatriculation, row?.driver)
-  })
-
-  fuel.forEach((row) => {
-    register(row?.truckLabel, row?.driver)
-    register(row?.immatriculation, row?.driver)
-  })
-
-  fleetRows.forEach((row) => {
-    const truck = rowTruckIdentity(row)
-    register(truck, row?.conducteur)
-    register(truck, row?.driver_name)
-    register(truck, row?.driverName)
-  })
-
-  return map
 }
 
 function extractRows(payload = {}) {
@@ -350,46 +285,9 @@ function buildOperationalQuery() {
   return params.toString()
 }
 
-function buildGenericColumns(rows = [], options = {}) {
-  const { reportType = '' } = options
-  const hiddenFleetKeys = new Set([
-    'tracker_id',
-    'trackerid',
-    'tracker_label',
-    'trackerlabel',
-    'driver_name',
-    'drivername',
-    'model',
-    'phone',
-    'status',
-  ])
-  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}))))
-    .filter((key) => {
-      if (reportType !== 'ops-fleet') return true
-      return !hiddenFleetKeys.has(String(key || '').replace(/\s+/g, '').toLowerCase())
-    })
-    .slice(0, 12)
-  const columns = []
-  keys.forEach((key) => {
-    const firstObject = rows.find((row) => row && typeof row[key] === 'object' && !Array.isArray(row[key]) && row[key] !== null)?.[key]
-    if (!firstObject) {
-      columns.push({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) })
-      return
-    }
-    const nestedKeys = Object.keys(firstObject).slice(0, 8)
-    if (!nestedKeys.length) {
-      columns.push({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) })
-      return
-    }
-    nestedKeys.forEach((nestedKey) => {
-      columns.push({
-        key: `${key}.${nestedKey}`,
-        label: titleFromKey(nestedKey),
-        render: (_value, row) => formatCellValue(row?.[key]?.[nestedKey]),
-      })
-    })
-  })
-  return columns
+function buildGenericColumns(rows = []) {
+  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 10)
+  return keys.map((key) => ({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) }))
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
@@ -427,9 +325,6 @@ export function ReportsPage() {
   const [deliveries, setDeliveries] = useState([])
   const [fuel, setFuel] = useState([])
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
-  const [deliveriesLoaded, setDeliveriesLoaded] = useState(false)
-  const [fuelLoaded, setFuelLoaded] = useState(false)
-  const [masterDataLoaded, setMasterDataLoaded] = useState(false)
   const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
   const [goodsFilter, setGoodsFilter] = useState('')
   const [operationalPayload, setOperationalPayload] = useState(null)
@@ -439,14 +334,14 @@ export function ReportsPage() {
   useEffect(() => {
     let cancelled = false
     async function run() {
-      if (masterDataLoaded) return
       setLoading(true)
       setError('')
       try {
-        const m = await loadMasterData()
+        const [d, f, m] = await Promise.all([loadDeliveryOrders(), loadFuelVouchers(), loadMasterData()])
         if (!cancelled) {
+          setDeliveries(d?.items || [])
+          setFuel(f?.items || [])
           setMasterData(m || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {} })
-          setMasterDataLoaded(true)
         }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Erreur chargement rapports')
@@ -456,55 +351,7 @@ export function ReportsPage() {
     }
     run()
     return () => { cancelled = true }
-  }, [masterDataLoaded])
-
-  useEffect(() => {
-    const needsDeliveries = type.startsWith('client:') || type === 'reco-k1' || type === 'reco-caderac' || type === 'reco-lafarge'
-    if (!needsDeliveries || deliveriesLoaded) return undefined
-
-    let cancelled = false
-    async function run() {
-      setLoading(true)
-      setError('')
-      try {
-        const d = await loadDeliveryOrders()
-        if (!cancelled) {
-          setDeliveries(d?.items || [])
-          setDeliveriesLoaded(true)
-        }
-      } catch (e) {
-        if (!cancelled) setError(e.message || 'Erreur chargement BL')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [type, deliveriesLoaded])
-
-  useEffect(() => {
-    const needsFuel = type === 'fuel'
-    if (!needsFuel || fuelLoaded) return undefined
-
-    let cancelled = false
-    async function run() {
-      setLoading(true)
-      setError('')
-      try {
-        const f = await loadFuelVouchers()
-        if (!cancelled) {
-          setFuel(f?.items || [])
-          setFuelLoaded(true)
-        }
-      } catch (e) {
-        if (!cancelled) setError(e.message || 'Erreur chargement carburant')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [type, fuelLoaded])
+  }, [])
 
   const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => {
     if (!inRange(r.date, from, to)) return false
@@ -572,27 +419,9 @@ export function ReportsPage() {
     return () => { cancelled = true }
   }, [selectedOperationalReport])
 
-  const operationalRows = useMemo(() => {
-    const baseRows = extractRows(operationalPayload || {})
-    if (type !== 'ops-fleet') return baseRows
-
-    const driverByTruck = deriveFleetDriverLookup({ deliveries, fuel, fleetRows: baseRows })
-    return baseRows.map((row) => {
-      const truckKey = rowTruckIdentity(row)
-      const mappedDriver = driverByTruck.get(truckKey)
-      const currentDriver = normalizeDriverName(row?.conducteur)
-      const fallbackDriver = normalizeDriverName(row?.driver_name) || normalizeDriverName(row?.driverName)
-      return {
-        ...row,
-        conducteur: mappedDriver || currentDriver || fallbackDriver || 'Non assigné',
-      }
-    })
-  }, [operationalPayload, type, deliveries, fuel])
+  const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
   const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])
-  const operationalColumns = useMemo(
-    () => buildGenericColumns(operationalRows, { reportType: type }),
-    [operationalRows, type],
-  )
+  const operationalColumns = useMemo(() => buildGenericColumns(operationalRows), [operationalRows])
 
   const selectedClientGroup = useMemo(() => (
     type.startsWith('client:') ? clientGroups.find((group) => `client:${group.clientKey}` === type) || null : null

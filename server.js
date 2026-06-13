@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
@@ -23,6 +25,7 @@ const FUEL_VOUCHERS_FILE = path.join(DATA_DIR, 'fuel-vouchers.json')
 const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
+const FUEL_PROOFS_DIR = path.join(UPLOADS_BASE_DIR, 'fuel-proofs')
 const PUBLIC_TELEMETRY_CACHE_FILE = path.join(DATA_DIR, 'public-telemetry-cache.json')
 const WHATSAPP_TEMPLATES_FILE = path.join(DATA_DIR, 'whatsapp-templates.json')
 const WHATSAPP_HISTORY_FILE = path.join(DATA_DIR, 'whatsapp-history.json')
@@ -32,7 +35,7 @@ const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
 const AUTH_PBKDF2_ITERATIONS = Number(process.env.AUTH_PBKDF2_ITERATIONS || 120000)
-const AUTH_USERS_FILE = path.join(__dirname, 'auth-users.json')
+const AUTH_USERS_FILE = path.join(DATA_DIR, 'auth-users.json')
 const AUTH_USERS = loadAuthUsers()
 const API_BASE = process.env.FLEETI_API_BASE
 const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
@@ -68,6 +71,16 @@ const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS |
 
 app.disable('x-powered-by')
 app.use(cors(buildCorsOptions()))
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false,
+}))
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+}))
 app.use(express.json({ limit: '10mb' }))
 app.use('/uploads', express.static(UPLOADS_BASE_DIR))
 app.use(requestLogger)
@@ -316,8 +329,14 @@ function getAlertSeverity(eventType) {
 
 function readDeliveryOrders() {
   try {
+    const stat = fs.statSync(DELIVERY_ORDERS_FILE)
+    if (deliveryOrdersCache.data && deliveryOrdersCache.mtime === stat.mtimeMs) {
+      return deliveryOrdersCache.data
+    }
     const parsed = JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
-    return dedupeDeliveryOrders(parsed).rows
+    const rows = dedupeDeliveryOrders(parsed).rows
+    deliveryOrdersCache = { data: rows, mtime: stat.mtimeMs }
+    return rows
   } catch {
     return []
   }
@@ -326,10 +345,13 @@ function readDeliveryOrders() {
 function writeDeliveryOrders(rows) {
   const { rows: normalizedRows } = dedupeDeliveryOrders(rows)
   fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(normalizedRows, null, 2))
+  deliveryOrdersCache = { data: null, mtime: 0 }
 }
 
 // Cache mémoire pour éviter de parser 60+ MB de JSON à chaque requête
 let fuelVouchersCache = { data: null, mtime: 0 }
+let deliveryOrdersCache = { data: null, mtime: 0 }
+let masterDataCache = { data: null, mtime: 0 }
 
 function readFuelVouchers() {
   try {
@@ -392,14 +414,22 @@ function sanitizeOilChangePayload(body = {}, current = null) {
 
 function readMasterData() {
   try {
-    return buildMasterDataPayload(JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8')))
+    const stat = fs.statSync(MASTER_DATA_FILE)
+    if (masterDataCache.data && masterDataCache.mtime === stat.mtimeMs) {
+      return masterDataCache.data
+    }
+    const data = buildMasterDataPayload(JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8')))
+    masterDataCache = { data, mtime: stat.mtimeMs }
+    return data
   } catch {
     return emptyMasterDataPayload()
   }
 }
 
 function writeMasterData(data) {
-  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(buildMasterDataPayload(data), null, 2))
+  const normalized = buildMasterDataPayload(data)
+  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(normalized, null, 2))
+  masterDataCache = { data: null, mtime: 0 }
 }
 
 function readWhatsAppTemplates() {
@@ -547,19 +577,51 @@ function preprocessDeliveryProofPhotos(body = {}, current = null) {
   return normalized
 }
 
+function ensureFuelProofsDir() {
+  fs.mkdirSync(FUEL_PROOFS_DIR, { recursive: true })
+}
+
+function persistFuelProofPhoto(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('/uploads/fuel-proofs/')) return raw
+  // Accepter aussi les chemins relatifs post-migration
+  if (raw.startsWith('fuel-proofs/')) return `/uploads/${raw}`
+  const match = raw.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i)
+  if (!match) return raw
+
+  ensureFuelProofsDir()
+  const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()
+  const base64Payload = match[2]
+  if (base64Payload.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
+  const fileName = `fuel-proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+  const filePath = path.join(FUEL_PROOFS_DIR, fileName)
+  fs.writeFileSync(filePath, Buffer.from(base64Payload, 'base64'))
+  return `/uploads/fuel-proofs/${fileName}`
+}
+
 function sanitizeFuelPhotoDataUrl(value, fallback = '') {
   const raw = String(value ?? fallback ?? '').trim()
   if (!raw) return ''
+  // Déjà un chemin servi (après migration ou upload)
+  if (raw.startsWith('/uploads/') || raw.startsWith('fuel-proofs/')) return raw
   const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
   if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
   if (raw.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
-  return raw
+  // Persister sur disque au lieu de stocker du base64
+  return persistFuelProofPhoto(raw)
 }
 
 function sanitizeFuelPhotoList(value, fallback = []) {
   const input = Array.isArray(value) ? value : (Array.isArray(fallback) ? fallback : [])
   return input
-    .map((item) => sanitizeFuelPhotoDataUrl(item, ''))
+    .map((item) => {
+      try {
+        return sanitizeFuelPhotoDataUrl(item, '')
+      } catch {
+        return ''
+      }
+    })
     .filter(Boolean)
     .slice(0, 10)
 }

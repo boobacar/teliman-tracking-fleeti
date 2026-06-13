@@ -17,6 +17,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [form, setForm] = useState(null)
   const [lightboxOpen, setLightboxOpen] = useState('')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -31,8 +32,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       try {
         const payload = await loadDeliveryOrder(id)
         if (!cancelled) setFallbackOrder(payload)
-      } catch {
-        if (!cancelled) setFallbackOrder(null)
+      } catch (err) {
+        if (!cancelled) {
+          setFallbackOrder(null)
+          setLoadError(err.message || 'Erreur lors du chargement du bon de livraison.')
+        }
       } finally {
         if (!cancelled) setLoadingOrder(false)
       }
@@ -66,7 +70,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   }
 
   if (!order) {
-    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div><EmptyBanner message="Bon de livraison introuvable." /></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Bon introuvable</p></div></div><EmptyBanner message={loadError || 'Bon de livraison introuvable.'} /></section>
   }
 
   const proofPhotos = Array.isArray(order.proofPhotoDataUrls)

@@ -64,7 +64,27 @@ export function AdminUsersPage() {
     }
   }
 
-  useEffect(() => { refresh() }, [])
+  useEffect(() => {
+    let cancelled = false
+
+    async function initialLoad() {
+      setLoading(true)
+      setError('')
+      try {
+        const payload = await loadAdminUsers()
+        if (!cancelled) setUsers(payload.items || [])
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Impossible de charger les utilisateurs.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    initialLoad()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function submit(e) {
     e.preventDefault()

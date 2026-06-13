@@ -114,7 +114,25 @@ export function DataPage() {
   }
 
   useEffect(() => {
-    refresh()
+    let cancelled = false
+
+    async function initialLoad() {
+      setLoading(true)
+      setError('')
+      try {
+        const result = await loadMasterData()
+        if (!cancelled) setData(result)
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Erreur de chargement')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    initialLoad()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   async function addItem(listName, value, reset) {

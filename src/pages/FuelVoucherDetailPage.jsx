@@ -28,6 +28,7 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState('')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -54,8 +55,11 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
             unitPrice: String(voucher.unitPrice ?? ''),
           })
         }
-      } catch {
-        if (!cancelled) setItem(null)
+      } catch (err) {
+        if (!cancelled) {
+          setItem(null)
+          setLoadError(err.message || 'Erreur lors du chargement du bon carburant.')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -174,7 +178,7 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
   }
 
   if (!item || !form) {
-    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Bon introuvable</p></div></div><EmptyBanner message="Bon carburant introuvable." /></section>
+    return <section className="panel"><div className="panel-header"><div><h3>Détail du bon carburant</h3><p>Bon introuvable</p></div></div><EmptyBanner message={loadError || 'Bon carburant introuvable.'} /></section>
   }
 
   return (
