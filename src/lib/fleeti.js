@@ -235,3 +235,7 @@ export const deleteOilChange = async (id) => {
 }
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
 export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)
+export const loadVehicles = () => getJson('/api/vehicles')
+export const loadEmployeesDetail = () => getJson('/api/employees-detail')
+export const loadSensorsLive = () => getJson('/api/sensors-live')
+export const loadRulesDetail = () => getJson('/api/rules-detail')

@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { AlertTriangle, Battery, Gauge, MapPin, Users, Wifi, Route } from 'lucide-react'
+import { AlertTriangle, Battery, Car, Fuel, Gauge, MapPin, Palette, Settings, Users, Wifi, Route } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from 'recharts'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import { EmptyBanner } from '../components/FeedbackBanners'
+import { SectionHeader } from '../components/UIPrimitives'
+import { loadVehicles } from '../lib/fleeti'
 
 function statusLabel(status) {
   if (status === 'active') return { label: 'Active', color: '#22c55e' }
@@ -14,6 +17,20 @@ function statusLabel(status) {
 export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
   const { id } = useParams()
   const tracker = enrichedTrackers?.find((t) => String(t.id) === String(id))
+
+  const [vehicles, setVehicles] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    loadVehicles().then((data) => {
+      if (!cancelled) setVehicles(Array.isArray(data) ? data : data?.vehicles || data?.items || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const vehicle = vehicles.find((v) =>
+    String(v.tracker_id || v.trackerId) === String(tracker?.id) ||
+    String(v.id) === String(tracker?.id)
+  )
 
   if (!tracker) return (
     <section className="panel">
@@ -47,6 +64,26 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
           <div className="overview-card"><span>Événements</span><strong>{tracker.events.length}</strong></div>
         </div>
       </section>
+
+      {/* Infos techniques véhicule */}
+      {vehicle && (
+        <section className="panel panel-large delivery-form-panel">
+          <SectionHeader
+            title="Fiche technique véhicule"
+            description={`${vehicle.label || vehicle.model || 'Véhicule'} — Détails constructeur et équipements`}
+          />
+          <div className="tracker-overview-grid">
+            <div className="overview-card"><div className="stat-icon"><Car size={16} /></div><span>Modèle</span><strong>{vehicle.model || vehicle.vehicle_model || '-'}</strong></div>
+            <div className="overview-card"><div className="stat-icon"><Settings size={16} /></div><span>Type</span><strong>{vehicle.type || vehicle.vehicle_type || '-'}</strong></div>
+            <div className="overview-card"><div className="stat-icon"><MapPin size={16} /></div><span>Garage</span><strong>{vehicle.garage || vehicle.affiliated_garage || '-'}</strong></div>
+            <div className="overview-card"><div className="stat-icon"><Palette size={16} /></div><span>Couleur</span><strong>{vehicle.color || vehicle.vehicle_color || '-'}</strong></div>
+            <div className="overview-card"><span>VIN</span><strong style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>{vehicle.vin || vehicle.chassis_number || '-'}</strong></div>
+            <div className="overview-card"><div className="stat-icon"><Gauge size={16} /></div><span>Capacité</span><strong>{vehicle.capacity != null ? `${Number(vehicle.capacity).toLocaleString('fr-FR')} T` : '-'}</strong></div>
+            <div className="overview-card"><span>Pneus</span><strong>{vehicle.tires || vehicle.tyres || '-'}</strong></div>
+            <div className="overview-card"><div className="stat-icon"><Fuel size={16} /></div><span>Carburant</span><strong>{vehicle.fuel || vehicle.fuel_type || '-'}</strong></div>
+          </div>
+        </section>
+      )}
 
       <section className="dashboard-grid premium-grid phase2-grid">
         <div className="panel">

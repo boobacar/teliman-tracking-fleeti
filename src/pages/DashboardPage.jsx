@@ -1,4 +1,5 @@
-import { Activity, AlertTriangle, Car, Gauge, ShieldAlert, Wifi } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, ShieldAlert, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -14,6 +15,7 @@ import {
 } from 'recharts'
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { loadVehicles, loadSensorsLive } from '../lib/fleeti'
 
 function StatCard({ icon, label, value, helper }) {
   return (
@@ -71,6 +73,25 @@ export function DashboardPage({
   filter,
   setFilter,
 }) {
+  const [vehicles, setVehicles] = useState([])
+  const [sensorsLive, setSensorsLive] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    loadVehicles().then((data) => {
+      if (!cancelled) setVehicles(Array.isArray(data) ? data : data?.vehicles || data?.items || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    loadSensorsLive().then((data) => {
+      if (!cancelled) setSensorsLive(Array.isArray(data) ? data : data?.sensors || data?.items || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <PageStack className="dashboard-phase3-stack">
       <section className="stats-grid premium-stats phase2-stats mobile-cards-grid">
@@ -214,6 +235,116 @@ export function DashboardPage({
           </div>
         </div>
       </section>
+
+      {/* Section Assurances et conformité */}
+      {vehicles.length > 0 && (
+        <section className="panel panel-large delivery-form-panel">
+          <SectionHeader
+            title="Assurances et conformité"
+            description="État des assurances par camion"
+          />
+          <div className="tracker-table tracker-table-phase2">
+            {vehicles.map((vehicle) => {
+              const liabilityDate = vehicle.liability_insurance_valid_till ? new Date(vehicle.liability_insurance_valid_till) : null
+              const freeDate = vehicle.free_insurance_valid_till ? new Date(vehicle.free_insurance_valid_till) : null
+              const now = new Date()
+              const thirtyDays = 30 * 24 * 60 * 60 * 1000
+              const liabilityUrgent = liabilityDate && liabilityDate.getTime() - now.getTime() < thirtyDays
+              const freeUrgent = freeDate && freeDate.getTime() - now.getTime() < thirtyDays
+              return (
+                <div key={vehicle.id || vehicle.label} className="tracker-table-row static-row tracker-table-row-rich">
+                  <div>
+                    <strong>{vehicle.label || vehicle.name || 'Sans nom'}</strong>
+                    <small>{vehicle.garage || vehicle.affiliated_garage || 'Garage inconnu'}</small>
+                  </div>
+                  <div>
+                    <span>RC</span>
+                    {liabilityDate ? (
+                      liabilityUrgent
+                        ? <span style={{ color: '#ef4444' }}><AlertTriangle size={14} /> {liabilityDate.toLocaleDateString('fr-FR')}</span>
+                        : <span style={{ color: '#22c55e' }}><CheckCircle size={14} /> {liabilityDate.toLocaleDateString('fr-FR')}</span>
+                    ) : (
+                      <span style={{ color: '#64748b' }}><Clock size={14} /> Non renseigné</span>
+                    )}
+                  </div>
+                  <div>
+                    <span>Libre</span>
+                    {freeDate ? (
+                      freeUrgent
+                        ? <span style={{ color: '#ef4444' }}><AlertTriangle size={14} /> {freeDate.toLocaleDateString('fr-FR')}</span>
+                        : <span style={{ color: '#22c55e' }}><CheckCircle size={14} /> {freeDate.toLocaleDateString('fr-FR')}</span>
+                    ) : (
+                      <span style={{ color: '#64748b' }}><Clock size={14} /> Non renseigné</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* Version mobile cards */}
+          <div className="mobile-cards-grid" style={{ display: 'none' }}>
+            {vehicles.map((vehicle) => {
+              const liabilityDate = vehicle.liability_insurance_valid_till ? new Date(vehicle.liability_insurance_valid_till) : null
+              const freeDate = vehicle.free_insurance_valid_till ? new Date(vehicle.free_insurance_valid_till) : null
+              const now = new Date()
+              const thirtyDays = 30 * 24 * 60 * 60 * 1000
+              return (
+                <div key={`mob-${vehicle.id || vehicle.label}`} className="stat-card">
+                  <strong>{vehicle.label || vehicle.name || 'Sans nom'}</strong>
+                  <small>{vehicle.garage || vehicle.affiliated_garage || 'Garage inconnu'}</small>
+                  <span>RC: {liabilityDate ? liabilityDate.toLocaleDateString('fr-FR') : '?'}</span>
+                  <span>Libre: {freeDate ? freeDate.toLocaleDateString('fr-FR') : '?'}</span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Section Capteurs live */}
+      {sensorsLive.length > 0 && (
+        <section className="panel panel-large delivery-table-panel">
+          <SectionHeader
+            title="Capteurs live"
+            description="Données temps réel des capteurs par camion"
+          />
+          <div className="reports-table-wrap">
+            <table className="reports-table">
+              <thead>
+                <tr>
+                  <th>Camion</th>
+                  <th>Kilométrage hardware</th>
+                  <th>Consommation OBD</th>
+                  <th>Tension batterie</th>
+                  <th>Allumage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sensorsLive.map((sensor) => (
+                  <tr key={sensor.id || sensor.tracker_id || sensor.label}>
+                    <td><strong>{sensor.label || sensor.tracker_label || '-'}</strong></td>
+                    <td>{sensor.hardware_mileage != null ? `${Number(sensor.hardware_mileage).toLocaleString('fr-FR')} km` : '-'}</td>
+                    <td>{sensor.obd_consumption != null ? `${Number(sensor.obd_consumption).toFixed(1)} L/100km` : '-'}</td>
+                    <td>{sensor.battery_voltage != null ? `${Number(sensor.battery_voltage).toFixed(1)} V` : '-'}</td>
+                    <td>{sensor.ignition != null ? (sensor.ignition ? 'ON' : 'OFF') : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Version mobile cards */}
+          <div className="mobile-cards-grid" style={{ display: 'none' }}>
+            {sensorsLive.map((sensor) => (
+              <div key={`mob-sensor-${sensor.id || sensor.tracker_id || sensor.label}`} className="stat-card">
+                <strong>{sensor.label || sensor.tracker_label || '-'}</strong>
+                <span>Km: {sensor.hardware_mileage != null ? `${Number(sensor.hardware_mileage).toLocaleString('fr-FR')} km` : '-'}</span>
+                <span>Conso: {sensor.obd_consumption != null ? `${Number(sensor.obd_consumption).toFixed(1)} L` : '-'}</span>
+                <span>Batterie: {sensor.battery_voltage != null ? `${Number(sensor.battery_voltage).toFixed(1)} V` : '-'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </PageStack>
   )
 }

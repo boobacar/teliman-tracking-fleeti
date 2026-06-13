@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, CheckCircle, Shield, Activity } from 'lucide-react'
+import { loadRulesDetail } from '../lib/fleeti'
 
 function getPriority(eventType) {
   if (eventType === 'speedup') return 'high'
@@ -21,11 +23,40 @@ function getPriorityLabel(level) {
   return 'Toutes'
 }
 
+function getRuleTypeLabel(ruleType) {
+  const map = {
+    speedup: 'Excès de vitesse',
+    excessive_parking: 'Stationnement',
+    fuel_level_leap: 'Carburant',
+    crash_alarm: 'Accident',
+  }
+  return map[ruleType] || String(ruleType || 'Inconnu').replace(/_/g, ' ')
+}
+
 export function AlertsPage({ importantEvents }) {
   const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [truckFilter, setTruckFilter] = useState('all')
+  const [rules, setRules] = useState([])
+  const [rulesLoading, setRulesLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadRules() {
+      setRulesLoading(true)
+      try {
+        const data = await loadRulesDetail()
+        if (!cancelled) setRules(data?.rules || data?.items || [])
+      } catch {
+        // silent
+      } finally {
+        if (!cancelled) setRulesLoading(false)
+      }
+    }
+    loadRules()
+    return () => { cancelled = true }
+  }, [])
 
   const types = useMemo(() => ['all', ...new Set(importantEvents.map((event) => event.event))], [importantEvents])
 
@@ -79,6 +110,13 @@ export function AlertsPage({ importantEvents }) {
       }))
       .sort((a, b) => b.events.length - a.events.length)
   }, [filtered])
+
+  const rulesStats = useMemo(() => {
+    const active = rules.filter((r) => r.status !== 'suspended').length
+    const suspended = rules.filter((r) => r.status === 'suspended').length
+    const types = new Set(rules.map((r) => r.type || r.rule_type || '')).size
+    return { active, suspended, types }
+  }, [rules])
 
   return (
     <section className="panel panel-large">
@@ -149,6 +187,84 @@ export function AlertsPage({ importantEvents }) {
           </div>
         ))}
       </div>
+
+      {/* Règles d'alertes Fleeti */}
+      <section className="panel panel-large delivery-table-panel" style={{ marginTop: 14 }}>
+        <div className="panel-header">
+          <div>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Shield size={18} style={{ color: '#f59e0b' }} />
+              Règles d'alertes Fleeti
+            </h3>
+            <p>Configuration des règles d'alertes automatiques</p>
+          </div>
+        </div>
+
+        {/* Mini KPIs */}
+        <div className="mission-highlight-grid compact-mission-grid" style={{ marginBottom: 14 }}>
+          <div className="mission-highlight-card">
+            <span><CheckCircle size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#22c55e' }} />Actives</span>
+            <strong style={{ color: '#22c55e' }}>{rulesStats.active}</strong>
+            <small>règles actives</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span><AlertTriangle size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#f59e0b' }} />Suspendues</span>
+            <strong style={{ color: rulesStats.suspended > 0 ? '#f59e0b' : undefined }}>{rulesStats.suspended}</strong>
+            <small>règles suspendues</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span><Activity size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#3b82f6' }} />Types</span>
+            <strong>{rulesStats.types}</strong>
+            <small>types d'alertes</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span><Shield size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Total</span>
+            <strong>{rules.length}</strong>
+            <small>règles configurées</small>
+          </div>
+        </div>
+
+        {/* Tableau des règles */}
+        <div className="reports-table-wrap">
+          <table className="reports-table">
+            <thead>
+              <tr>
+                <th>Nom de la règle</th>
+                <th>Type</th>
+                <th>Statut</th>
+                <th>Trackers concernés</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((rule, i) => {
+                const ruleType = rule.type || rule.rule_type || ''
+                const ruleName = rule.name || rule.label || `Règle ${i + 1}`
+                const isActive = rule.status !== 'suspended'
+                const trackers = rule.trackers || rule.tracker_ids || []
+                const trackerList = Array.isArray(trackers) ? trackers.join(', ') : String(trackers || 'Tous')
+                return (
+                  <tr key={rule.id || i}>
+                    <td><strong>{ruleName}</strong></td>
+                    <td>{getRuleTypeLabel(ruleType)}</td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: isActive ? '#22c55e' : '#f59e0b' }}>
+                        {isActive ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                        {isActive ? 'Actif' : 'Suspendu'}
+                      </span>
+                    </td>
+                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={trackerList}>
+                      {trackerList || 'Tous'}
+                    </td>
+                  </tr>
+                )
+              })}
+              {rules.length === 0 && (
+                <tr><td colSpan={4} className="table-empty-cell">Chargement des règles…</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
   )
 }

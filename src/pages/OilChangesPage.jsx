@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Trash2, AlertCircle
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { loadOilChanges, createOilChange, deleteOilChange, loadLiveOdometer } from '../lib/fleeti'
+import { loadOilChanges, createOilChange, deleteOilChange, loadLiveOdometer, loadVehicles } from '../lib/fleeti'
 
 const OIL_TYPES = ['15W40', '20W50', '10W40', '5W30', '5W40', '0W20', 'Autre']
 const STATUS_FILTERS = [
@@ -37,6 +37,8 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
   const [liveOdometer, setLiveOdometer] = useState([])
   const [odometerLoading, setOdometerLoading] = useState(false)
   const [odometerError, setOdometerError] = useState('')
+  const [vehicles, setVehicles] = useState([])
+  const [selectedVehicleId, setSelectedVehicleId] = useState('')
 
   // Filtrer les véhicules : exclure les labels contenant "plateau"
   const truckOptions = useMemo(() => {
@@ -92,6 +94,21 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
     }
   }, [])
 
+  // Charger les données techniques des véhicules
+  useEffect(() => {
+    let cancelled = false
+    async function loadVehicleData() {
+      try {
+        const data = await loadVehicles()
+        if (!cancelled) setVehicles(data?.vehicles || data?.items || [])
+      } catch {
+        // silent
+      }
+    }
+    loadVehicleData()
+    return () => { cancelled = true }
+  }, [])
+
   // Fusion kilométrage live avec trackers enrichis
   const truckOdometerMap = useMemo(() => {
     const map = {}
@@ -139,6 +156,19 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
       return true
     })
   }, [fleetRows, trackerFilter, statusFilter])
+
+  // Véhicule sélectionné pour la fiche technique
+  const selectedVehicle = useMemo(() => {
+    if (!selectedVehicleId) return vehicles.length > 0 ? vehicles[0] : null
+    return vehicles.find((v) => String(v.id || v.tracker_id) === String(selectedVehicleId)) || null
+  }, [vehicles, selectedVehicleId])
+
+  // Mapper tracker_id vers label des trackers enrichis
+  const trackerLabelMap = useMemo(() => {
+    const map = {}
+    enrichedTrackers.forEach((t) => { map[String(t.id)] = t.label })
+    return map
+  }, [enrichedTrackers])
 
   // Tri de l'historique par date décroissante
   const historyFiltered = useMemo(() => {
@@ -321,6 +351,87 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* Fiche technique véhicule */}
+      <section className="panel panel-large delivery-form-panel">
+        <SectionHeader
+          title="Fiche technique véhicule"
+          description="Données techniques détaillées du véhicule sélectionné"
+          right={<Wrench size={16} style={{ opacity: 0.5 }} />}
+        />
+        <div className="filters filter-row" style={{ marginBottom: 14 }}>
+          <label className="field-stack">
+            <span>Véhicule</span>
+            <select
+              className="filter-control"
+              value={selectedVehicleId || (vehicles[0]?.id || vehicles[0]?.tracker_id || '')}
+              onChange={(e) => setSelectedVehicleId(e.target.value)}
+            >
+              {vehicles.map((v) => {
+                const vid = String(v.id || v.tracker_id)
+                const label = v.label || v.name || trackerLabelMap[vid] || `Véhicule ${vid}`
+                return <option key={vid} value={vid}>{label}</option>
+              })}
+            </select>
+          </label>
+        </div>
+        {selectedVehicle ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Modèle</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.model || selectedVehicle.model_name || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Type</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.type || selectedVehicle.vehicle_type || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Garage</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.garage || selectedVehicle.garage_name || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Pneus (taille)</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tire_size || selectedVehicle.tyre_size || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Nombre de pneus</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tire_count || selectedVehicle.tyre_count || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Carburant (type)</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.fuel_type || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Conso moyenne</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>
+                {selectedVehicle.avg_consumption != null ? `${selectedVehicle.avg_consumption} L/100km` : '-'}
+              </span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Volume réservoir</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>
+                {selectedVehicle.tank_volume != null ? `${selectedVehicle.tank_volume} L` : '-'}
+              </span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Charge utile</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>
+                {selectedVehicle.payload != null ? `${Number(selectedVehicle.payload).toLocaleString('fr-FR')} kg` : '-'}
+              </span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Poids brut (PTAC)</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>
+                {selectedVehicle.gross_weight != null ? `${Number(selectedVehicle.gross_weight).toLocaleString('fr-FR')} kg` : '-'}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: '#94a3b8', padding: 20, textAlign: 'center' }}>
+            {vehicles.length === 0 ? 'Chargement des données techniques…' : 'Sélectionnez un véhicule'}
+          </div>
+        )}
       </section>
 
       {/* Formulaire nouvelle vidange */}

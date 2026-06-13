@@ -21,14 +21,18 @@ import {
   loadReportPivot,
   loadReportProjects,
   loadReportSummary,
+  loadVehicles,
+  loadEmployeesDetail,
 } from '../lib/fleeti'
 import { parseDeliveryQuantity } from '../lib/deliveryOrders.js'
+import { AlertTriangle, CheckCircle, Shield, Truck } from 'lucide-react'
 
 const STATIC_REPORT_TYPES = [
   { value: 'reco-k1', label: 'ETAT RECONCILIATION K1' },
   { value: 'reco-caderac', label: 'ETAT RECONCILIATION CADERAC ABIDJAN' },
   { value: 'reco-lafarge', label: 'ETAT RECONCILIATION LAFARGE' },
   { value: 'fuel', label: 'SUIVI BON DE CARBURANT' },
+  { value: 'fleet-compliance', label: 'FLOTTE & CONFORMITÉ' },
 ]
 
 const OPERATIONAL_REPORT_TYPES = [
@@ -330,6 +334,8 @@ export function ReportsPage() {
   const [operationalPayload, setOperationalPayload] = useState(null)
   const [operationalLoading, setOperationalLoading] = useState(false)
   const [operationalError, setOperationalError] = useState('')
+  const [fleetVehicles, setFleetVehicles] = useState([])
+  const [employees, setEmployees] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -350,6 +356,27 @@ export function ReportsPage() {
       }
     }
     run()
+    return () => { cancelled = true }
+  }, [])
+
+  // Charger les données flotte et employés pour le rapport conformité
+  useEffect(() => {
+    let cancelled = false
+    async function loadFleetData() {
+      try {
+        const [vehiclesData, employeesData] = await Promise.all([
+          loadVehicles(),
+          loadEmployeesDetail(),
+        ])
+        if (!cancelled) {
+          setFleetVehicles(vehiclesData?.vehicles || vehiclesData?.items || [])
+          setEmployees(employeesData?.employees || employeesData?.items || [])
+        }
+      } catch {
+        // silent
+      }
+    }
+    loadFleetData()
     return () => { cancelled = true }
   }, [])
 
@@ -463,6 +490,53 @@ export function ReportsPage() {
   }, [lafargeRows])
 
   const lafargeGeneralTotal = useMemo(() => lafargeRows.reduce((a, r) => a + toQtyNumber(r.quantity), 0), [lafargeRows])
+
+  // Données du rapport Flotte & Conformité
+  const fleetComplianceRows = useMemo(() => {
+    const employeeMap = {}
+    employees.forEach((emp) => {
+      const tid = String(emp.tracker_id || emp.trackerId || '')
+      if (tid) employeeMap[tid] = emp
+    })
+    return fleetVehicles.map((v) => {
+      const vid = String(v.id || v.tracker_id)
+      const emp = employeeMap[vid] || {}
+      const insuranceDate = v.insurance_rc_date || v.insurance_date
+      const insuranceExpiry = v.insurance_rc_expiry || v.insurance_expiry
+      const libreInsurance = v.insurance_libre || v.assurance_libre
+      const driverLicense = emp.driver_license_validity || emp.permis_validite || emp.license_validity
+      // Statut assurance
+      let insuranceStatus = 'ok'
+      if (insuranceExpiry) {
+        const expiry = ymdToDate(insuranceExpiry)
+        if (expiry) {
+          const now = new Date()
+          const daysUntilExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))
+          if (daysUntilExpiry < 0) insuranceStatus = 'expired'
+          else if (daysUntilExpiry <= 30) insuranceStatus = 'expiring'
+        }
+      }
+      return {
+        vid,
+        label: v.label || v.name || `Véhicule ${vid}`,
+        model: v.model || v.model_name || '-',
+        garage: v.garage || v.garage_name || '-',
+        insuranceDate: insuranceDate || '-',
+        insuranceExpiry: insuranceExpiry || '-',
+        insuranceStatus,
+        libreInsurance: libreInsurance || '-',
+        driverLicense: driverLicense || '-',
+      }
+    })
+  }, [fleetVehicles, employees])
+
+  const fleetComplianceKPIs = useMemo(() => {
+    const total = fleetComplianceRows.length
+    const withInsurance = fleetComplianceRows.filter((r) => r.insuranceStatus === 'ok').length
+    const expiredOrExpiring = fleetComplianceRows.filter((r) => r.insuranceStatus === 'expired' || r.insuranceStatus === 'expiring').length
+    const withLicense = fleetComplianceRows.filter((r) => r.driverLicense !== '-').length
+    return { total, withInsurance, expiredOrExpiring, withLicense }
+  }, [fleetComplianceRows])
 
   const fuelRows = useMemo(() => sortByReference(fuel.filter((r) => inRange(r.dateTime, from, to)), (row) => row.voucherNumber || row.reference), [fuel, from, to])
   const fuelTotal = useMemo(() => fuelRows.reduce((a, r) => a + toQtyNumber(r.amount), 0), [fuelRows])
@@ -850,6 +924,103 @@ export function ReportsPage() {
             { key: 'amount', label: 'MONTANT', render: (v) => formatMoney(v) },
           ]} />
         )}
+
+      {type === 'fleet-compliance' && (
+        <>
+          {/* KPIs Flotte & Conformité */}
+          <section className="panel panel-large">
+            <div className="panel-header">
+              <div>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Shield size={18} style={{ color: '#f59e0b' }} />
+                  FLOTTE & CONFORMITÉ – Indicateurs
+                </h3>
+                <p>État du parc et conformité des documents</p>
+              </div>
+            </div>
+            <div className="kpi-grid">
+              <div className="mini-kpi">
+                <span><Truck size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Véhicules</span>
+                <strong>{fleetComplianceKPIs.total}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span><CheckCircle size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#22c55e' }} />Assurance OK</span>
+                <strong style={{ color: '#22c55e' }}>{fleetComplianceKPIs.withInsurance}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span><AlertTriangle size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#ef4444' }} />Assurance expirée/expirant</span>
+                <strong style={{ color: fleetComplianceKPIs.expiredOrExpiring > 0 ? '#ef4444' : undefined }}>{fleetComplianceKPIs.expiredOrExpiring}</strong>
+              </div>
+              <div className="mini-kpi">
+                <span><CheckCircle size={14} style={{ marginRight: 4, verticalAlign: 'middle', color: '#3b82f6' }} />Permis chauffeurs</span>
+                <strong>{fleetComplianceKPIs.withLicense}</strong>
+              </div>
+            </div>
+          </section>
+
+          {/* Tableau Flotte & Conformité */}
+          <section className="panel panel-large">
+            <div className="panel-header">
+              <div>
+                <h3>Détail par véhicule</h3>
+                <p>{fleetComplianceRows.length} véhicule(s)</p>
+              </div>
+            </div>
+            <div className="reports-table-wrap">
+              <table className="reports-table">
+                <thead>
+                  <tr>
+                    <th>Camion</th>
+                    <th>Modèle</th>
+                    <th>Garage</th>
+                    <th>Assurance RC</th>
+                    <th>Statut RC</th>
+                    <th>Assurance libre</th>
+                    <th>Permis chauffeur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fleetComplianceRows.map((row) => {
+                    const statusColor = row.insuranceStatus === 'expired' ? '#ef4444'
+                      : row.insuranceStatus === 'expiring' ? '#f59e0b'
+                      : '#22c55e'
+                    const statusLabel = row.insuranceStatus === 'expired' ? 'Expirée'
+                      : row.insuranceStatus === 'expiring' ? 'Expire bientôt'
+                      : 'OK'
+                    const StatusIcon = row.insuranceStatus === 'expired' ? AlertTriangle
+                      : row.insuranceStatus === 'expiring' ? AlertTriangle
+                      : CheckCircle
+                    const formatDate = (val) => {
+                      if (!val || val === '-') return '-'
+                      const d = ymdToDate(val)
+                      return d ? d.toLocaleDateString('fr-FR') : val
+                    }
+                    return (
+                      <tr key={row.vid}>
+                        <td><strong>{row.label}</strong></td>
+                        <td>{row.model}</td>
+                        <td>{row.garage}</td>
+                        <td>{formatDate(row.insuranceExpiry)}</td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: statusColor }}>
+                            <StatusIcon size={14} />
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td>{row.libreInsurance}</td>
+                        <td>{formatDate(row.driverLicense)}</td>
+                      </tr>
+                    )
+                  })}
+                  {fleetComplianceRows.length === 0 && (
+                    <tr><td colSpan={7} className="table-empty-cell">Chargement des données flotte…</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </PageStack>
   )
 }

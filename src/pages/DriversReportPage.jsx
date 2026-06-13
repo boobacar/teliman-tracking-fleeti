@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { Download, MapPin, PackageCheck, Scale, Truck, UserRound } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Download, IdCard, MapPin, PackageCheck, Scale, Truck, UserRound } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
@@ -13,6 +13,7 @@ import {
   toDate,
   ymdToDate,
 } from '../lib/driverReport'
+import { loadEmployeesDetail } from '../lib/fleeti'
 
 async function loadLogoDataUrl() {
   const response = await fetch('/teliman-logistique-logo.jpg')
@@ -32,6 +33,15 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
   const [to, setTo] = useState(fallbackDate)
   const [selectedDriver, setSelectedDriver] = useState('')
   const [autoPeriodApplied, setAutoPeriodApplied] = useState(false)
+  const [employees, setEmployees] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    loadEmployeesDetail().then((data) => {
+      if (!cancelled) setEmployees(Array.isArray(data) ? data : data?.employees || data?.items || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (!latestActivityDate || autoPeriodApplied) return
@@ -41,6 +51,24 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
   }, [autoPeriodApplied, latestActivityDate])
 
   const driverSummaries = useMemo(() => buildDriverSummaries({ deliveryOrders, filteredTrackers, from, to }), [deliveryOrders, filteredTrackers, from, to])
+
+  const licenseByDriver = useMemo(() => {
+    const map = {}
+    for (const emp of employees) {
+      const fullName = [
+        emp.first_name || emp.firstname || emp.firstName,
+        emp.last_name || emp.lastname || emp.lastName,
+      ].filter(Boolean).join(' ').trim().toUpperCase()
+      if (!fullName) continue
+      const licenseValidTill = emp.license_valid_till || emp.license_expiry || emp.driving_license_expiry || null
+      map[fullName] = {
+        licenseValidTill,
+        licenseNumber: emp.license_number || emp.license_no || emp.driving_license || '-',
+        licenseCategories: emp.license_categories || emp.license_category || '-',
+      }
+    }
+    return map
+  }, [employees])
 
   const selectedSummary = driverSummaries.find((item) => item.driver === selectedDriver) || null
   const visibleSummaries = selectedDriver ? driverSummaries.filter((item) => item.driver === selectedDriver) : driverSummaries
@@ -164,9 +192,18 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
       <section className="panel panel-large">
         <div className="reports-table-wrap">
           <table className="reports-table">
-            <thead><tr><th>Chauffeur</th><th>Camion</th><th>BL</th><th>Tonnage</th><th>Clients</th><th>Où il est allé</th><th>Où il est actuellement</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Chauffeur</th><th>Camion</th><th>BL</th><th>Tonnage</th><th>Clients</th><th>Où il est allé</th><th>Où il est actuellement</th><th>Permis</th><th>Statut</th></tr></thead>
             <tbody>
-              {visibleSummaries.map((item) => (
+              {visibleSummaries.map((item) => {
+                const driverKey = String(item.driver || '').trim().toUpperCase()
+                const licenseInfo = licenseByDriver[driverKey]
+                const licenseDate = licenseInfo?.licenseValidTill ? new Date(licenseInfo.licenseValidTill) : null
+                const now = new Date()
+                const thirtyDays = 30 * 24 * 60 * 60 * 1000
+                const licenseExpired = licenseDate && licenseDate.getTime() < now.getTime()
+                const licenseUrgent = licenseDate && !licenseExpired && licenseDate.getTime() - now.getTime() < thirtyDays
+
+                return (
                 <tr key={item.driver} onClick={() => setSelectedDriver(item.driver)} style={{ cursor: 'pointer' }}>
                   <td><strong>{item.driver}</strong></td>
                   <td><Truck size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />{item.truckLabel}</td>
@@ -175,10 +212,32 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
                   <td>{item.clients.join(', ') || '-'}</td>
                   <td>{item.destinations.join(', ') || '-'}</td>
                   <td><MapPin size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />{item.currentLocation}</td>
+                  <td>
+                    {licenseDate ? (
+                      licenseExpired ? (
+                        <span style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <AlertTriangle size={14} /> Expiré
+                        </span>
+                      ) : licenseUrgent ? (
+                        <span style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <AlertTriangle size={14} /> {licenseDate.toLocaleDateString('fr-FR')}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <CheckCircle size={14} /> {licenseDate.toLocaleDateString('fr-FR')}
+                        </span>
+                      )
+                    ) : (
+                      <span style={{ color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <Clock size={14} /> Inconnu
+                      </span>
+                    )}
+                  </td>
                   <td>{item.currentStatus}</td>
                 </tr>
-              ))}
-              {visibleSummaries.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune activité chauffeur sur la période sélectionnée.</td></tr>}
+                )
+              })}
+              {visibleSummaries.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune activité chauffeur sur la période sélectionnée.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -187,6 +246,43 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
       {selectedSummary && (
         <section className="panel panel-large">
           <div className="panel-header"><div><h3>Détail chauffeur</h3><p>{selectedSummary.driver}</p></div></div>
+          {(() => {
+            const driverKey = String(selectedSummary.driver || '').trim().toUpperCase()
+            const licenseInfo = licenseByDriver[driverKey]
+            const licenseDate = licenseInfo?.licenseValidTill ? new Date(licenseInfo.licenseValidTill) : null
+            const now = new Date()
+            const thirtyDays = 30 * 24 * 60 * 60 * 1000
+            const licenseExpired = licenseDate && licenseDate.getTime() < now.getTime()
+            const licenseUrgent = licenseDate && !licenseExpired && licenseDate.getTime() - now.getTime() < thirtyDays
+            return (
+              <div className="stats-grid stats-grid-tight" style={{ marginTop: 12, marginBottom: 8 }}>
+                <article className="stat-card">
+                  <div className="stat-icon">
+                    {licenseDate
+                      ? licenseExpired
+                        ? <AlertTriangle size={16} color="#ef4444" />
+                        : licenseUrgent
+                          ? <AlertTriangle size={16} color="#f59e0b" />
+                          : <CheckCircle size={16} color="#22c55e" />
+                      : <Clock size={16} color="#64748b" />
+                    }
+                  </div>
+                  <div>
+                    <p>Permis valide jusqu'au</p>
+                    <strong>{licenseDate ? licenseDate.toLocaleDateString('fr-FR') : 'Non renseigné'}</strong>
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-icon"><IdCard size={16} /></div>
+                  <div><p>N° Permis</p><strong>{licenseInfo?.licenseNumber || '-'}</strong></div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-icon"><Truck size={16} /></div>
+                  <div><p>Catégories</p><strong>{licenseInfo?.licenseCategories || '-'}</strong></div>
+                </article>
+              </div>
+            )
+          })()}
           <div className="reports-table-wrap">
             <table className="reports-table">
               <thead><tr><th>BL</th><th>Client</th><th>Destination</th><th>Produit</th><th>Tonnage</th><th>Date déchargement</th><th>Camion</th></tr></thead>

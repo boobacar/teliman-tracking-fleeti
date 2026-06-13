@@ -68,6 +68,15 @@ let fuelLiveCache = { data: null, ts: 0 }
 let tracksBatchCache = new Map()
 const AUTH_CACHE_TTL_MS = Number(process.env.FLEETI_AUTH_CACHE_TTL_MS || 50 * 60 * 1000)
 const TRACKS_BATCH_CACHE_TTL_MS = Number(process.env.TRACKS_BATCH_CACHE_TTL_MS || 45 * 1000)
+// Caches pour les nouvelles routes API privée Fleeti
+let vehiclesCache = { data: null, ts: 0 }
+let employeesDetailCache = { data: null, ts: 0 }
+let sensorsLiveCache = { data: null, ts: 0 }
+let rulesDetailCache = { data: null, ts: 0 }
+const VEHICLES_CACHE_TTL_MS = Number(process.env.VEHICLES_CACHE_TTL_MS || 120 * 1000)
+const EMPLOYEES_DETAIL_CACHE_TTL_MS = Number(process.env.EMPLOYEES_DETAIL_CACHE_TTL_MS || 300 * 1000)
+const SENSORS_LIVE_CACHE_TTL_MS = Number(process.env.SENSORS_LIVE_CACHE_TTL_MS || 60 * 1000)
+const RULES_DETAIL_CACHE_TTL_MS = Number(process.env.RULES_DETAIL_CACHE_TTL_MS || 300 * 1000)
 
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
@@ -3334,6 +3343,243 @@ app.get('/api/reports/projects', async (req, res) => {
     res.json({ rows: payload.business.projects, generatedAt: payload.generatedAt, filters: payload.filters })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Nouvelles routes API privée Fleeti (cache, enrichissement tracker, fallback dégradé)
+// ---------------------------------------------------------------------------
+
+// --- GET /api/vehicles ---
+app.get('/api/vehicles', async (_req, res) => {
+  try {
+    const now = Date.now()
+    if (vehiclesCache.data && (now - vehiclesCache.ts) < VEHICLES_CACHE_TTL_MS) {
+      return res.json({ ...vehiclesCache.data, cached: true })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée' })
+    }
+    const hash = await authenticate()
+    const raw = await apiCall('vehicle/list', { hash })
+    const vehicles = extractArrayPayload(raw)
+
+    // Enrichissement tracker: récupérer states + employees
+    const trackerIds = vehicles
+      .map((v) => Number(v?.tracker_id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+    const uniqueTrackerIds = [...new Set(trackerIds)]
+
+    let states = {}
+    let employees = []
+    if (uniqueTrackerIds.length) {
+      const [statesResult, employeesResult] = await Promise.allSettled([
+        fetchPrivateStates(hash, uniqueTrackerIds),
+        apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+      ])
+      if (statesResult.status === 'fulfilled') states = extractObjectPayload(statesResult.value)
+      if (employeesResult.status === 'fulfilled') employees = sanitizeEmployees(extractArrayPayload(employeesResult.value))
+    }
+
+    // Construire un lookup employeeName par tracker_id
+    const employeeByTrackerId = new Map()
+    employees.forEach((emp) => {
+      const tids = extractEmployeeTrackerIds(emp)
+      tids.forEach((tid) => {
+        if (!employeeByTrackerId.has(tid)) {
+          employeeByTrackerId.set(tid, (emp.first_name || emp.last_name) ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() : emp.label || emp.name || null)
+        }
+      })
+    })
+
+    const enriched = vehicles.map((vehicle) => {
+      const tid = Number(vehicle?.tracker_id)
+      const stateObj = (Number.isFinite(tid) && tid > 0) ? (states[tid] || states[String(tid)] || {}) : {}
+      return {
+        ...vehicle,
+        trackerEnrichment: {
+          employeeName: (Number.isFinite(tid) && tid > 0) ? (employeeByTrackerId.get(tid) || null) : null,
+          state: stateObj?.state || stateObj?.status || null,
+          lastUpdate: stateObj?.last_update || stateObj?.updated_at || stateObj?.time || null,
+        },
+      }
+    })
+
+    const payload = { vehicles: enriched, count: enriched.length }
+    vehiclesCache = { data: payload, ts: Date.now() }
+    res.json({ ...payload, cached: false })
+  } catch (error) {
+    console.error('[api/vehicles]', error?.message || error)
+    if (vehiclesCache.data) {
+      return res.json({ ...vehiclesCache.data, cached: true, degraded: true, warning: 'Données en cache (API Fleeti indisponible).' })
+    }
+    res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/vehicles' })
+  }
+})
+
+// --- GET /api/vehicles/:id ---
+app.get('/api/vehicles/:id', async (req, res) => {
+  try {
+    const vehicleId = Number(req.params.id)
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) {
+      return res.status(400).json({ ok: false, error: 'ID véhicule invalide' })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée' })
+    }
+    const hash = await authenticate()
+
+    // Essayer vehicle/read d'abord
+    let vehicle = null
+    try {
+      const raw = await apiCall('vehicle/read', { hash, id: vehicleId })
+      const items = extractArrayPayload(raw)
+      vehicle = items.find((v) => Number(v?.id) === vehicleId) || items[0] || null
+    } catch {
+      // Fallback: charger toute la liste
+    }
+
+    if (!vehicle) {
+      const raw = await apiCall('vehicle/list', { hash })
+      const vehicles = extractArrayPayload(raw)
+      vehicle = vehicles.find((v) => Number(v?.id) === vehicleId) || null
+    }
+
+    if (!vehicle) {
+      return res.status(404).json({ ok: false, error: `Véhicule ${vehicleId} introuvable` })
+    }
+
+    // Enrichissement tracker
+    const tid = Number(vehicle?.tracker_id)
+    let trackerEnrichment = { employeeName: null, state: null, lastUpdate: null }
+    if (Number.isFinite(tid) && tid > 0) {
+      const [statesResult, employeesResult] = await Promise.allSettled([
+        fetchPrivateStates(hash, [tid]),
+        apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+      ])
+      const states = statesResult.status === 'fulfilled' ? extractObjectPayload(statesResult.value) : {}
+      const employees = employeesResult.status === 'fulfilled' ? sanitizeEmployees(extractArrayPayload(employeesResult.value)) : []
+      const stateObj = states[tid] || states[String(tid)] || {}
+      const employeeByTrackerId = new Map()
+      employees.forEach((emp) => {
+        const tids = extractEmployeeTrackerIds(emp)
+        tids.forEach((t) => { if (!employeeByTrackerId.has(t)) employeeByTrackerId.set(t, (emp.first_name || emp.last_name) ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() : emp.label || emp.name || null) })
+      })
+      trackerEnrichment = {
+        employeeName: employeeByTrackerId.get(tid) || null,
+        state: stateObj?.state || stateObj?.status || null,
+        lastUpdate: stateObj?.last_update || stateObj?.updated_at || stateObj?.time || null,
+      }
+    }
+
+    res.json({ vehicle: { ...vehicle, trackerEnrichment } })
+  } catch (error) {
+    console.error(`[api/vehicles/${req.params.id}]`, error?.message || error)
+    res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/vehicles/:id' })
+  }
+})
+
+// --- GET /api/employees-detail ---
+app.get('/api/employees-detail', async (_req, res) => {
+  try {
+    const now = Date.now()
+    if (employeesDetailCache.data && (now - employeesDetailCache.ts) < EMPLOYEES_DETAIL_CACHE_TTL_MS) {
+      return res.json({ ...employeesDetailCache.data, cached: true })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée' })
+    }
+    const hash = await authenticate()
+    const raw = await apiCall('employee/list', { hash })
+    const employees = extractArrayPayload(raw)
+    const payload = { employees, count: employees.length }
+    employeesDetailCache = { data: payload, ts: Date.now() }
+    res.json({ ...payload, cached: false })
+  } catch (error) {
+    console.error('[api/employees-detail]', error?.message || error)
+    if (employeesDetailCache.data) {
+      return res.json({ ...employeesDetailCache.data, cached: true, degraded: true, warning: 'Données en cache (API Fleeti indisponible).' })
+    }
+    res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/employees-detail' })
+  }
+})
+
+// --- GET /api/sensors-live ---
+app.get('/api/sensors-live', async (_req, res) => {
+  try {
+    const now = Date.now()
+    if (sensorsLiveCache.data && (now - sensorsLiveCache.ts) < SENSORS_LIVE_CACHE_TTL_MS) {
+      return res.json({ ...sensorsLiveCache.data, cached: true })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée' })
+    }
+    const hash = await authenticate()
+    const trackers = await fetchTrackersPrivate(hash)
+    if (!trackers.length) {
+      return res.json({ trackers: [], cached: false })
+    }
+
+    const results = []
+    for (const tracker of trackers) {
+      const trackerId = Number(tracker?.id)
+      if (!Number.isFinite(trackerId) || trackerId <= 0) continue
+      try {
+        const raw = await apiCall('tracker/sensor/list', { hash, tracker_id: trackerId })
+        const sensors = extractArrayPayload(raw)
+          .map((s) => ({
+            name: s?.name || s?.label || null,
+            type: s?.type || null,
+            unit: s?.unit || s?.measurement || null,
+            value: s?.value ?? s?.current_value ?? s?.last_value ?? null,
+            updated_at: s?.updated_at || s?.updated || s?.time || null,
+          }))
+        if (sensors.length) {
+          results.push({
+            trackerId,
+            trackerLabel: tracker?.label || tracker?.name || `Tracker ${trackerId}`,
+            sensors,
+          })
+        }
+      } catch (err) {
+        console.warn(`[api/sensors-live] tracker ${trackerId} sensors indisponibles: ${err?.message || err}`)
+      }
+    }
+
+    const payload = { trackers: results }
+    sensorsLiveCache = { data: payload, ts: Date.now() }
+    res.json({ ...payload, cached: false })
+  } catch (error) {
+    console.error('[api/sensors-live]', error?.message || error)
+    if (sensorsLiveCache.data) {
+      return res.json({ ...sensorsLiveCache.data, cached: true, degraded: true, warning: 'Données en cache (API Fleeti indisponible).' })
+    }
+    res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/sensors-live' })
+  }
+})
+
+// --- GET /api/rules-detail ---
+app.get('/api/rules-detail', async (_req, res) => {
+  try {
+    const now = Date.now()
+    if (rulesDetailCache.data && (now - rulesDetailCache.ts) < RULES_DETAIL_CACHE_TTL_MS) {
+      return res.json({ ...rulesDetailCache.data, cached: true })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      return res.status(503).json({ ok: false, error: 'API privée Fleeti non configurée' })
+    }
+    const hash = await authenticate()
+    const raw = await apiCall('tracker/rule/list', { hash })
+    const rules = extractArrayPayload(raw)
+    const payload = { rules, count: rules.length }
+    rulesDetailCache = { data: payload, ts: Date.now() }
+    res.json({ ...payload, cached: false })
+  } catch (error) {
+    console.error('[api/rules-detail]', error?.message || error)
+    if (rulesDetailCache.data) {
+      return res.json({ ...rulesDetailCache.data, cached: true, degraded: true, warning: 'Données en cache (API Fleeti indisponible).' })
+    }
+    res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/rules-detail' })
   }
 })
 
