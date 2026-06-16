@@ -155,7 +155,13 @@ export const sendWhatsAppTestMessage = (payload) => postJson('/api/whatsapp/test
 export const loadWhatsAppTemplates = () => getJson('/api/whatsapp/templates')
 export const saveWhatsAppTemplates = (templates) => putJson('/api/whatsapp/templates', { templates })
 export const resetWhatsAppTemplates = () => postJson('/api/whatsapp/templates/reset', {})
-export const loadDeliveryOrders = () => getJson('/api/delivery-orders')
+export const loadDeliveryOrders = ({ page, limit } = {}) => {
+  const params = new URLSearchParams()
+  if (page != null) params.set('page', page)
+  if (limit != null) params.set('limit', limit)
+  const qs = params.toString()
+  return getJson(`/api/delivery-orders${qs ? `?${qs}` : ''}`)
+}
 export const loadMasterData = () => getJson('/api/master-data')
 export const addMasterDataItem = (listName, value, extra = {}) => postJson(`/api/master-data/${listName}`, { value, ...extra })
 export const deleteMasterDataItem = async (listName, value, extra = {}) => {
@@ -190,7 +196,13 @@ export const loadDeliveryOrder = async (id) => {
   return data?.item || null
 }
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
-export const loadFuelVouchers = () => getJson('/api/fuel-vouchers')
+export const loadFuelVouchers = ({ page, limit } = {}) => {
+  const params = new URLSearchParams()
+  if (page != null) params.set('page', page)
+  if (limit != null) params.set('limit', limit)
+  const qs = params.toString()
+  return getJson(`/api/fuel-vouchers${qs ? `?${qs}` : ''}`)
+}
 export const loadFuelVoucher = async (id) => {
   const data = await getJson(`/api/fuel-voucher/${id}`)
   return data?.item || null

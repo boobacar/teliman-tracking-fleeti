@@ -10,6 +10,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
+import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, adminUserSchema, adminUserUpdateSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
@@ -2569,45 +2570,54 @@ app.get('/api/admin/users', requirePermission('manage_users'), (_req, res) => {
 })
 
 app.post('/api/admin/users', requirePermission('manage_users'), (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase()
-  const password = String(req.body?.password || '')
-  const role = String(req.body?.role || 'user').trim().toLowerCase()
-  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : []
-  if (!email || !password) return res.status(400).json({ ok: false, error: 'Email et mot de passe obligatoires.' })
-  if (findAuthUser(email)) return res.status(409).json({ ok: false, error: 'Cet utilisateur existe déjà.' })
-  const salt = crypto.randomBytes(16).toString('hex')
-  const passwordHash = hashPassword(password, salt)
-  const nextUsers = [...AUTH_USERS, { email, role, permissions: normalizeUserPermissions(role, permissions), salt, passwordHash }]
-  saveAuthUsers(nextUsers)
-  return res.status(201).json({ ok: true, user: sanitizeUserOutput(findAuthUser(email)) })
+  try {
+    const validated = validateBody(adminUserSchema, req.body)
+    const email = validated.email
+    const password = validated.password
+    const role = validated.role
+    const permissions = validated.permissions
+    if (findAuthUser(email)) return res.status(409).json({ ok: false, error: 'Cet utilisateur existe déjà.' })
+    const salt = crypto.randomBytes(16).toString('hex')
+    const passwordHash = hashPassword(password, salt)
+    const nextUsers = [...AUTH_USERS, { email, role, permissions: normalizeUserPermissions(role, permissions), salt, passwordHash }]
+    saveAuthUsers(nextUsers)
+    return res.status(201).json({ ok: true, user: sanitizeUserOutput(findAuthUser(email)) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
 })
 
 app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
-  const actor = req.authUser || null
-  const targetEmail = String(req.params.email || '').trim().toLowerCase()
-  const existing = findAuthUser(targetEmail)
-  if (!existing) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
+  try {
+    const validated = validateBody(adminUserUpdateSchema, req.body)
+    const actor = req.authUser || null
+    const targetEmail = String(req.params.email || '').trim().toLowerCase()
+    const existing = findAuthUser(targetEmail)
+    if (!existing) return res.status(404).json({ ok: false, error: 'Utilisateur introuvable.' })
 
-  const role = String(req.body?.role || existing.role).trim().toLowerCase()
-  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : existing.permissions
-  const password = String(req.body?.password || '')
+    const role = validated.role || existing.role
+    const permissions = validated.permissions || existing.permissions
+    const password = validated.password || ''
 
-  if (targetEmail === actor?.email && role !== 'admin') {
-    return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas retirer vos propres droits administrateur.' })
-  }
-
-  const updatedUsers = AUTH_USERS.map((item) => {
-    if (item.email !== targetEmail) return item
-    const next = { ...item, role, permissions: normalizeUserPermissions(role, permissions) }
-    if (password) {
-      const salt = crypto.randomBytes(16).toString('hex')
-      next.salt = salt
-      next.passwordHash = hashPassword(password, salt)
+    if (targetEmail === actor?.email && role !== 'admin') {
+      return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas retirer vos propres droits administrateur.' })
     }
-    return next
-  })
-  saveAuthUsers(updatedUsers)
-  return res.json({ ok: true, user: sanitizeUserOutput(findAuthUser(targetEmail)) })
+
+    const updatedUsers = AUTH_USERS.map((item) => {
+      if (item.email !== targetEmail) return item
+      const next = { ...item, role, permissions: normalizeUserPermissions(role, permissions) }
+      if (password) {
+        const salt = crypto.randomBytes(16).toString('hex')
+        next.salt = salt
+        next.passwordHash = hashPassword(password, salt)
+      }
+      return next
+    })
+    saveAuthUsers(updatedUsers)
+    return res.json({ ok: true, user: sanitizeUserOutput(findAuthUser(targetEmail)) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
 })
 
 app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, res) => {
@@ -2748,8 +2758,18 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
   res.json({ ok: true, data })
 })
 
-app.get('/api/delivery-orders', (_req, res) => {
-  res.json({ items: readDeliveryOrders() })
+app.get('/api/delivery-orders', (req, res) => {
+  const items = readDeliveryOrders()
+  const pageParam = Number(req.query.page)
+  // Pagination: si page non fournie, renvoyer tout (compatibilité ascendante)
+  if (!Number.isFinite(pageParam) || pageParam < 1) {
+    return res.json({ items, total: items.length })
+  }
+  const page = pageParam
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+  const start = (page - 1) * limit
+  const paginated = items.slice(start, start + limit)
+  res.json({ items: paginated, total: items.length, page, limit, totalPages: Math.ceil(items.length / limit) })
 })
 
 app.get('/api/delivery-orders/:trackerId', (req, res) => {
@@ -2782,8 +2802,9 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
 
 app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
+    const validated = validateBody(deliveryOrderSchema, req.body)
     const items = readDeliveryOrders()
-    const preparedBody = preprocessDeliveryProofPhotos(req.body)
+    const preparedBody = preprocessDeliveryProofPhotos(validated)
     const payload = sanitizeDeliveryOrderPayload(preparedBody)
     const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
     normalized.unshift(payload)
@@ -2800,11 +2821,12 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
 
+    const validated = validateBody(deliveryOrderUpdateSchema, req.body)
     const items = readDeliveryOrders()
     const current = items.find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
 
-    const preparedBody = preprocessDeliveryProofPhotos(req.body, current)
+    const preparedBody = preprocessDeliveryProofPhotos(validated, current)
     const updatedItem = sanitizeDeliveryOrderPayload(preparedBody, current)
     const updatedItems = items.map((item) => {
       if (Number(item.id) !== id) {
@@ -2833,8 +2855,18 @@ app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders
   res.json({ ok: true })
 })
 
-app.get('/api/fuel-vouchers', (_req, res) => {
-  res.json({ items: readFuelVouchers() })
+app.get('/api/fuel-vouchers', (req, res) => {
+  const items = readFuelVouchers()
+  const pageParam = Number(req.query.page)
+  // Pagination: si page non fournie, renvoyer tout (compatibilité ascendante)
+  if (!Number.isFinite(pageParam) || pageParam < 1) {
+    return res.json({ items, total: items.length })
+  }
+  const page = pageParam
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+  const start = (page - 1) * limit
+  const paginated = items.slice(start, start + limit)
+  res.json({ items: paginated, total: items.length, page, limit, totalPages: Math.ceil(items.length / limit) })
 })
 
 app.get('/api/fuel-voucher/:id', (req, res) => {
@@ -2876,8 +2908,9 @@ app.get('/api/cameras', async (_req, res) => {
 
 app.post('/api/fuel-vouchers', requirePermission('manage_fuel_vouchers'), (req, res) => {
   try {
+    const validated = validateBody(fuelVoucherSchema, req.body)
     const items = readFuelVouchers()
-    const payload = sanitizeFuelVoucherPayload(req.body)
+    const payload = sanitizeFuelVoucherPayload(validated)
     items.unshift(payload)
     writeFuelVouchers(items)
     res.status(201).json({ ok: true, item: payload })
@@ -2891,11 +2924,12 @@ app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
 
+    const validated = validateBody(fuelVoucherUpdateSchema, req.body)
     const items = readFuelVouchers()
     const current = items.find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
 
-    const updated = sanitizeFuelVoucherPayload(req.body, current)
+    const updated = sanitizeFuelVoucherPayload(validated, current)
     const next = items.map((item) => Number(item.id) === id ? updated : item)
     writeFuelVouchers(next)
     res.json({ ok: true, item: updated })
@@ -2940,8 +2974,9 @@ app.get('/api/oil-changes', (_req, res) => {
 
 app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), (req, res) => {
   try {
+    const validated = validateBody(oilChangeSchema, req.body)
     const items = readOilChanges()
-    const payload = sanitizeOilChangePayload(req.body)
+    const payload = sanitizeOilChangePayload(validated)
     items.unshift(payload)
     writeOilChanges(items)
     res.status(201).json({ ok: true, item: payload })
@@ -2954,10 +2989,11 @@ app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const validated = validateBody(oilChangeUpdateSchema, req.body)
     const items = readOilChanges()
     const current = items.find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
-    const updated = sanitizeOilChangePayload(req.body, current)
+    const updated = sanitizeOilChangePayload(validated, current)
     const next = items.map((item) => Number(item.id) === id ? updated : item)
     writeOilChanges(next)
     res.json({ ok: true, item: updated })
