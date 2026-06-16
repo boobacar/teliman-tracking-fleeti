@@ -2696,7 +2696,7 @@ textarea:focus-visible,
 }
 
 .ops-page-stack {
-  gap: 36px;
+  gap: 48px;
 }
 
 /* Séparation visuelle entre les panels Vidange */
@@ -2708,7 +2708,7 @@ textarea:focus-visible,
 .ops-page-stack .delivery-table-panel + .delivery-form-panel,
 .ops-page-stack .delivery-form-panel + .delivery-form-panel,
 .ops-page-stack .delivery-form-panel + .delivery-table-panel {
-  margin-top: 8px;
+  margin-top: 16px;
 }
 
 .upload-progress-wrap {
@@ -2905,7 +2905,7 @@ textarea:focus-visible,
 }
 
 .ops-filter-row {
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .tracker-history-card {
