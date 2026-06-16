@@ -383,7 +383,8 @@ export function ReportsPage() {
   }, [])
 
   const rowsInRange = useMemo(() => sortByReference(deliveries.filter((r) => {
-    if (!inRange(r.date, from, to)) return false
+    const rowDate = r.date || r.departureDateTime || r.arrivalDateTime
+    if (!inRange(rowDate, from, to)) return false
     if (goodsFilter && String(r.goods || '').trim() !== goodsFilter) return false
     return true
   }), (row) => row.reference), [deliveries, from, to, goodsFilter])
