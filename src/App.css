@@ -1119,6 +1119,11 @@ textarea:focus-visible,
   align-items: center;
 }
 
+.filter-row > .field-stack {
+  flex: 0 1 auto;
+  min-width: 160px;
+}
+
 .filter-control {
   min-height: 42px;
   padding: 10px 12px;
