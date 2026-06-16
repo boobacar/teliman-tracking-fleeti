@@ -283,9 +283,11 @@ function extractSummaries(payload = {}) {
   return entries.slice(0, 12)
 }
 
-function buildOperationalQuery() {
+function buildOperationalQuery(fromDate, toDate) {
   const params = new URLSearchParams()
-  params.set('period', '7d')
+  if (fromDate) params.set('from', fromDate)
+  if (toDate) params.set('to', toDate)
+  if (!fromDate && !toDate) params.set('period', '7d')
   return params.toString()
 }
 
@@ -431,7 +433,7 @@ export function ReportsPage() {
       setOperationalLoading(true)
       setOperationalError('')
       try {
-        const payload = await selectedOperationalReport.loader(buildOperationalQuery())
+        const payload = await selectedOperationalReport.loader(buildOperationalQuery(from, to))
         if (!cancelled) setOperationalPayload(payload || {})
       } catch (e) {
         if (!cancelled) {
@@ -444,7 +446,7 @@ export function ReportsPage() {
     }
     run()
     return () => { cancelled = true }
-  }, [selectedOperationalReport])
+  }, [selectedOperationalReport, from, to])
 
   const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
   const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])

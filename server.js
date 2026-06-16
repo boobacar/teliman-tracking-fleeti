@@ -1589,6 +1589,8 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
 function parseReportFilters(query = {}) {
   return {
     period: String(query.period || '48h'),
+    from: String(query.from || '').trim() || undefined,
+    to: String(query.to || '').trim() || undefined,
     trackerId: ensureValidTrackerId(query.trackerId),
     driver: String(query.driver || '').trim().toLowerCase(),
     status: String(query.status || '').trim().toLowerCase(),
@@ -1963,7 +1965,8 @@ function buildPivotTable({ trackerRows = [], alertRows = [], missionRows = [] },
 }
 
 async function buildReportsPayload(filters = {}) {
-  const data = await getDashboardData(filters.forceRefresh === true)
+  const dateRange = (filters.from || filters.to) ? { from: filters.from || filters.to, to: filters.to || filters.from } : null
+  const data = await getDashboardData(filters.forceRefresh === true, dateRange)
   const dataset = buildReportDataset(data, filters)
   const includeFuelSensors = filters.includeFuelSensors === true
 
@@ -2115,8 +2118,8 @@ async function getFuelSensorInfo(hash, trackerId) {
   }
 }
 
-async function getDashboardData(forceRefresh = false) {
-  if (!forceRefresh && dashboardCache.data && Date.now() - dashboardCache.ts < CACHE_TTL_MS) {
+async function getDashboardData(forceRefresh = false, dateRange = null) {
+  if (!forceRefresh && !dateRange && dashboardCache.data && Date.now() - dashboardCache.ts < CACHE_TTL_MS) {
     return dashboardCache.data
   }
 
@@ -2124,7 +2127,9 @@ async function getDashboardData(forceRefresh = false) {
     throw new Error('API privée Fleeti non configurée')
   }
 
-  const { from, to, todayKey, yesterdayKey } = getDateRange('48h')
+  const { from, to, todayKey, yesterdayKey } = dateRange && dateRange.from && dateRange.to
+    ? { from: `${dateRange.from} 00:00:00`, to: `${dateRange.to} 23:59:59`, todayKey: dateRange.from, yesterdayKey: dateRange.from }
+    : getDateRange('48h')
 
   const hash = await authenticate().catch(async (error) => {
     if (PUBLIC_API_KEY) {
