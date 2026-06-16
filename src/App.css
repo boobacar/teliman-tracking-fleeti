@@ -979,6 +979,7 @@ textarea:focus-visible,
 
 .reports-options-stack {
   align-self: end;
+  min-width: 200px;
 }
 
 .reports-options-box {
@@ -1145,6 +1146,7 @@ textarea:focus-visible,
   position: relative;
   display: grid;
   gap: 8px;
+  width: 100%;
 }
 
 .stable-date-picker-trigger-wrap {
@@ -2654,7 +2656,19 @@ textarea:focus-visible,
 }
 
 .ops-page-stack {
-  gap: 28px;
+  gap: 36px;
+}
+
+/* Séparation visuelle entre les panels Vidange */
+.ops-page-stack .delivery-hero-panel {
+  margin-bottom: 0;
+}
+
+.ops-page-stack .delivery-hero-panel + .delivery-table-panel,
+.ops-page-stack .delivery-table-panel + .delivery-form-panel,
+.ops-page-stack .delivery-form-panel + .delivery-form-panel,
+.ops-page-stack .delivery-form-panel + .delivery-table-panel {
+  margin-top: 8px;
 }
 
 .upload-progress-wrap {
@@ -2851,7 +2865,7 @@ textarea:focus-visible,
 }
 
 .ops-filter-row {
-  margin-bottom: 12px;
+  margin-bottom: 20px;
 }
 
 .tracker-history-card {

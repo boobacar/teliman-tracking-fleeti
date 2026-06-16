@@ -83,14 +83,19 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
     }
     loadData()
 
-    // Auto-refresh odometer every 60 seconds
-    const odometerInterval = setInterval(() => {
-      if (!cancelled) reloadOdometer({ silent: true })
+    // Auto-refresh odometer + oil changes every 60 seconds
+    const refreshInterval = setInterval(() => {
+      if (cancelled) return
+      reloadOdometer({ silent: true })
+      // Recharger les vidanges pour mettre à jour les échéances
+      loadOilChanges().then((payload) => {
+        if (!cancelled) setItems(payload.items ?? [])
+      }).catch(() => {})
     }, 60_000)
 
     return () => {
       cancelled = true
-      clearInterval(odometerInterval)
+      clearInterval(refreshInterval)
     }
   }, [])
 
