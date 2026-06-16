@@ -2032,9 +2032,20 @@ async function buildReportsPayload(filters = {}) {
     fleet: { summary: fleetSummary, rows: fleetRows },
     alerts: { summary: alertsSummary, rows: dataset.alertRows },
     missions: { summary: missionsSummary, rows: dataset.missionRows },
-    business: buildBusinessReports(dataset.missionRows, fleetRows),
-    pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: dataset.missionRows }, filters),
+    business: buildBusinessReports(filterMissionRowsByDate(dataset.missionRows, filters.from, filters.to), fleetRows),
+    pivot: buildPivotTable({ trackerRows: fleetRows, alertRows: dataset.alertRows, missionRows: filterMissionRowsByDate(dataset.missionRows, filters.from, filters.to) }, filters),
   }
+}
+
+function filterMissionRowsByDate(missionRows = [], fromDate, toDate) {
+  if (!fromDate && !toDate) return missionRows
+  return missionRows.filter((row) => {
+    const dateStr = String(row.date || row.departureDateTime || row.arrivalDateTime || '').slice(0, 10)
+    if (!dateStr) return true
+    if (fromDate && dateStr < fromDate) return false
+    if (toDate && dateStr > toDate) return false
+    return true
+  })
 }
 
 function extractFuelSensorValue(sensor) {
