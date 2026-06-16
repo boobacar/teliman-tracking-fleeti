@@ -22,6 +22,27 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DATA_DIR = process.env.TELIMAN_DATA_DIR || __dirname
 fs.mkdirSync(DATA_DIR, { recursive: true })
+
+// ── Écriture atomique non-bloquante (fire-and-forget, évite corruption) ──
+function writeJSON(filePath, data) {
+  const tmp = filePath + '.tmp.' + Date.now()
+  fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+    .then(() => fs.promises.rename(tmp, filePath))
+    .catch((err) => {
+      console.error(`[writeJSON] Échec ${filePath}:`, err.message)
+      fs.promises.unlink(tmp).catch(() => {})
+    })
+}
+
+function writeBuffer(filePath, buffer) {
+  const tmp = filePath + '.tmp.' + Date.now()
+  fs.promises.writeFile(tmp, buffer)
+    .then(() => fs.promises.rename(tmp, filePath))
+    .catch((err) => {
+      console.error(`[writeBuffer] Échec ${filePath}:`, err.message)
+      fs.promises.unlink(tmp).catch(() => {})
+    })
+}
 const DELIVERY_ORDERS_FILE = path.join(DATA_DIR, 'delivery-orders.json')
 const FUEL_VOUCHERS_FILE = path.join(DATA_DIR, 'fuel-vouchers.json')
 const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
@@ -36,6 +57,18 @@ const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
+
+// ── Sanitization HTML : strip toute balise HTML/script des entrées texte ──
+function sanitizeHtml(value) {
+  const str = String(value ?? '')
+  // Strip HTML tags, script blocks, event handlers, javascript: URLs
+  return str
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .trim()
+}
 if (!APP_SESSION_TOKEN) {
   console.error('[security] APP_SESSION_TOKEN manquant dans .env — le serveur refuse de démarrer')
   process.exit(1)
@@ -98,11 +131,71 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 }))
+
+// ── CSRF protection pour les mutations ──
+app.use((req, res, next) => {
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) return next()
+  if (!req.path.startsWith('/api/')) return next()
+  // Autoriser les requêtes avec Content-Type application/json (impossible en cross-origin simple form)
+  const contentType = String(req.get('content-type') || '').toLowerCase()
+  if (!contentType.includes('application/json')) {
+    return res.status(415).json({ ok: false, error: 'Content-Type application/json requis' })
+  }
+  // Vérifier l'origine pour les requêtes non-GET
+  const origin = req.get('origin') || ''
+  if (origin && !origin.includes('100.65.78.40') && !origin.includes('localhost') && !origin.includes('127.0.0.1') && !origin.includes('teliman')) {
+    console.warn(`[CSRF] Origine suspecte bloquée: ${origin}`)
+    return res.status(403).json({ ok: false, error: 'Origine non autorisée' })
+  }
+  next()
+})
+
 app.use(express.json({ limit: '10mb' }))
 app.use('/uploads', express.static(UPLOADS_BASE_DIR))
 
 // ── Frontend build (production) ──
 const DIST_DIR = path.join(__dirname, 'dist')
+
+// Cache mémoire pour les assets statiques (servis instantanément sans accès disque)
+const assetCache = new Map()
+function preloadAssets() {
+  const assetsDir = path.join(DIST_DIR, 'assets')
+  if (!fs.existsSync(assetsDir)) return
+  const files = fs.readdirSync(assetsDir, { recursive: true })
+  for (const file of files) {
+    const filePath = path.join(assetsDir, file)
+    if (fs.statSync(filePath).isFile()) {
+      try {
+        const content = fs.readFileSync(filePath)
+        const ext = path.extname(file).toLowerCase()
+        const mime = ext === '.js' ? 'application/javascript'
+          : ext === '.css' ? 'text/css'
+          : ext === '.svg' ? 'image/svg+xml'
+          : ext === '.woff2' ? 'font/woff2'
+          : ext === '.png' ? 'image/png'
+          : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
+          : 'application/octet-stream'
+        assetCache.set(`/assets/${file}`, { content, mime, size: content.length })
+      } catch {} // skip unreadable files
+    }
+  }
+  console.log(`[cache] ${assetCache.size} assets préchargés en mémoire (${Math.round([...assetCache.values()].reduce((s, a) => s + a.size, 0) / 1024 / 1024)} MB)`)
+}
+preloadAssets()
+
+// Middleware : sert les assets depuis le cache mémoire
+app.use('/assets', (req, res, next) => {
+  const cacheKey = '/assets' + req.path
+  const cached = assetCache.get(cacheKey)
+  if (cached) {
+    res.setHeader('Content-Type', cached.mime)
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    res.setHeader('Content-Length', cached.size)
+    return res.end(cached.content)
+  }
+  next()
+})
+
 app.use(express.static(DIST_DIR, {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript')
@@ -239,7 +332,7 @@ function loadAuthUsers() {
 
 function saveAuthUsers(users) {
   const normalized = parseAuthUsers(JSON.stringify(users))
-  fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(normalized, null, 2))
+  writeJSON(AUTH_USERS_FILE, normalized)
   AUTH_USERS.length = 0
   AUTH_USERS.push(...normalized)
 }
@@ -378,7 +471,7 @@ function readDeliveryOrders() {
 
 function writeDeliveryOrders(rows) {
   const { rows: normalizedRows } = dedupeDeliveryOrders(rows)
-  fs.writeFileSync(DELIVERY_ORDERS_FILE, JSON.stringify(normalizedRows, null, 2))
+  writeJSON(DELIVERY_ORDERS_FILE, normalizedRows)
   deliveryOrdersCache = { data: null, mtime: 0 }
 }
 
@@ -402,7 +495,7 @@ function readFuelVouchers() {
 }
 
 function writeFuelVouchers(rows) {
-  fs.writeFileSync(FUEL_VOUCHERS_FILE, JSON.stringify(rows, null, 2))
+  writeJSON(FUEL_VOUCHERS_FILE, rows)
   // Invalider le cache pour que la prochaine lecture recharge le fichier
   fuelVouchersCache = { data: null, mtime: 0 }
 }
@@ -416,7 +509,7 @@ function readOilChanges() {
 }
 
 function writeOilChanges(rows) {
-  fs.writeFileSync(OIL_CHANGES_FILE, JSON.stringify(rows, null, 2))
+  writeJSON(OIL_CHANGES_FILE, rows)
 }
 
 function sanitizeOilChangePayload(body = {}, current = null) {
@@ -431,7 +524,7 @@ function sanitizeOilChangePayload(body = {}, current = null) {
   const filterChanged = Boolean(body.filterChanged ?? current?.filterChanged ?? true)
   const nextChangeKm = Number.isFinite(Number(body.nextChangeKm)) ? Number(body.nextChangeKm) : (Number(current?.nextChangeKm) || 0)
   const nextChangeDate = String(body.nextChangeDate ?? current?.nextChangeDate ?? '').trim()
-  const notes = String(body.notes ?? current?.notes ?? '').trim()
+  const notes = sanitizeHtml(body.notes ?? current?.notes ?? '')
   const receiptExpiryDate = String(body.receiptExpiryDate ?? current?.receiptExpiryDate ?? '').trim()
   const createdAt = current?.createdAt || now
   const updatedAt = now
@@ -462,7 +555,7 @@ function readMasterData() {
 
 function writeMasterData(data) {
   const normalized = buildMasterDataPayload(data)
-  fs.writeFileSync(MASTER_DATA_FILE, JSON.stringify(normalized, null, 2))
+  writeJSON(MASTER_DATA_FILE, normalized)
   masterDataCache = { data: null, mtime: 0 }
 }
 
@@ -477,7 +570,7 @@ function readWhatsAppTemplates() {
 
 function writeWhatsAppTemplates(payload) {
   const normalized = normalizeWhatsAppTemplates(payload)
-  fs.writeFileSync(WHATSAPP_TEMPLATES_FILE, JSON.stringify(normalized, null, 2))
+  writeJSON(WHATSAPP_TEMPLATES_FILE, normalized)
   return normalized
 }
 
@@ -499,7 +592,7 @@ function readWhatsAppHistory() {
 
 function writeWhatsAppHistory(entries) {
   const normalized = Array.isArray(entries) ? entries.slice(0, WHATSAPP_HISTORY_LIMIT) : []
-  fs.writeFileSync(WHATSAPP_HISTORY_FILE, JSON.stringify(normalized, null, 2))
+  writeJSON(WHATSAPP_HISTORY_FILE, normalized)
   return normalized
 }
 
@@ -584,7 +677,7 @@ function persistDeliveryProofPhoto(value) {
   const base64Payload = match[2]
   const fileName = `proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
   const filePath = path.join(UPLOADS_DIR, fileName)
-  fs.writeFileSync(filePath, Buffer.from(base64Payload, 'base64'))
+  fs.promises.writeFile(filePath, Buffer.from(base64Payload, "base64")).catch(function(err) { console.error("[photo] write failed:", err.message) })
   return `/uploads/delivery-proofs/${fileName}`
 }
 
@@ -630,7 +723,7 @@ function persistFuelProofPhoto(value) {
   if (base64Payload.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
   const fileName = `fuel-proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
   const filePath = path.join(FUEL_PROOFS_DIR, fileName)
-  fs.writeFileSync(filePath, Buffer.from(base64Payload, 'base64'))
+  fs.promises.writeFile(filePath, Buffer.from(base64Payload, "base64")).catch(function(err) { console.error("[photo] write failed:", err.message) })
   return `/uploads/fuel-proofs/${fileName}`
 }
 
@@ -761,10 +854,10 @@ function sanitizeDeliveryOrderPayload(body = {}, current = null) {
     date,
     departureDateTime,
     arrivalDateTime,
-    notes: String(body.notes ?? current?.notes ?? '').trim(),
+    notes: sanitizeHtml(body.notes ?? current?.notes ?? ''),
     active: body.active ?? current?.active ?? true,
     completedAt: body.status === 'Livré' ? (body.completedAt || current?.completedAt || new Date().toISOString()) : (body.completedAt ?? current?.completedAt ?? null),
-    proofNote: String(body.proofNote ?? current?.proofNote ?? '').trim(),
+    proofNote: sanitizeHtml(body.proofNote ?? current?.proofNote ?? ''),
     proofStatus: String(body.proofStatus ?? current?.proofStatus ?? 'En attente').trim(),
     proofPhotoDataUrl: sanitizeProofPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl),
     proofPhotoDataUrls: sanitizeProofPhotoList(body.proofPhotoDataUrls, current?.proofPhotoDataUrls),
@@ -1289,7 +1382,7 @@ function writePublicTelemetryCache(payload = {}) {
     trackers: payload?.trackers && typeof payload.trackers === 'object' ? payload.trackers : {},
     events: Array.isArray(payload?.events) ? payload.events : [],
   }
-  fs.writeFileSync(PUBLIC_TELEMETRY_CACHE_FILE, JSON.stringify(normalized, null, 2))
+  writeJSON(PUBLIC_TELEMETRY_CACHE_FILE, normalized)
 }
 
 function pickPublicOdometerKm(asset = {}, gateway = {}) {
