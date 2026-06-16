@@ -25,6 +25,9 @@ export function createBaileysWhatsAppClient({
   let lastError = ''
   let connectedAt = null
   let user = null
+  let reconnectAttempts = 0
+  const MAX_RECONNECT_ATTEMPTS = 10
+  const RECONNECT_BASE_DELAY_MS = 5_000
 
   async function start() {
     if (started) return getStatus()
@@ -106,6 +109,7 @@ export function createBaileysWhatsAppClient({
       lastError = ''
       connectedAt = new Date().toISOString()
       user = normalizeBaileysUser(socket?.user)
+      reconnectAttempts = 0
       logger.info?.('[baileys] WhatsApp connecté.')
     }
 
@@ -117,10 +121,19 @@ export function createBaileysWhatsAppClient({
       state = 'disconnected'
       connectedAt = null
       lastError = update.lastDisconnect?.error?.message || ''
-      logger.warn?.(`[baileys] WhatsApp déconnecté${lastError ? `: ${lastError}` : ''}`)
+      reconnectAttempts += 1
+      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        logger.error?.(`[baileys] WhatsApp: ${MAX_RECONNECT_ATTEMPTS} tentatives échouées. Abandon de la reconnexion automatique. Redémarrez le serveur ou scannez le QR manuellement.`)
+        state = 'error'
+        started = false
+        socket = null
+        return
+      }
+      const delay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempts - 1), 5 * 60_000)
+      logger.warn?.(`[baileys] WhatsApp déconnecté${lastError ? `: ${lastError}` : ''} — tentative ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} dans ${Math.round(delay / 1000)}s`)
       started = false
       socket = null
-      setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 5000)
+      setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), delay)
     }
   }
 

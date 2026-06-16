@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
+import compression from 'compression'
 import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
@@ -33,7 +34,11 @@ const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
 const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 
 const PORT = Number(process.env.PORT || 8787)
-const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN || 'teliman-admin-session-token'
+const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
+if (!APP_SESSION_TOKEN) {
+  console.error('[security] APP_SESSION_TOKEN manquant dans .env — le serveur refuse de démarrer')
+  process.exit(1)
+}
 const AUTH_PBKDF2_ITERATIONS = Number(process.env.AUTH_PBKDF2_ITERATIONS || 120000)
 const AUTH_USERS_FILE = path.join(DATA_DIR, 'auth-users.json')
 const AUTH_USERS = loadAuthUsers()
@@ -80,6 +85,7 @@ const RULES_DETAIL_CACHE_TTL_MS = Number(process.env.RULES_DETAIL_CACHE_TTL_MS |
 
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
+app.use(compression())
 app.use(cors(buildCorsOptions()))
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },

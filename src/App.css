@@ -1269,6 +1269,41 @@ textarea:focus-visible,
   color: #e2e8f0;
 }
 
+/* Dark mode complet du DayPicker */
+.rdp-day_button:hover:not([disabled]) {
+  background-color: rgba(59, 130, 246, 0.18);
+  color: #fff;
+}
+
+.rdp-day_button[disabled] {
+  color: #475569;
+}
+
+.rdp-today:not(.rdp-outside) {
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+.rdp-selected .rdp-day_button {
+  background-color: var(--rdp-accent-color) !important;
+  color: #fff !important;
+}
+
+.rdp-weekday {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.rdp-month_caption {
+  color: #f1f5f9;
+}
+
+.rdp-dropdown {
+  color: #e2e8f0;
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
 .modern-date-popper,
 .react-datepicker-popper,
 .modern-date-popper--front {

@@ -9,6 +9,7 @@ import { employeeFallback, fallbackEvents } from './data/mock'
 import { getCurrentUser, loadFleetData, logout } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { DashboardPage } from './pages/DashboardPage'
 const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
@@ -330,6 +331,7 @@ function App() {
       {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
       <Suspense fallback={<div className="info-banner">Chargement de la vue…</div>}>
+      <ErrorBoundary>
         <Routes>
           <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
@@ -351,6 +353,7 @@ function App() {
           <Route path="/data" element={<DataPage />} />
           <Route path="/admin-users" element={<AdminUsersPage />} />
         </Routes>
+      </ErrorBoundary>
       </Suspense>
 
     </Layout>
