@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
+import { Pagination } from '../components/Pagination'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
 
@@ -139,6 +140,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [error, setError] = useState('')
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
+  const [page, setPage] = useState(1)
+  const PER_PAGE = 10
   const navigate = useNavigate()
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
@@ -173,6 +176,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       cancelled = true
     }
   }, [setDeliveryOrders, setDeliveryOrdersSummary, setMasterData])
+
+  // Reset page quand les filtres changent
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, trackerFilter, clientFilter, dateFilter, searchQuery])
 
   const handleTrackerChange = (trackerId) => {
     const selected = trackerOptions.find((item) => String(item.id) === String(trackerId))
@@ -301,6 +309,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     const searchOk = matchesDeliveryOrderSearch(item, searchQuery)
     return statusOk && trackerOk && clientOk && dateOk && searchOk
   })
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PER_PAGE))
+  // Réinitialiser la page si elle dépasse après changement de filtre
+  const safePage = Math.min(page, totalPages)
+  const paginatedOrders = filteredOrders.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
 
   const groupedByTracker = enrichedTrackers
     .map((tracker) => ({ tracker, orders: deliveryOrders.filter((item) => Number(item.trackerId) === Number(tracker.id)) }))
@@ -519,7 +532,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map((item) => {
+            {paginatedOrders.map((item) => {
               const statusLabel = item.active ? 'Actif' : item.status
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
               const pickerId = `proof-photo-${item.id}`
@@ -580,7 +593,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       </div>
 
       <div className="mobile-voucher-list">
-        {filteredOrders.map((item) => {
+        {paginatedOrders.map((item) => {
           const statusLabel = item.active ? 'Actif' : item.status
           const pickerId = `proof-photo-mobile-${item.id}`
           return (
@@ -604,6 +617,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         })}
       </div>
     </section>
+
+    <Pagination page={safePage} totalPages={totalPages} total={filteredOrders.length} onPageChange={setPage} />
 
     <section id="bl-insights" className="dashboard-grid premium-grid phase2-grid">
       <section className="panel">

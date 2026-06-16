@@ -4,6 +4,7 @@ import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { Pagination } from '../components/Pagination'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
@@ -84,6 +85,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const PER_PAGE = 10
 
   const amount = useMemo(() => Number((toNumber(form.quantityLiters) * toNumber(form.unitPrice)).toFixed(2)), [form.quantityLiters, form.unitPrice])
 
@@ -113,6 +116,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => { setPage(1) }, [trackerFilter, dateFilter, searchQuery])
+
   const filtered = useMemo(() => items.filter((item) => {
     const trackerOk = trackerFilter === 'all' ? true : String(item.trackerId) === String(trackerFilter)
     const selectedDateKey = dateFilter ? dateFilter.toISOString().slice(0, 10) : ''
@@ -120,6 +125,10 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     const searchOk = matchesFuelVoucherSearch(item, searchQuery)
     return trackerOk && dateOk && searchOk
   }), [items, trackerFilter, dateFilter, searchQuery])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE))
+  const safePage = Math.min(page, totalPages)
+  const paginated = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
 
   const onTruckChange = (value) => {
     const tracker = enrichedTrackers.find((item) => String(item.id) === String(value))
@@ -257,7 +266,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             <table className="reports-table">
               <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
               <tbody>
-                {filtered.map((item) => {
+                {paginated.map((item) => {
                   const pickerId = `fuel-photo-${item.id}`
                   const hasPhoto = Array.isArray(item.proofPhotoDataUrls)
                     ? item.proofPhotoDataUrls.some(Boolean)
@@ -296,7 +305,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
         )}
 
         <div className="mobile-voucher-list">
-          {filtered.map((item) => {
+          {paginated.map((item) => {
             const pickerId = `fuel-photo-mobile-${item.id}`
             return (
               <article
@@ -327,6 +336,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           })}
           {filtered.length === 0 && <EmptyBanner message="Aucun bon carburant enregistré." />}
         </div>
+        <Pagination page={safePage} totalPages={totalPages} total={filtered.length} onPageChange={setPage} />
       </section>
     </PageStack>
   )
