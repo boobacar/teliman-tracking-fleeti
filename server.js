@@ -100,6 +100,23 @@ app.use(rateLimit({
 }))
 app.use(express.json({ limit: '10mb' }))
 app.use('/uploads', express.static(UPLOADS_BASE_DIR))
+
+// ── Frontend build (production) ──
+const DIST_DIR = path.join(__dirname, 'dist')
+app.use(express.static(DIST_DIR, {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript')
+    else if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css')
+  }
+}))
+// SPA fallback: renvoie index.html pour toute route non-API
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next()
+  const indexPath = path.join(DIST_DIR, 'index.html')
+  if (fs.existsSync(indexPath)) return res.sendFile(indexPath)
+  next()
+})
+
 app.use(requestLogger)
 app.use(protectApi)
 app.use(protectAppSession)
