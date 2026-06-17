@@ -199,6 +199,21 @@ function App() {
       if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
     }
 
+    // Overrides locaux (driver-assignments.json) — priorité maximale
+    const driverAssignments = dataset?.driverAssignments || {}
+    const overrideDriverByTrackerId = {}
+    for (const [employeeId, trackerId] of Object.entries(driverAssignments)) {
+      const employee = (dataset?.employees || []).find(
+        (e) => String(e.id || e.employee_id || e.tracker_id) === String(employeeId)
+      )
+      if (employee) {
+        const first = String(employee.first_name || employee.firstname || employee.firstName || '').trim()
+        const last = String(employee.last_name || employee.lastname || employee.lastName || '').trim()
+        const name = [first, last].filter(Boolean).join(' ').trim()
+        if (name) overrideDriverByTrackerId[Number(trackerId)] = name
+      }
+    }
+
     const preferredMileageKeys = [dataset?.dateKeys?.todayKey, dataset?.dateKeys?.yesterdayKey].filter(Boolean)
 
     return (dataset?.trackers ?? []).map((tracker) => {
@@ -210,7 +225,8 @@ function App() {
       const firstName = String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
       const lastName = String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
       const employeeNameFromApi = [firstName, lastName].filter(Boolean).join(' ').trim()
-      const employeeName = employeeNameFromApi
+      const employeeName = overrideDriverByTrackerId[Number(tracker.id)]
+        || employeeNameFromApi
         || fallbackDriverByTrackerId[Number(tracker.id)]
         || fallbackDriverByLabel[normalizeKey(tracker.label)]
         || 'Non assigné'

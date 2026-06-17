@@ -228,6 +228,8 @@ export const deleteFuelVoucher = async (id) => {
 }
 export const loadLiveOdometer = () => getJson('/api/live-odometer')
 export const loadLivePositions = () => getJson('/api/positions-live')
+export const loadDriverAssignments = () => getJson('/api/driver-assignments')
+export const saveDriverAssignments = (assignments) => putJson('/api/driver-assignments', { assignments })
 export const loadOilChanges = () => getJson('/api/oil-changes')
 export const createOilChange = (payload) => postJson('/api/oil-changes', payload)
 export const updateOilChange = async (id, payload) => {

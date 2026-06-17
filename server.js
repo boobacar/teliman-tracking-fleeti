@@ -54,6 +54,7 @@ const WHATSAPP_TEMPLATES_FILE = path.join(DATA_DIR, 'whatsapp-templates.json')
 const WHATSAPP_HISTORY_FILE = path.join(DATA_DIR, 'whatsapp-history.json')
 const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
 const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
+const DRIVER_ASSIGNMENTS_FILE = path.join(DATA_DIR, 'driver-assignments.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
@@ -1705,6 +1706,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     history: sanitizeHistory(scopedHistory),
     mileage: scopedMileage,
     dateKeys: { todayKey, yesterdayKey },
+    driverAssignments: loadDriverAssignments(),
   }
 }
 
@@ -2364,6 +2366,7 @@ async function getDashboardData(forceRefresh = false, dateRange = null) {
     history: normalizedHistory,
     mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
     dateKeys: { todayKey, yesterdayKey },
+    driverAssignments: loadDriverAssignments(),
   }
 
   dashboardCache = { data: payload, ts: Date.now() }
@@ -3759,6 +3762,52 @@ app.get('/api/employees-detail', async (_req, res) => {
       return res.json({ ...employeesDetailCache.data, cached: true, degraded: true, warning: 'Données en cache (API Fleeti indisponible).' })
     }
     res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/employees-detail' })
+  }
+})
+
+// ── Driver Assignments (overrides locaux des assignations chauffeur/camion) ──
+function loadDriverAssignments() {
+  try {
+    if (fs.existsSync(DRIVER_ASSIGNMENTS_FILE)) {
+      return JSON.parse(fs.readFileSync(DRIVER_ASSIGNMENTS_FILE, 'utf-8'))
+    }
+  } catch (err) {
+    console.error('[driver-assignments] Erreur lecture:', err.message)
+  }
+  return {}
+}
+
+// GET /api/driver-assignments
+app.get('/api/driver-assignments', (_req, res) => {
+  try {
+    const assignments = loadDriverAssignments()
+    res.json({ assignments, count: Object.keys(assignments).length })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// PUT /api/driver-assignments — admin only
+app.put('/api/driver-assignments', (req, res) => {
+  try {
+    const user = getSessionUser(req)
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
+    }
+    const { assignments } = req.body || {}
+    if (!assignments || typeof assignments !== 'object') {
+      return res.status(400).json({ ok: false, error: 'Format invalide. Envoyez { assignments: { employeeId: trackerId, ... } }' })
+    }
+    const sanitized = {}
+    for (const [employeeId, trackerId] of Object.entries(assignments)) {
+      const cleanEmp = String(employeeId).trim()
+      const cleanTrk = String(trackerId).trim()
+      if (cleanEmp && cleanTrk) sanitized[cleanEmp] = cleanTrk
+    }
+    writeJSON(DRIVER_ASSIGNMENTS_FILE, sanitized)
+    res.json({ ok: true, assignments: sanitized, count: Object.keys(sanitized).length })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
   }
 })
 

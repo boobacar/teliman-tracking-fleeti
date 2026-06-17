@@ -4,25 +4,69 @@ import {
   BadgeCheck,
   CheckCircle,
   Clock,
+  Edit3,
   IdCard,
   Mail,
   Phone,
+  Save,
   Truck,
+  X,
 } from 'lucide-react'
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { SectionHeader } from '../components/UIPrimitives'
-import { loadEmployeesDetail } from '../lib/fleeti'
+import { loadDriverAssignments, loadEmployeesDetail, saveDriverAssignments } from '../lib/fleeti'
 
 export function DriversPage({ filteredTrackers }) {
   const [employees, setEmployees] = useState([])
+  const [assignments, setAssignments] = useState({})
+  const [editing, setEditing] = useState(null) // employee id being edited
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const userRole = (() => {
+    try { return localStorage.getItem('teliman_user_role') || '' } catch { return '' }
+  })()
+  const isAdmin = userRole === 'admin'
 
   useEffect(() => {
     let cancelled = false
-    loadEmployeesDetail().then((data) => {
-      if (!cancelled) setEmployees(Array.isArray(data) ? data : data?.employees || data?.items || [])
+    Promise.all([
+      loadEmployeesDetail(),
+      loadDriverAssignments().catch(() => ({ assignments: {} })),
+    ]).then(([empData, assignData]) => {
+      if (cancelled) return
+      setEmployees(Array.isArray(empData) ? empData : empData?.employees || empData?.items || [])
+      setAssignments(assignData?.assignments || {})
     }).catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  async function handleSave() {
+    if (!editing) return
+    setSaving(true)
+    try {
+      const next = { ...assignments, [String(editing)]: String(editValue) }
+      await saveDriverAssignments(next)
+      setAssignments(next)
+      setEditing(null)
+    } catch (err) {
+      alert('Erreur lors de la sauvegarde : ' + (err?.message || 'inconnue'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startEdit(emp) {
+    const empId = String(emp.id || emp.employee_id || emp.tracker_id || '')
+    const current = assignments[empId] || String(emp.tracker_id || emp.trackerId || '')
+    setEditing(empId)
+    setEditValue(current)
+  }
+
+  function getAssignedTrackerId(emp) {
+    const empId = String(emp.id || emp.employee_id || emp.tracker_id || '')
+    // Priorité: override local > API Fleeti
+    return assignments[empId] || String(emp.tracker_id || emp.trackerId || '')
+  }
 
   if (employees.length === 0) {
     return (
@@ -40,7 +84,7 @@ export function DriversPage({ filteredTrackers }) {
       <section className="panel panel-large">
         <SectionHeader
           title="Chauffeurs"
-          description={`${employees.length} chauffeurs dans le système`}
+          description={`${employees.length} chauffeurs dans le système${isAdmin ? ' — admin : cliquez ✏️ pour modifier le camion' : ''}`}
         />
         <div className="reports-table-wrap">
           <table className="reports-table">
@@ -53,6 +97,7 @@ export function DriversPage({ filteredTrackers }) {
                 <th>Validité permis</th>
                 <th>Badge / Matricule</th>
                 <th>Camion assigné</th>
+                {isAdmin && <th style={{ width: 40 }}></th>}
               </tr>
             </thead>
             <tbody>
@@ -76,11 +121,14 @@ export function DriversPage({ filteredTrackers }) {
                 const licenseExpired = licenseDate && licenseDate.getTime() < now.getTime()
                 const licenseUrgent = licenseDate && !licenseExpired && licenseDate.getTime() - now.getTime() < thirtyDays
 
-                const trackerId = emp.tracker_id || emp.trackerId
+                const trackerId = getAssignedTrackerId(emp)
                 const assignedTracker = trackerId
                   ? filteredTrackers?.find((t) => String(t.id) === String(trackerId))
                   : null
                 const truckLabel = assignedTracker?.label || (trackerId ? `Tracker #${trackerId}` : '-')
+                const isOverridden = !!assignments[String(emp.id || emp.employee_id || emp.tracker_id || '')]
+                const empId = String(emp.id || emp.employee_id || emp.tracker_id || '')
+                const isEditingThis = editing === empId
 
                 return (
                   <tr key={emp.id || emp.employee_id || fullName}>
@@ -123,10 +171,61 @@ export function DriversPage({ filteredTrackers }) {
                       <small style={{ color: '#94a3b8' }}>Mat. {matricule}</small>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Truck size={12} /> {truckLabel}
-                      </div>
+                      {isEditingThis ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <select
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            style={{
+                              background: '#0f172a',
+                              color: '#e2e8f0',
+                              border: '1px solid #334155',
+                              borderRadius: 6,
+                              padding: '4px 8px',
+                              fontSize: '0.85em',
+                              maxWidth: 150,
+                            }}
+                          >
+                            <option value="">-- Aucun --</option>
+                            {(filteredTrackers || []).map((t) => (
+                              <option key={t.id} value={String(t.id)}>{t.label || `Tracker #${t.id}`}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={saving}
+                            style={{ background: 'none', border: 'none', color: '#22c55e', cursor: 'pointer', padding: 2 }}
+                            title="Enregistrer"
+                          ><Save size={14} /></button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2 }}
+                            title="Annuler"
+                          ><X size={14} /></button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Truck size={12} /> {truckLabel}
+                          {isOverridden && (
+                            <span style={{ fontSize: '0.7em', color: '#f59e0b', marginLeft: 4 }} title="Override local">⚡</span>
+                          )}
+                        </div>
+                      )}
                     </td>
+                    {isAdmin && (
+                      <td>
+                        {!isEditingThis && (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(emp)}
+                            style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', padding: 4 }}
+                            title="Modifier le camion"
+                          ><Edit3 size={14} /></button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -146,9 +245,8 @@ export function DriversPage({ filteredTrackers }) {
           const licenseNumber = emp.license_number || emp.license_no || emp.driving_license || '-'
           const licenseValidTill = emp.license_valid_till || emp.license_expiry || emp.driving_license_expiry || null
           const licenseDate = licenseValidTill ? new Date(licenseValidTill) : null
-          const now = new Date()
-          const licenseExpired = licenseDate && licenseDate.getTime() < now.getTime()
-          const trackerId = emp.tracker_id || emp.trackerId
+          const licenseExpired = licenseDate && licenseDate.getTime() < new Date().getTime()
+          const trackerId = getAssignedTrackerId(emp)
           const assignedTracker = trackerId
             ? filteredTrackers?.find((t) => String(t.id) === String(trackerId))
             : null
