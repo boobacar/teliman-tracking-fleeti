@@ -4,6 +4,7 @@ import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 import { Pagination } from '../components/Pagination'
+import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
 
@@ -333,7 +334,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 3)
 
   return <PageStack className="ops-page-stack">
-    {pageLoading && <div className="info-banner">Chargement des bons de livraison…</div>}
+    {pageLoading && <SkeletonTable rows={4} cols={8} />}
     {error && <div className="info-banner" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>{error}</div>}
     <section className="panel panel-large delivery-hero-panel">
       <SectionHeader title="Centre de missions & bons de livraison" right={<div className="mission-hero-badge">BL Ops</div>} />

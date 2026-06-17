@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapPin, Package2, Phone, Truck, Trash2, Users } from 'lucide-react'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
 
@@ -222,7 +223,7 @@ export function DataPage() {
 
   return (
     <PageStack className="data-page-stack">
-      {loading && <LoadingBanner message="Chargement des données…" />}
+      {loading && <SkeletonTable rows={4} cols={6} />}
       <ErrorBanner message={error} />
 
       <section className="panel panel-large reports-v2-hero data-hero-panel">

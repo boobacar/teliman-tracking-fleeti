@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import {
   loadDeliveryOrders,
@@ -832,8 +833,8 @@ export function ReportsPage() {
             </div>
           </div>
         </div>
-        {loading && <LoadingBanner message="Chargement des données…" />}
-        {operationalLoading && <LoadingBanner message="Chargement du rapport opérationnel…" />}
+        {loading && <SkeletonTable rows={4} cols={7} />}
+        {operationalLoading && <SkeletonTable rows={4} cols={6} />}
         <ErrorBanner message={error || operationalError} />
       </section>
 

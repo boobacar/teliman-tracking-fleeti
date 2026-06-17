@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Trash2, AlertCircle, Clock } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { loadOilChanges, createOilChange, deleteOilChange, loadLiveOdometer, loadVehicles } from '../lib/fleeti'
@@ -577,7 +578,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             </div>
           }
         />
-        {loading ? <LoadingBanner message="Chargement…" /> : (
+        {loading ? <SkeletonTable rows={4} cols={8} /> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
               <thead>

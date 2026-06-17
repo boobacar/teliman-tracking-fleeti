@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { Camera, Trash2 } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { Pagination } from '../components/Pagination'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
@@ -273,7 +274,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
             <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
           </div>
         </div>
-        {loading ? <LoadingBanner message="Chargement…" /> : (
+        {loading ? <SkeletonTable rows={4} cols={7} /> : (
           <div className="reports-table-wrap">
             <table className="reports-table">
               <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>

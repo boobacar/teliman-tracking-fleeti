@@ -15,20 +15,20 @@
   --space-3: 16px;
   --space-4: 36px;
   --color-white: #ffffff;
-  --color-slate-100: var(--color-slate-100);
-  --color-slate-500: var(--color-slate-500);
-  --color-blue-200: var(--color-blue-200);
-  --color-blue-300: var(--color-blue-300);
-  --color-blue-400: var(--color-blue-400);
-  --color-blue-500: var(--color-blue-500);
-  --color-green-300: var(--color-green-300);
-  --color-green-500: var(--color-green-500);
-  --color-red-200: var(--color-red-200);
-  --color-red-300: var(--color-red-300);
-  --color-red-500: var(--color-red-500);
-  --color-amber-500: var(--color-amber-500);
-  --color-cyan-400: var(--color-cyan-400);
-  --color-slate-200: var(--color-slate-200);
+  --color-slate-100: #f8fafc;
+  --color-slate-200: #cbd5e1;
+  --color-slate-500: #64748b;
+  --color-blue-200: #dbeafe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-green-300: #bbf7d0;
+  --color-green-500: #22c55e;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-500: #ef4444;
+  --color-amber-500: #f59e0b;
+  --color-cyan-400: #38bdf8;
   --shadow-card: 0 16px 40px rgba(2, 6, 23, 0.35);
   --focus-ring: 0 0 0 4px rgba(96, 165, 250, 0.18);
 
@@ -71,6 +71,7 @@ textarea:focus-visible,
 .page-stack {
   display: grid;
   gap: var(--space-4);
+  animation: route-fade-in 0.3s ease-out both;
 }
 
 .whatsapp-hero-card {
@@ -3791,4 +3792,37 @@ textarea:focus-visible,
   height: 36px;
   color: var(--color-slate-500);
   font-size: 14px;
+}
+
+/* ── Skeleton shimmer ── */
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Page transitions ── */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+}
+.page-transition-exit {
+  opacity: 1;
+}
+.page-transition-exit-active {
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+}
+
+/* Simple fade-in for lazy routes */
+.route-fade-in {
+  animation: route-fade-in 0.3s ease-out both;
+}
+@keyframes route-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
