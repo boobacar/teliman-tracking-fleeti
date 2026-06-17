@@ -251,9 +251,14 @@ function buildCorsOptions() {
     try {
       const url = new URL(origin)
       const host = url.hostname.toLowerCase()
+      // Domaines de production
       if (host === 'teliman-tracking-fleeti.vercel.app') return true
       if (host.endsWith('.vercel.app') && host.includes('teliman-tracking-fleeti')) return true
       if (host === 'telimanlogistique.com' || host === 'www.telimanlogistique.com') return true
+      // Origines locales / réseau privé (dev + prod locale)
+      if (host === 'localhost' || host === '127.0.0.1') return true
+      if (host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) return true
+      if (host.startsWith('100.') && host.includes('.')) return true
       return false
     } catch {
       return false
