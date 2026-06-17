@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
-import { loadTracksBatch } from '../lib/fleeti'
+import { loadLivePositions, loadTracksBatch } from '../lib/fleeti'
 
 function getPinState(tracker) {
   const connection = tracker.state?.connection_status
@@ -90,13 +90,66 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   const inflightCacheRef = useRef(new Map())
   const mapShellRef = useRef(null)
 
-  const allVisibleTrackers = useMemo(() => filteredTrackers.filter((tracker) => {
+  // ── Positions live (polling toutes les 3s) ──
+  const [livePositions, setLivePositions] = useState({})
+  const livePollRef = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function poll() {
+      try {
+        const data = await loadLivePositions()
+        if (cancelled) return
+        const map = {}
+        for (const pos of data.positions || []) {
+          map[String(pos.trackerId)] = pos
+        }
+        setLivePositions(map)
+      } catch {
+        // silencieux — on garde les anciennes positions
+      }
+    }
+
+    poll() // premier appel immédiat
+    livePollRef.current = setInterval(poll, 3000)
+
+    return () => {
+      cancelled = true
+      if (livePollRef.current) clearInterval(livePollRef.current)
+    }
+  }, [])
+
+  // Fusionne les positions live avec les trackers enrichis
+  const trackersWithLivePos = useMemo(() => {
+    return filteredTrackers.map((tracker) => {
+      const live = livePositions[String(tracker.id)]
+      if (!live || !Number.isFinite(live.lat) || !Number.isFinite(live.lng)) return tracker
+      return {
+        ...tracker,
+        state: {
+          ...tracker.state,
+          gps: {
+            ...tracker.state?.gps,
+            location: { lat: live.lat, lng: live.lng },
+            speed: live.speed ?? tracker.state?.gps?.speed ?? 0,
+            heading: live.heading ?? tracker.state?.gps?.heading ?? 0,
+          },
+          connection_status: live.connection_status || tracker.state?.connection_status || 'unknown',
+          movement_status: live.movement_status || tracker.state?.movement_status || 'unknown',
+        },
+      }
+    })
+  }, [filteredTrackers, livePositions])
+
+  // Utiliser les positions live pour les calculs de bounds et filtres
+  const allVisibleTrackers = useMemo(() => trackersWithLivePos.filter((tracker) => {
     if (!tracker.state?.gps?.location) return false
     if (mapFilter === 'moving') return (tracker.state?.gps?.speed ?? 0) > 0
     if (mapFilter === 'offline') return tracker.state?.connection_status === 'offline'
     if (mapFilter === 'risk') return (tracker.eventCounts?.speedup || 0) + (tracker.eventCounts?.excessive_parking || 0) > 0
     return true
-  }), [filteredTrackers, mapFilter])
+  }), [trackersWithLivePos, mapFilter])
 
   useEffect(() => {
     setSelectedTrackIds((prev) => prev.filter((id) => allVisibleTrackers.some((tracker) => String(tracker.id) === id)))

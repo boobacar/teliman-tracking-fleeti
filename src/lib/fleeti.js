@@ -227,6 +227,7 @@ export const deleteFuelVoucher = async (id) => {
   return data
 }
 export const loadLiveOdometer = () => getJson('/api/live-odometer')
+export const loadLivePositions = () => getJson('/api/positions-live')
 export const loadOilChanges = () => getJson('/api/oil-changes')
 export const createOilChange = (payload) => postJson('/api/oil-changes', payload)
 export const updateOilChange = async (id, payload) => {

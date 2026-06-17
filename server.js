@@ -2449,6 +2449,91 @@ app.get('/api/dashboard', async (req, res) => {
   }
 })
 
+// Cache léger pour les positions live (polling rapide MapPage)
+let positionsLiveCache = { data: null, ts: 0 }
+const POSITIONS_LIVE_CACHE_TTL_MS = Number(process.env.POSITIONS_LIVE_CACHE_TTL_MS || 4000)
+
+app.get('/api/positions-live', async (req, res) => {
+  try {
+    const forceRefresh = String(req.query.refresh || '').trim() === '1'
+    if (!forceRefresh && positionsLiveCache.data && Date.now() - positionsLiveCache.ts < POSITIONS_LIVE_CACHE_TTL_MS) {
+      return res.json({ ...positionsLiveCache.data, cached: true })
+    }
+    if (!PRIVATE_API_CONFIGURED) {
+      // Fallback: utiliser le cache dashboard existant
+      const dashboard = await getDashboardData()
+      const positions = (dashboard.trackers || []).map((tracker) => {
+        const state = dashboard.states?.[tracker.id] || {}
+        return {
+          trackerId: tracker.id,
+          label: tracker.label || `Tracker ${tracker.id}`,
+          lat: state?.gps?.location?.lat ?? null,
+          lng: state?.gps?.location?.lng ?? null,
+          speed: state?.gps?.speed ?? 0,
+          heading: state?.gps?.heading ?? 0,
+          connection_status: state?.connection_status || 'unknown',
+          movement_status: state?.movement_status || 'unknown',
+          last_update: state?.last_update || null,
+        }
+      }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
+      return res.json({ ...positionsLiveCache.data, cached: false })
+    }
+
+    const hash = await authenticate().catch((error) => {
+      console.warn(`[positions-live] auth failed: ${error?.message || error}`)
+      return null
+    })
+    if (!hash) {
+      return res.status(502).json({ ok: false, error: 'Authentification Fleeti indisponible' })
+    }
+
+    // Récupérer les trackers disponibles
+    const sanitizedTrackers = await fetchTrackersPrivate(hash).catch(() => [])
+    const availableTrackerIds = sanitizedTrackers
+      .map((tracker) => Number(tracker.trackerId ?? tracker.id))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const scopedTrackerIds = resolveScopedTrackerIds(availableTrackerIds, TRACKER_IDS)
+
+    if (!scopedTrackerIds.length) {
+      return res.json({ positions: [], total: 0, cached: false })
+    }
+
+    // Appel léger : seulement les states (positions GPS)
+    const statesResult = await fetchPrivateStates(hash, scopedTrackerIds)
+    const states = extractObjectPayload(statesResult, ['states', 'result', 'data'])
+
+    // Construire le label map à partir des trackers
+    const labelById = {}
+    for (const tracker of sanitizedTrackers) {
+      const id = Number(tracker.trackerId ?? tracker.id)
+      if (Number.isFinite(id)) {
+        labelById[id] = tracker.label || tracker.name || `Tracker ${id}`
+      }
+    }
+
+    const positions = scopedTrackerIds.map((trackerId) => {
+      const state = states?.[trackerId] ?? states?.[String(trackerId)] ?? {}
+      return {
+        trackerId,
+        label: labelById[trackerId] || state?.label || `Tracker ${trackerId}`,
+        lat: state?.gps?.location?.lat ?? null,
+        lng: state?.gps?.location?.lng ?? null,
+        speed: state?.gps?.speed ?? 0,
+        heading: state?.gps?.heading ?? 0,
+        connection_status: state?.connection_status || 'unknown',
+        movement_status: state?.movement_status || 'unknown',
+        last_update: state?.last_update || null,
+      }
+    }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+
+    positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
+    res.json({ positions, total: positions.length, cached: false })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
 app.get('/api/trackers', async (_req, res) => {
   try {
     const data = await getDashboardData()

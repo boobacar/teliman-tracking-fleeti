@@ -1880,6 +1880,14 @@ textarea:focus-visible,
 .custom-tracker-pin-wrapper {
   background: transparent;
   border: none;
+  transition: transform 2.5s linear;
+}
+
+/* ═══════════════════════════════════════════════
+   Live Map — interpolation fluide des markers
+   ═══════════════════════════════════════════════ */
+.leaflet-marker-icon.custom-tracker-pin-wrapper {
+  transition: transform 2.5s linear !important;
 }
 
 .custom-tracker-pin-shell {
