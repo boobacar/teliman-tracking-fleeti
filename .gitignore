@@ -29,3 +29,4 @@ dist-ssr
 # Données runtime locales (BL, bons carburant, caches, uploads)
 .data/
 data/
+auth-users.json

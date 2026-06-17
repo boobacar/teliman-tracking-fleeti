@@ -365,7 +365,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
           description="Données techniques détaillées du véhicule sélectionné"
           right={<Wrench size={16} style={{ opacity: 0.5 }} />}
         />
-        <div className="filters filter-row" style={{ marginBottom: 14 }}>
+        <div className="filters filter-row ops-filter-row">
           <label className="field-stack">
             <span>Véhicule</span>
             <select
@@ -382,7 +382,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
           </label>
         </div>
         {selectedVehicle ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="field-stack">
               <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Modèle</span>
               <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.model || selectedVehicle.model_name || '-'}</span>
