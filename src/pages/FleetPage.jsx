@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { DriversPage } from './DriversPage'
 import { TrackersPage } from './TrackersPage'
 
@@ -6,14 +7,9 @@ export function FleetPage({ filteredTrackers, setSelectedTrackerId }) {
   const [mode, setMode] = useState('trackers')
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <section className="panel panel-large">
-        <div className="panel-header">
-          <div>
-            <h3>Flotte</h3>
-            <p>Vue unifiée camions + chauffeurs</p>
-          </div>
-        </div>
+    <PageStack className="ops-page-stack">
+      <section className="panel panel-large delivery-hero-panel">
+        <SectionHeader title="Flotte" description="Vue unifiée camions + chauffeurs" />
         <div className="filters filter-row">
           <button type="button" className={`chip ${mode === 'trackers' ? 'selected' : ''}`} onClick={() => setMode('trackers')}>Par camion</button>
           <button type="button" className={`chip ${mode === 'drivers' ? 'selected' : ''}`} onClick={() => setMode('drivers')}>Par chauffeur</button>
@@ -23,6 +19,6 @@ export function FleetPage({ filteredTrackers, setSelectedTrackerId }) {
       {mode === 'trackers'
         ? <TrackersPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />
         : <DriversPage filteredTrackers={filteredTrackers} />}
-    </div>
+    </PageStack>
   )
 }

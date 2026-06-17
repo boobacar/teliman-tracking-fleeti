@@ -14,6 +14,7 @@ import {
   ymdToDate,
 } from '../lib/driverReport'
 import { loadEmployeesDetail } from '../lib/fleeti'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 
 async function loadLogoDataUrl() {
   const response = await fetch('/teliman-logistique-logo.jpg')
@@ -140,9 +141,9 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
   }
 
   return (
-    <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
-      <section className="panel reports-v2-hero" style={{ minHeight: 'unset' }}>
-        <div className="panel-header"><div><h3>Rapport Chauffeurs</h3><p>Vue consolidée des BL, tonnages, clients desservis et position actuelle par chauffeur.</p></div></div>
+    <PageStack className="ops-page-stack">
+      <section className="panel panel-large delivery-hero-panel reports-v2-hero">
+        <SectionHeader title="Rapport Chauffeurs" description="Vue consolidée des BL, tonnages, clients desservis et position actuelle par chauffeur." />
         <section className="stats-grid stats-grid-tight" style={{ marginTop: 18 }}>
           <article className="stat-card"><div className="stat-icon"><UserRound size={18} /></div><div><p>Chauffeurs actifs</p><strong>{totals.drivers}</strong></div></article>
           <article className="stat-card"><div className="stat-icon"><PackageCheck size={18} /></div><div><p>Bons livraison</p><strong>{totals.blCount}</strong></div></article>
@@ -244,8 +245,8 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
       </section>
 
       {selectedSummary && (
-        <section className="panel panel-large">
-          <div className="panel-header"><div><h3>Détail chauffeur</h3><p>{selectedSummary.driver}</p></div></div>
+        <section className="panel panel-large delivery-table-panel">
+          <SectionHeader title="Détail chauffeur" description={selectedSummary.driver} />
           {(() => {
             const driverKey = String(selectedSummary.driver || '').trim().toUpperCase()
             const licenseInfo = licenseByDriver[driverKey]
@@ -303,6 +304,6 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
           </div>
         </section>
       )}
-    </div>
+    </PageStack>
   )
 }

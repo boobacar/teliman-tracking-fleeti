@@ -3,6 +3,7 @@ import { Download, Route, Truck, UserRound } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { StableDatePicker } from '../components/StableDatePicker'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { loadTracksBatch } from '../lib/fleeti'
 
 const MIN_TRIP_DISTANCE_KM = 0
@@ -616,9 +617,9 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   }
 
   return (
-    <div className="reports-excel" style={{ display: 'grid', gap: 20 }}>
-      <section className="panel panel-large reports-v2-hero">
-        <div className="panel-header"><div><h3>Rapport Trajets Fleeti</h3><p>Chaque ligne correspond directement à un segment de trajet renvoyé par Fleeti, sans regroupement.</p></div></div>
+    <PageStack className="ops-page-stack">
+      <section className="panel panel-large delivery-hero-panel reports-v2-hero">
+        <SectionHeader title="Rapport Trajets Fleeti" description="Chaque ligne correspond directement à un segment de trajet renvoyé par Fleeti, sans regroupement." />
       </section>
 
       <section className="panel panel-large" style={{ minHeight: 'unset', paddingBottom: 18 }}>
@@ -663,8 +664,8 @@ export function TripsReportPage({ filteredTrackers = [] }) {
         <article className="stat-card"><div className="stat-icon"><Download size={18} /></div><div><p>Événements</p><strong>{totals.eventCount}</strong></div></article>
       </section>
 
-      <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Synthèse par camion</h3><p>Regroupement des trajets Fleeti par véhicule.</p></div></div>
+      <section className="panel panel-large delivery-table-panel">
+        <SectionHeader title="Synthèse par camion" description="Regroupement des trajets Fleeti par véhicule." />
         <div className="reports-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Camion</th><th>Chauffeur</th><th>Trajets</th><th>Distance</th><th>Durée</th><th>Événements</th></tr></thead>
@@ -707,8 +708,8 @@ export function TripsReportPage({ filteredTrackers = [] }) {
         </div>
       </section>
 
-      <section className="panel panel-large">
-        <div className="panel-header"><div><h3>Détail des trajets</h3><p>Chaque ligne correspond à un segment de trajet Fleeti brut.</p></div></div>
+      <section className="panel panel-large delivery-table-panel">
+        <SectionHeader title="Détail des trajets" description="Chaque ligne correspond à un segment de trajet Fleeti brut." />
         <div className="reports-table-wrap">
           <table className="reports-table">
             <thead><tr><th>Départ</th><th>Arrivée</th><th>Camion</th><th>Chauffeur</th><th>Distance</th><th>Durée</th><th>Vitesse moy.</th><th>Vitesse max</th><th>Événements</th></tr></thead>
@@ -731,6 +732,6 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           </table>
         </div>
       </section>
-    </div>
+    </PageStack>
   )
 }

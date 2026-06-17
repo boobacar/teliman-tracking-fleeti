@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle, Shield, Activity } from 'lucide-react'
+import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { loadRulesDetail } from '../lib/fleeti'
 
 function getPriority(eventType) {
@@ -119,13 +120,9 @@ export function AlertsPage({ importantEvents }) {
   }, [rules])
 
   return (
-    <section className="panel panel-large">
-      <div className="panel-header">
-        <div>
-          <h3>Centre d’alertes</h3>
-          <p>Événements critiques groupés par camion</p>
-        </div>
-      </div>
+    <PageStack className="ops-page-stack">
+      <section className="panel panel-large delivery-hero-panel">
+        <SectionHeader title="Centre d'alertes" description="Événements critiques groupés par camion" />
 
       <div className="filters filter-row">
         {types.map((type) => (
@@ -143,7 +140,7 @@ export function AlertsPage({ importantEvents }) {
         ))}
       </div>
 
-      <div className="filters filter-row" style={{ marginTop: -6 }}>
+      <div className="filters filter-row">
         {truckTabs.map((truck) => (
           <button type="button"
             key={truck.id}
@@ -158,8 +155,8 @@ export function AlertsPage({ importantEvents }) {
 
       <div style={{ display: 'grid', gap: 14 }}>
         {groupedByTruck.slice(0, 20).map((group) => (
-          <div key={group.key} className="panel" style={{ padding: 12, borderRadius: 14 }}>
-            <div className="panel-header" style={{ marginBottom: 10 }}>
+          <div key={group.key} className="panel">
+            <div className="panel-header">
               <div>
                 <h3 style={{ margin: 0 }}>{group.truckLabel}</h3>
                 <p style={{ margin: 0 }}>{group.events.length} alertes</p>
@@ -187,18 +184,14 @@ export function AlertsPage({ importantEvents }) {
           </div>
         ))}
       </div>
+      </section>
 
       {/* Règles d'alertes Fleeti */}
-      <section className="panel panel-large delivery-table-panel" style={{ marginTop: 14 }}>
-        <div className="panel-header">
-          <div>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Shield size={18} style={{ color: '#f59e0b' }} />
-              Règles d'alertes Fleeti
-            </h3>
-            <p>Configuration des règles d'alertes automatiques</p>
-          </div>
-        </div>
+      <section className="panel panel-large delivery-table-panel">
+        <SectionHeader
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Shield size={18} style={{ color: '#f59e0b' }} />Règles d'alertes Fleeti</span>}
+          description="Configuration des règles d'alertes automatiques"
+        />
 
         {/* Mini KPIs */}
         <div className="mission-highlight-grid compact-mission-grid" style={{ marginBottom: 14 }}>
@@ -265,6 +258,6 @@ export function AlertsPage({ importantEvents }) {
           </table>
         </div>
       </section>
-    </section>
+    </PageStack>
   )
 }

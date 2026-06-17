@@ -332,7 +332,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 3)
   const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 3)
 
-  return <PageStack>
+  return <PageStack className="ops-page-stack">
     {pageLoading && <div className="info-banner">Chargement des bons de livraison…</div>}
     {error && <div className="info-banner" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>{error}</div>}
     <section className="panel panel-large delivery-hero-panel">
