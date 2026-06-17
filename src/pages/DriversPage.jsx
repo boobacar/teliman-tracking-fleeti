@@ -305,7 +305,7 @@ export function DriversPage({ filteredTrackers }) {
       <section className="panel panel-large">
         <SectionHeader
           title="Chauffeurs"
-          description={`${allEmployees.length} chauffeurs${isAdmin ? ' — admin : ✏️ modifier, 🗑️ supprimer override, + ajouter' : ''}`}
+          description={`${allEmployees.length} chauffeurs`}
         />
 
         {/* Bouton ajout chauffeur */}
