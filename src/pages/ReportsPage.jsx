@@ -242,12 +242,22 @@ function drawPdfFooter(doc) {
   }
 }
 
+function formatObjectAsInlineSummary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return String(value)
+  const entries = Object.entries(value).slice(0, 6)
+  if (!entries.length) return '{}'
+  return entries.map(([k, v]) => {
+    const val = v === null || v === undefined ? '-' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return `${titleFromKey(k)}: ${val}`
+  }).join(' · ')
+}
+
 function formatCellValue(value) {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('fr-FR') : value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })
   if (typeof value === 'boolean') return value ? 'Oui' : 'Non'
   if (Array.isArray(value)) return value.length ? value.map(formatCellValue).join(', ') : '-'
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object') return formatObjectAsInlineSummary(value)
   return String(value)
 }
 
@@ -291,8 +301,21 @@ function buildOperationalQuery(fromDate, toDate) {
   return params.toString()
 }
 
-function buildGenericColumns(rows = []) {
-  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))).slice(0, 10)
+const HIDDEN_FLEET_KEYS = new Set([
+  'tracker_id', 'trackerId',
+  'tracker_label', 'trackerLabel',
+  'driver_name', 'driverName',
+  'model', 'model_name', 'modelName',
+  'phone', 'phoneNumber', 'phone_number',
+  'status', 'state', 'connection_status',
+  'events', 'alerts',
+])
+
+function buildGenericColumns(rows = [], opts = {}) {
+  const { reportType } = opts
+  const keys = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}))))
+    .filter((key) => reportType === 'ops-fleet' ? !HIDDEN_FLEET_KEYS.has(key) : true)
+    .slice(0, 10)
   return keys.map((key) => ({ key, label: titleFromKey(key), render: (value) => formatCellValue(value) }))
 }
 
@@ -451,7 +474,7 @@ export function ReportsPage() {
 
   const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
   const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])
-  const operationalColumns = useMemo(() => buildGenericColumns(operationalRows), [operationalRows])
+  const operationalColumns = useMemo(() => buildGenericColumns(operationalRows, { reportType: type }), [operationalRows, type])
 
   const selectedClientGroup = useMemo(() => (
     type.startsWith('client:') ? clientGroups.find((group) => `client:${group.clientKey}` === type) || null : null

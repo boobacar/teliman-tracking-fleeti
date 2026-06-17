@@ -5,7 +5,7 @@ import { Camera, Trash2 } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { Pagination } from '../components/Pagination'
-import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
+import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 
 const initialForm = {
   trackerId: '',
@@ -82,6 +82,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [items, setItems] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(false)
+  const [liveFuel, setLiveFuel] = useState(null)
   const [trackerFilter, setTrackerFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -97,6 +98,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
 
   useEffect(() => {
     let cancelled = false
+    let liveCancelled = false
     async function loadData() {
       setLoading(true)
       try {
@@ -107,13 +109,20 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
         if (!cancelled) {
           setItems(payload.items ?? [])
           setSuppliers(masterData?.suppliers || [])
+          setLoading(false)
+          // Charger le live fuel en arrière-plan sans bloquer le rendu
+          loadLiveFuelLevels()
+            .then((data) => {
+              if (!cancelled && !liveCancelled) setLiveFuel(data)
+            })
+            .catch(() => { /* silencieux : le live fuel est optionnel */ })
         }
-      } finally {
+      } catch {
         if (!cancelled) setLoading(false)
       }
     }
     loadData()
-    return () => { cancelled = true }
+    return () => { cancelled = true; liveCancelled = true }
   }, [])
 
   useEffect(() => { setPage(1) }, [trackerFilter, dateFilter, searchQuery])
@@ -183,6 +192,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <div className="mission-highlight-card"><span>Total bons</span><strong>{items.length}</strong><small>bons carburant enregistrés</small></div>
           <div className="mission-highlight-card"><span>Total litres</span><strong>{items.reduce((acc, item) => acc + (Number(item.quantityLiters) || 0), 0).toLocaleString('fr-FR')}</strong><small>volume cumulé</small></div>
           <div className="mission-highlight-card"><span>Montant total</span><strong>{items.reduce((acc, item) => acc + (Number(item.amount) || 0), 0).toLocaleString('fr-FR')} FCFA</strong><small>historique</small></div>
+          {liveFuel && (
+            <div className="mission-highlight-card"><span>Niveaux live</span><strong>{Array.isArray(liveFuel) ? liveFuel.length : (liveFuel?.items?.length || '—')}</strong><small>véhicules suivis en direct</small></div>
+          )}
         </div>
       </section>
 
