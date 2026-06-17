@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { loadLivePositions, loadTracksBatch } from '../lib/fleeti'
@@ -151,9 +151,15 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     return true
   }), [trackersWithLivePos, mapFilter])
 
+  // Nettoie selectedTrackIds seulement si des IDs ont disparu de allVisibleTrackers
+  const visibleIdSet = useMemo(() => new Set(allVisibleTrackers.map((t) => String(t.id))), [allVisibleTrackers])
   useEffect(() => {
-    setSelectedTrackIds((prev) => prev.filter((id) => allVisibleTrackers.some((tracker) => String(tracker.id) === id)))
-  }, [allVisibleTrackers])
+    setSelectedTrackIds((prev) => {
+      if (prev.length === 0) return prev
+      const filtered = prev.filter((id) => visibleIdSet.has(id))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [visibleIdSet])
 
   const selectedTrackers = useMemo(
     () => allVisibleTrackers.filter((tracker) => selectedTrackIds.includes(String(tracker.id))),
