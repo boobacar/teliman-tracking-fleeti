@@ -230,6 +230,27 @@ export const loadLiveOdometer = () => getJson('/api/live-odometer')
 export const loadLivePositions = () => getJson('/api/positions-live')
 export const loadDriverAssignments = () => getJson('/api/driver-assignments')
 export const saveDriverAssignments = (assignments) => putJson('/api/driver-assignments', { assignments })
+export const loadDriverOverrides = () => getJson('/api/driver-overrides')
+export const saveDriverOverrides = (overrides) => putJson('/api/driver-overrides', { overrides })
+export const patchDriverOverride = async (id, data) => {
+  const response = await fetch(`${BACKEND_URL}/api/driver-overrides/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify(data),
+  })
+  const payload = await response.json()
+  if (!response.ok) throw new Error(payload?.error || 'Erreur')
+  return payload
+}
+export const deleteDriverOverride = async (id) => {
+  const response = await fetch(`${BACKEND_URL}/api/driver-overrides/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...getSessionHeaders() },
+  })
+  const payload = await response.json()
+  if (!response.ok) throw new Error(payload?.error || 'Erreur')
+  return payload
+}
 export const loadOilChanges = () => getJson('/api/oil-changes')
 export const createOilChange = (payload) => postJson('/api/oil-changes', payload)
 export const updateOilChange = async (id, payload) => {

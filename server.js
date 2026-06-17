@@ -55,6 +55,7 @@ const WHATSAPP_HISTORY_FILE = path.join(DATA_DIR, 'whatsapp-history.json')
 const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
 const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 const DRIVER_ASSIGNMENTS_FILE = path.join(DATA_DIR, 'driver-assignments.json')
+const DRIVER_OVERRIDES_FILE = path.join(DATA_DIR, 'driver-overrides.json')
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
@@ -1707,6 +1708,7 @@ async function buildDashboardDataFromPublicApi(todayKey, yesterdayKey) {
     mileage: scopedMileage,
     dateKeys: { todayKey, yesterdayKey },
     driverAssignments: loadDriverAssignments(),
+    driverOverrides: loadDriverOverrides(),
   }
 }
 
@@ -2367,6 +2369,27 @@ async function getDashboardData(forceRefresh = false, dateRange = null) {
     mileage: extractObjectPayload(mileage, ['result', 'mileage', 'data']),
     dateKeys: { todayKey, yesterdayKey },
     driverAssignments: loadDriverAssignments(),
+    driverOverrides: loadDriverOverrides(),
+  }
+
+  // Injecter les chauffeurs customs dans la liste employees
+  const overrides = loadDriverOverrides()
+  const customDrivers = []
+  for (const [id, data] of Object.entries(overrides)) {
+    if (data.isCustom) {
+      customDrivers.push({
+        id,
+        first_name: data.firstName || '',
+        last_name: data.lastName || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        tracker_id: data.trackerId || null,
+        _custom: true,
+      })
+    }
+  }
+  if (customDrivers.length) {
+    payload.employees = [...(payload.employees || []), ...customDrivers]
   }
 
   dashboardCache = { data: payload, ts: Date.now() }
@@ -3765,19 +3788,135 @@ app.get('/api/employees-detail', async (_req, res) => {
   }
 })
 
-// ── Driver Assignments (overrides locaux des assignations chauffeur/camion) ──
-function loadDriverAssignments() {
+// ── Driver Overrides (overrides locaux: noms, assignations, ajouts chauffeurs) ──
+function loadDriverOverrides() {
   try {
+    if (fs.existsSync(DRIVER_OVERRIDES_FILE)) {
+      return JSON.parse(fs.readFileSync(DRIVER_OVERRIDES_FILE, 'utf-8'))
+    }
+    // Rétrocompatibilité : migrer l'ancien driver-assignments.json
     if (fs.existsSync(DRIVER_ASSIGNMENTS_FILE)) {
-      return JSON.parse(fs.readFileSync(DRIVER_ASSIGNMENTS_FILE, 'utf-8'))
+      const old = JSON.parse(fs.readFileSync(DRIVER_ASSIGNMENTS_FILE, 'utf-8'))
+      const migrated = {}
+      for (const [employeeId, trackerId] of Object.entries(old)) {
+        if (typeof trackerId === 'string' || typeof trackerId === 'number') {
+          migrated[employeeId] = { trackerId: String(trackerId) }
+        } else if (typeof trackerId === 'object') {
+          migrated[employeeId] = trackerId
+        }
+      }
+      writeJSON(DRIVER_OVERRIDES_FILE, migrated)
+      console.log('[driver-overrides] Migré depuis driver-assignments.json →', Object.keys(migrated).length, 'entrées')
+      return migrated
     }
   } catch (err) {
-    console.error('[driver-assignments] Erreur lecture:', err.message)
+    console.error('[driver-overrides] Erreur lecture:', err.message)
   }
   return {}
 }
 
-// GET /api/driver-assignments
+function loadDriverAssignments() {
+  const overrides = loadDriverOverrides()
+  const assignments = {}
+  for (const [id, data] of Object.entries(overrides)) {
+    if (data?.trackerId) assignments[id] = data.trackerId
+  }
+  return assignments
+}
+
+// GET /api/driver-overrides
+app.get('/api/driver-overrides', (_req, res) => {
+  try {
+    const overrides = loadDriverOverrides()
+    res.json({ overrides, count: Object.keys(overrides).length })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// PUT /api/driver-overrides — remplace tout (admin)
+app.put('/api/driver-overrides', (req, res) => {
+  try {
+    const user = getSessionUser(req)
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
+    }
+    const { overrides } = req.body || {}
+    if (!overrides || typeof overrides !== 'object') {
+      return res.status(400).json({ ok: false, error: 'Format invalide. Envoyez { overrides: { id: { trackerId, firstName, lastName, ... } } }' })
+    }
+    const sanitized = {}
+    for (const [key, data] of Object.entries(overrides)) {
+      if (!data || typeof data !== 'object') continue
+      const entry = {}
+      if (data.trackerId != null) entry.trackerId = String(data.trackerId).trim()
+      if (data.firstName != null) entry.firstName = String(data.firstName).trim()
+      if (data.lastName != null) entry.lastName = String(data.lastName).trim()
+      if (data.phone != null) entry.phone = String(data.phone).trim()
+      if (data.email != null) entry.email = String(data.email).trim()
+      if (data.isCustom != null) entry.isCustom = Boolean(data.isCustom)
+      if (Object.keys(entry).length) sanitized[String(key).trim()] = entry
+    }
+    writeJSON(DRIVER_OVERRIDES_FILE, sanitized)
+    res.json({ ok: true, overrides: sanitized, count: Object.keys(sanitized).length })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// PATCH /api/driver-overrides/:id — modifie/ajoute un seul chauffeur (admin)
+app.patch('/api/driver-overrides/:id', (req, res) => {
+  try {
+    const user = getSessionUser(req)
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
+    }
+    const id = String(req.params.id || '').trim()
+    if (!id) return res.status(400).json({ ok: false, error: 'ID requis.' })
+    const overrides = loadDriverOverrides()
+    const current = overrides[id] || {}
+    const data = req.body || {}
+    if (data.trackerId !== undefined) current.trackerId = String(data.trackerId).trim()
+    if (data.firstName !== undefined) current.firstName = String(data.firstName).trim()
+    if (data.lastName !== undefined) current.lastName = String(data.lastName).trim()
+    if (data.phone !== undefined) current.phone = String(data.phone).trim()
+    if (data.email !== undefined) current.email = String(data.email).trim()
+    if (data.isCustom !== undefined) current.isCustom = Boolean(data.isCustom)
+    // Nettoyer les champs vides
+    for (const [k, v] of Object.entries(current)) {
+      if (v === '' || v === undefined) delete current[k]
+    }
+    if (Object.keys(current).length === 0) {
+      delete overrides[id]
+    } else {
+      overrides[id] = current
+    }
+    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    res.json({ ok: true, id, override: current })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// DELETE /api/driver-overrides/:id — supprime un override (admin)
+app.delete('/api/driver-overrides/:id', (req, res) => {
+  try {
+    const user = getSessionUser(req)
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
+    }
+    const id = String(req.params.id || '').trim()
+    if (!id) return res.status(400).json({ ok: false, error: 'ID requis.' })
+    const overrides = loadDriverOverrides()
+    delete overrides[id]
+    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    res.json({ ok: true, deleted: id })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// GET /api/driver-assignments — rétrocompatibilité
 app.get('/api/driver-assignments', (_req, res) => {
   try {
     const assignments = loadDriverAssignments()
@@ -3787,7 +3926,7 @@ app.get('/api/driver-assignments', (_req, res) => {
   }
 })
 
-// PUT /api/driver-assignments — admin only
+// PUT /api/driver-assignments — rétrocompatibilité (admin)
 app.put('/api/driver-assignments', (req, res) => {
   try {
     const user = getSessionUser(req)
@@ -3796,16 +3935,24 @@ app.put('/api/driver-assignments', (req, res) => {
     }
     const { assignments } = req.body || {}
     if (!assignments || typeof assignments !== 'object') {
-      return res.status(400).json({ ok: false, error: 'Format invalide. Envoyez { assignments: { employeeId: trackerId, ... } }' })
+      return res.status(400).json({ ok: false, error: 'Format invalide.' })
     }
-    const sanitized = {}
+    const overrides = loadDriverOverrides()
     for (const [employeeId, trackerId] of Object.entries(assignments)) {
-      const cleanEmp = String(employeeId).trim()
-      const cleanTrk = String(trackerId).trim()
-      if (cleanEmp && cleanTrk) sanitized[cleanEmp] = cleanTrk
+      const key = String(employeeId).trim()
+      if (!key) continue
+      if (trackerId === null || trackerId === '') {
+        if (overrides[key]) {
+          delete overrides[key].trackerId
+          if (Object.keys(overrides[key]).length === 0) delete overrides[key]
+        }
+      } else {
+        if (!overrides[key]) overrides[key] = {}
+        overrides[key].trackerId = String(trackerId).trim()
+      }
     }
-    writeJSON(DRIVER_ASSIGNMENTS_FILE, sanitized)
-    res.json({ ok: true, assignments: sanitized, count: Object.keys(sanitized).length })
+    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    res.json({ ok: true, assignments: loadDriverAssignments(), count: Object.keys(loadDriverAssignments()).length })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }

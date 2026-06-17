@@ -199,18 +199,37 @@ function App() {
       if (labelKey && !fallbackDriverByLabel[labelKey]) fallbackDriverByLabel[labelKey] = driver
     }
 
-    // Overrides locaux (driver-assignments.json) — priorité maximale
-    const driverAssignments = dataset?.driverAssignments || {}
+    // Overrides locaux (driver-overrides.json) — priorité maximale
+    const driverOverrides = dataset?.driverOverrides || {}
     const overrideDriverByTrackerId = {}
-    for (const [employeeId, trackerId] of Object.entries(driverAssignments)) {
-      const employee = (dataset?.employees || []).find(
-        (e) => String(e.id || e.employee_id || e.tracker_id) === String(employeeId)
-      )
-      if (employee) {
-        const first = String(employee.first_name || employee.firstname || employee.firstName || '').trim()
-        const last = String(employee.last_name || employee.lastname || employee.lastName || '').trim()
+    const overrideNameByEmployeeId = {}
+    for (const [employeeId, data] of Object.entries(driverOverrides)) {
+      if (data?.trackerId) {
+        // Chercher le nom (depuis l'override ou depuis l'API employees)
+        const first = data.firstName || ''
+        const last = data.lastName || ''
+        const overrideName = [first, last].filter(Boolean).join(' ').trim()
+        if (overrideName) {
+          overrideDriverByTrackerId[Number(data.trackerId)] = overrideName
+        } else {
+          // Fallback: chercher dans l'API employees
+          const employee = (dataset?.employees || []).find(
+            (e) => String(e.id || e.employee_id || e.tracker_id) === String(employeeId)
+          )
+          if (employee) {
+            const empFirst = String(employee.first_name || employee.firstname || employee.firstName || '').trim()
+            const empLast = String(employee.last_name || employee.lastname || employee.lastName || '').trim()
+            const empName = [empFirst, empLast].filter(Boolean).join(' ').trim()
+            if (empName) overrideDriverByTrackerId[Number(data.trackerId)] = empName
+          }
+        }
+      }
+      // Override de nom pour l'employé lui-même
+      if (data.firstName || data.lastName) {
+        const first = data.firstName || ''
+        const last = data.lastName || ''
         const name = [first, last].filter(Boolean).join(' ').trim()
-        if (name) overrideDriverByTrackerId[Number(trackerId)] = name
+        if (name) overrideNameByEmployeeId[employeeId] = { first, last, full: name }
       }
     }
 
@@ -220,10 +239,11 @@ function App() {
       const state = dataset?.states?.[tracker.id] ?? {}
       const mileage = dataset?.mileage?.[tracker.id] ?? {}
       const employee = employees[tracker.id]
+      const overrideName = overrideNameByEmployeeId[String(employee?.id || employee?.employee_id || employee?.tracker_id || '')]
       const events = (dataset?.history ?? []).filter((event) => event.tracker_id === tracker.id)
       const eventCounts = events.reduce((acc, event) => ({ ...acc, [event.event]: (acc[event.event] || 0) + 1 }), {})
-      const firstName = String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
-      const lastName = String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
+      const firstName = overrideName?.first || String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
+      const lastName = overrideName?.last || String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
       const employeeNameFromApi = [firstName, lastName].filter(Boolean).join(' ').trim()
       const employeeName = overrideDriverByTrackerId[Number(tracker.id)]
         || employeeNameFromApi
