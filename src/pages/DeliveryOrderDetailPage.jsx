@@ -53,6 +53,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       setForm({
         reference: order.reference || '',
         client: order.client || '',
+        driver: order.driver || '',
         loadingPoint: order.loadingPoint || '',
         destination: order.destination || '',
         goods: order.goods || '',
@@ -108,6 +109,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       await updateDeliveryOrder(order.id, {
         reference: form.reference,
         client: form.client,
+        driver: form.driver,
         loadingPoint: form.loadingPoint,
         destination: form.destination,
         goods: form.goods,
@@ -219,6 +221,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           <label className="field-stack">
             <span>Client</span>
             <input value={form?.client || ''} onChange={(e) => setForm((current) => ({ ...current, client: e.target.value }))} disabled={saving} placeholder="Client" />
+          </label>
+          <label className="field-stack">
+            <span>Chauffeur</span>
+            <input value={form?.driver || order.driver || ''} onChange={(e) => setForm((current) => ({ ...current, driver: e.target.value }))} disabled={saving} placeholder="Nom du chauffeur" />
           </label>
           <label className="field-stack">
             <span>Point de chargement</span>

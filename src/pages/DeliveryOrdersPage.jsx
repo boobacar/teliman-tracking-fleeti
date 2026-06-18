@@ -366,6 +366,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
             </select>
           </label>
           <label className="field-stack">
+            <span>Chauffeur</span>
+            <input
+              aria-label="Chauffeur"
+              placeholder="Nom du chauffeur"
+              value={form.driver}
+              onChange={(e) => setForm({ ...form, driver: e.target.value })}
+            />
+          </label>
+          <label className="field-stack">
             <span>Référence BL</span>
             <input
               aria-label="Référence BL"
@@ -541,7 +550,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                 <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => navigate(`/delivery-order/${item.id}`)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/delivery-order/${item.id}`) }}>
                   <td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td>
                   <td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td>
-                  <td>{item.driver}</td>
+                  <td>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || '-'}</td>
                   <td>{item.client}</td>
                   <td>{item.destination}</td>
                   <td>{item.goods}</td>
