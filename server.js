@@ -821,6 +821,8 @@ function sanitizeOptionalDateField(value, fallback = null, { defaultNow = false 
 function validateDeliveryReference(value, current = null) {
   const ref = String(value ?? '').trim()
   if (!ref) {
+    // En mode modification (current existe), garder la référence existante
+    if (current) return current.reference || ''
     throw new Error('La référence BL est obligatoire')
   }
   // Reject references that look like image filenames
