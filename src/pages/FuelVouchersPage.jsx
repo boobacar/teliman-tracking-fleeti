@@ -90,6 +90,8 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [page, setPage] = useState(1)
   const PER_PAGE = 10
 
+  const [error, setError] = useState('')
+
   const amount = useMemo(() => Number((toNumber(form.quantityLiters) * toNumber(form.unitPrice)).toFixed(2)), [form.quantityLiters, form.unitPrice])
 
   const reload = async () => {
@@ -152,6 +154,15 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
 
   const submit = async (e) => {
     e.preventDefault()
+    setError('')
+    // Validation locale
+    if (!form.voucherNumber.trim()) return setError('Le numéro de bon est requis.')
+    if (!form.trackerId) return setError('Veuillez sélectionner un camion.')
+    if (!form.dateTime) return setError('Veuillez choisir une date.')
+    if (!form.supplier) return setError('Veuillez sélectionner un fournisseur.')
+    if (toNumber(form.quantityLiters) <= 0) return setError('La quantité doit être supérieure à 0.')
+    if (toNumber(form.unitPrice) <= 0) return setError('Le prix unitaire doit être supérieur à 0.')
+
     setSaving(true)
     try {
       await createFuelVoucher({
@@ -161,6 +172,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       })
       await reload()
       setForm(initialForm)
+      setError('')
+    } catch (err) {
+      setError(err?.message || 'Erreur lors de l\'enregistrement.')
     } finally {
       setSaving(false)
     }
@@ -234,6 +248,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
           <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
           <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
           <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
+          {error && <div className="error-banner" style={{ marginBottom: 8 }}>{error}</div>}
           <button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
         </form>
       </section>
