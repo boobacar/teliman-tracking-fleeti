@@ -15,6 +15,14 @@ import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { dedupeDeliveryOrders, normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
+import {
+  initDatabase,
+  readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrder, updateDeliveryOrder, deleteDeliveryOrder, setDeliveryOrderActiveOnTracker,
+  readFuelVouchers, insertFuelVoucher, updateFuelVoucher, deleteFuelVoucher,
+  readAuthUsers, upsertAuthUser, deleteAuthUser,
+  readMasterData, readMasterDataKey, writeMasterDataKey,
+  readDriverOverrides, upsertDriverOverride, deleteDriverOverride,
+} from './src/backend/database.js'
 
 dotenv.config()
 
@@ -23,7 +31,12 @@ const __dirname = path.dirname(__filename)
 const DATA_DIR = process.env.TELIMAN_DATA_DIR || __dirname
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
-// ── Écriture atomique (retourne une promesse pour pouvoir await si besoin) ──
+// Initialiser la base de donnees SQLite
+const DB_PATH = path.join(DATA_DIR, 'teliman.db')
+initDatabase(DB_PATH)
+console.log('[db] SQLite initialisee:', DB_PATH)
+
+// ── Écriture atomique pour les fichiers non-critiques (whatsapp, telemetry cache) ──
 function writeJSON(filePath, data) {
   const tmp = filePath + '.tmp.' + Date.now()
   return fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
@@ -43,9 +56,7 @@ function writeBuffer(filePath, buffer) {
       fs.promises.unlink(tmp).catch(() => {})
     })
 }
-const DELIVERY_ORDERS_FILE = path.join(DATA_DIR, 'delivery-orders.json')
-const FUEL_VOUCHERS_FILE = path.join(DATA_DIR, 'fuel-vouchers.json')
-const MASTER_DATA_FILE = path.join(DATA_DIR, 'master-data.json')
+// ── Fichiers non-critiques (whatsapp, telemetry) ──
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
 const FUEL_PROOFS_DIR = path.join(UPLOADS_BASE_DIR, 'fuel-proofs')
@@ -327,21 +338,24 @@ function parseAuthUsers(raw) {
 
 function loadAuthUsers() {
   try {
-    const payload = JSON.parse(fs.readFileSync(AUTH_USERS_FILE, 'utf8'))
-    const parsed = parseAuthUsers(JSON.stringify(payload))
-    return parsed.length ? parsed : parseAuthUsers('')
+    const fromDb = readAuthUsers()
+    if (fromDb.length) return fromDb
+    return parseAuthUsers('')
   } catch {
     const fallback = parseAuthUsers('')
-    try { fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(fallback, null, 2)) } catch {}
     return fallback
   }
 }
 
 function saveAuthUsers(users) {
   const normalized = parseAuthUsers(JSON.stringify(users))
-  writeJSON(AUTH_USERS_FILE, normalized)
+  // Mettre a jour le tableau en memoire
   AUTH_USERS.length = 0
   AUTH_USERS.push(...normalized)
+  // Persister dans SQLite
+  for (const user of normalized) {
+    upsertAuthUser(user.email, user)
+  }
 }
 
 function hashPassword(password, salt) {
@@ -461,50 +475,20 @@ function getAlertSeverity(eventType) {
   return 'Info'
 }
 
-function readDeliveryOrders() {
-  try {
-    const stat = fs.statSync(DELIVERY_ORDERS_FILE)
-    if (deliveryOrdersCache.data && deliveryOrdersCache.mtime === stat.mtimeMs) {
-      return deliveryOrdersCache.data
-    }
-    const parsed = JSON.parse(fs.readFileSync(DELIVERY_ORDERS_FILE, 'utf8'))
-    const rows = dedupeDeliveryOrders(parsed).rows
-    deliveryOrdersCache = { data: rows, mtime: stat.mtimeMs }
-    return rows
-  } catch {
-    return []
+// Les fonctions readDeliveryOrders, writeDeliveryOrders, readFuelVouchers, writeFuelVouchers,
+// readMasterData, writeMasterData sont maintenant importees de src/backend/database.js (SQLite)
+
+// Compatibilité: readMasterDataWrapper normalise avec buildMasterDataPayload
+function readMasterDataWrapper() {
+  return buildMasterDataPayload(readMasterData())
+}
+
+// Compatibilité: writeMasterData via SQLite
+function writeMasterData(data) {
+  const obj = buildMasterDataPayload(data)
+  for (const [key, value] of Object.entries(obj)) {
+    writeMasterDataKey(key, value)
   }
-}
-
-function writeDeliveryOrders(rows) {
-  const { rows: normalizedRows } = dedupeDeliveryOrders(rows)
-  deliveryOrdersCache = { data: null, mtime: 0 }
-  return writeJSON(DELIVERY_ORDERS_FILE, normalizedRows)
-}
-
-// Cache mémoire pour éviter de parser 60+ MB de JSON à chaque requête
-let fuelVouchersCache = { data: null, mtime: 0 }
-let deliveryOrdersCache = { data: null, mtime: 0 }
-let masterDataCache = { data: null, mtime: 0 }
-
-function readFuelVouchers() {
-  try {
-    const stat = fs.statSync(FUEL_VOUCHERS_FILE)
-    if (fuelVouchersCache.data && fuelVouchersCache.mtime === stat.mtimeMs) {
-      return fuelVouchersCache.data
-    }
-    const data = JSON.parse(fs.readFileSync(FUEL_VOUCHERS_FILE, 'utf8'))
-    fuelVouchersCache = { data, mtime: stat.mtimeMs }
-    return data
-  } catch {
-    return []
-  }
-}
-
-function writeFuelVouchers(rows) {
-  writeJSON(FUEL_VOUCHERS_FILE, rows)
-  // Invalider le cache pour que la prochaine lecture recharge le fichier
-  fuelVouchersCache = { data: null, mtime: 0 }
 }
 
 function readOilChanges() {
@@ -544,26 +528,6 @@ function sanitizeOilChangePayload(body = {}, current = null) {
   }
 
   return { id, trackerId, truckLabel, date, odometerKm, oilType, oilQuantityL, filterChanged, nextChangeKm, nextChangeDate, notes, receiptExpiryDate, createdAt, updatedAt }
-}
-
-function readMasterData() {
-  try {
-    const stat = fs.statSync(MASTER_DATA_FILE)
-    if (masterDataCache.data && masterDataCache.mtime === stat.mtimeMs) {
-      return masterDataCache.data
-    }
-    const data = buildMasterDataPayload(JSON.parse(fs.readFileSync(MASTER_DATA_FILE, 'utf8')))
-    masterDataCache = { data, mtime: stat.mtimeMs }
-    return data
-  } catch {
-    return emptyMasterDataPayload()
-  }
-}
-
-function writeMasterData(data) {
-  const normalized = buildMasterDataPayload(data)
-  writeJSON(MASTER_DATA_FILE, normalized)
-  masterDataCache = { data: null, mtime: 0 }
 }
 
 function readWhatsAppTemplates() {
@@ -613,7 +577,7 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   const results = await sendDeliveryOrderWhatsAppNotifications({
     previousOrder,
     order,
-    masterData: readMasterData(),
+    masterData: readMasterDataWrapper(),
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
     templates: readWhatsAppTemplates(),
@@ -638,7 +602,7 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
 async function notifyFleetAlertWhatsApp(event) {
   const results = await sendFleetAlertWhatsAppNotifications({
     event,
-    masterData: readMasterData(),
+    masterData: readMasterDataWrapper(),
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
   })
@@ -2860,14 +2824,14 @@ app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, r
 })
 
 app.get('/api/master-data', (_req, res) => {
-  res.json(readMasterData())
+  res.json(readMasterDataWrapper())
 })
 
 app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
   const listName = String(req.params.listName || '')
   if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'alertWhatsAppRecipients', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
-  const data = readMasterData()
+  const data = readMasterDataWrapper()
 
   if (listName === 'purchaseOrders') {
     const client = String(req.body?.client || '').trim()
@@ -2885,7 +2849,7 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     const currentPhones = Array.isArray(data.clientPhones?.[client]) ? data.clientPhones[client] : (data.clientPhones?.[client] ? [data.clientPhones[client]] : [])
     data.clientPhones = { ...(data.clientPhones || {}), [client]: Array.from(new Set([...currentPhones, phone])).sort((a, b) => a.localeCompare(b)) }
     writeMasterData(data)
-    return res.status(201).json({ ok: true, data: readMasterData() })
+    return res.status(201).json({ ok: true, data: readMasterDataWrapper() })
   }
 
   if (listName === 'alertWhatsAppRecipients') {
@@ -2896,7 +2860,7 @@ app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, r
     const currentPhones = Array.isArray(data.alertWhatsAppRecipients?.[eventType]) ? data.alertWhatsAppRecipients[eventType] : (data.alertWhatsAppRecipients?.[eventType] ? [data.alertWhatsAppRecipients[eventType]] : [])
     data.alertWhatsAppRecipients = { ...(data.alertWhatsAppRecipients || {}), [eventType]: Array.from(new Set([...currentPhones, phone])).sort((a, b) => a.localeCompare(b)) }
     writeMasterData(data)
-    return res.status(201).json({ ok: true, data: readMasterData() })
+    return res.status(201).json({ ok: true, data: readMasterDataWrapper() })
   }
 
   if (listName === 'manualTrackers') {
@@ -2924,7 +2888,7 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
   const listName = String(req.params.listName || '')
   if (!['clients', 'goods', 'destinations', 'suppliers', 'purchaseOrders', 'clientPhones', 'alertWhatsAppRecipients', 'manualTrackers'].includes(listName)) return res.status(400).json({ ok: false, error: 'Liste invalide' })
 
-  const data = readMasterData()
+  const data = readMasterDataWrapper()
 
   if (listName === 'purchaseOrders') {
     const client = String(req.query.client || req.query.value || '').trim()
@@ -2950,7 +2914,7 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
     }
     data.clientPhones = next
     writeMasterData(data)
-    return res.json({ ok: true, data: readMasterData() })
+    return res.json({ ok: true, data: readMasterDataWrapper() })
   }
 
   if (listName === 'alertWhatsAppRecipients') {
@@ -2967,7 +2931,7 @@ app.delete('/api/master-data/:listName', requirePermission('manage_data'), (req,
     }
     data.alertWhatsAppRecipients = next
     writeMasterData(data)
-    return res.json({ ok: true, data: readMasterData() })
+    return res.json({ ok: true, data: readMasterDataWrapper() })
   }
 
   if (listName === 'manualTrackers') {
@@ -3031,12 +2995,10 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
 app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const validated = validateBody(deliveryOrderSchema, req.body)
-    const items = readDeliveryOrders()
-    const preparedBody = preprocessDeliveryProofPhotos(validated)
-    const payload = sanitizeDeliveryOrderPayload(preparedBody)
-    const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
-    normalized.unshift(payload)
-    await writeDeliveryOrders(normalized)
+    const payload = sanitizeDeliveryOrderPayload(preprocessDeliveryProofPhotos(validated))
+    // Désactiver les autres bons actifs sur le même camion
+    if (payload.active) setDeliveryOrderActiveOnTracker(payload.trackerId)
+    insertDeliveryOrder(payload)
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(null, payload)
     res.status(201).json({ ok: true, item: payload, whatsappNotifications })
   } catch (error) {
@@ -3049,24 +3011,17 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
 
-    const validated = validateBody(deliveryOrderUpdateSchema, req.body)
-    const items = readDeliveryOrders()
-    const current = items.find((item) => Number(item.id) === id)
+    const current = readDeliveryOrderById(id)
     if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
 
+    const validated = validateBody(deliveryOrderUpdateSchema, req.body)
     const preparedBody = preprocessDeliveryProofPhotos(validated, current)
     const updatedItem = sanitizeDeliveryOrderPayload(preparedBody, current)
-    const updatedItems = items.map((item) => {
-      if (Number(item.id) !== id) {
-        if (updatedItem.active && Number(item.trackerId) === Number(current.trackerId)) {
-          return { ...item, active: false }
-        }
-        return item
-      }
-      return updatedItem
-    })
 
-    await writeDeliveryOrders(updatedItems)
+    // Désactiver les autres bons actifs sur le même camion si celui-ci devient actif
+    if (updatedItem.active) setDeliveryOrderActiveOnTracker(current.trackerId, id)
+
+    updateDeliveryOrder(id, updatedItem)
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(current, updatedItem)
     res.json({ ok: true, item: updatedItem, whatsappNotifications })
   } catch (error) {
@@ -3077,9 +3032,7 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
 app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
-  const items = readDeliveryOrders()
-  const filtered = items.filter((item) => Number(item.id) !== id)
-  writeDeliveryOrders(filtered)
+  deleteDeliveryOrder(id)
   res.json({ ok: true })
 })
 
@@ -3137,10 +3090,8 @@ app.get('/api/cameras', async (_req, res) => {
 app.post('/api/fuel-vouchers', requirePermission('manage_fuel_vouchers'), (req, res) => {
   try {
     const validated = validateBody(fuelVoucherSchema, req.body)
-    const items = readFuelVouchers()
     const payload = sanitizeFuelVoucherPayload(validated)
-    items.unshift(payload)
-    writeFuelVouchers(items)
+    insertFuelVoucher(payload)
     res.status(201).json({ ok: true, item: payload })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
@@ -3158,8 +3109,7 @@ app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (
     if (!current) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
 
     const updated = sanitizeFuelVoucherPayload(validated, current)
-    const next = items.map((item) => Number(item.id) === id ? updated : item)
-    writeFuelVouchers(next)
+    updateFuelVoucher(id, updated)
     res.json({ ok: true, item: updated })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
@@ -3169,9 +3119,7 @@ app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (
 app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
-  const items = readFuelVouchers()
-  const filtered = items.filter((item) => Number(item.id) !== id)
-  writeFuelVouchers(filtered)
+  deleteFuelVoucher(id)
   res.json({ ok: true })
 })
 
@@ -3789,32 +3737,37 @@ app.get('/api/employees-detail', async (_req, res) => {
     res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/employees-detail' })
   }
 })
+// ── Driver Overrides (via SQLite) ──
 
-// ── Driver Overrides (overrides locaux: noms, assignations, ajouts chauffeurs) ──
 function loadDriverOverrides() {
   try {
-    if (fs.existsSync(DRIVER_OVERRIDES_FILE)) {
-      return JSON.parse(fs.readFileSync(DRIVER_OVERRIDES_FILE, 'utf-8'))
-    }
-    // Rétrocompatibilité : migrer l'ancien driver-assignments.json
-    if (fs.existsSync(DRIVER_ASSIGNMENTS_FILE)) {
-      const old = JSON.parse(fs.readFileSync(DRIVER_ASSIGNMENTS_FILE, 'utf-8'))
-      const migrated = {}
-      for (const [employeeId, trackerId] of Object.entries(old)) {
-        if (typeof trackerId === 'string' || typeof trackerId === 'number') {
-          migrated[employeeId] = { trackerId: String(trackerId) }
-        } else if (typeof trackerId === 'object') {
-          migrated[employeeId] = trackerId
-        }
+    const rows = readDriverOverrides()
+    const result = {}
+    for (const row of rows) {
+      if (row.trackerId) {
+        const data = { ...row }
+        delete data.trackerId // le trackerId est la clé
+        result[row.trackerId] = data
       }
-      writeJSON(DRIVER_OVERRIDES_FILE, migrated)
-      console.log('[driver-overrides] Migré depuis driver-assignments.json →', Object.keys(migrated).length, 'entrées')
-      return migrated
     }
+    return result
   } catch (err) {
     console.error('[driver-overrides] Erreur lecture:', err.message)
+    return {}
   }
-  return {}
+}
+
+function saveDriverOverrides(overrides) {
+  // Supprimer tous les overrides existants, puis réinsérer
+  const existing = readDriverOverrides()
+  for (const row of existing) {
+    deleteDriverOverride(row.trackerId)
+  }
+  for (const [trackerId, data] of Object.entries(overrides)) {
+    if (data && typeof data === 'object' && Object.keys(data).length) {
+      upsertDriverOverride(trackerId, data)
+    }
+  }
 }
 
 function loadDriverAssignments() {
@@ -3859,7 +3812,7 @@ app.put('/api/driver-overrides', (req, res) => {
       if (data.isCustom != null) entry.isCustom = Boolean(data.isCustom)
       if (Object.keys(entry).length) sanitized[String(key).trim()] = entry
     }
-    writeJSON(DRIVER_OVERRIDES_FILE, sanitized)
+    saveDriverOverrides(sanitized)
     res.json({ ok: true, overrides: sanitized, count: Object.keys(sanitized).length })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3893,7 +3846,7 @@ app.patch('/api/driver-overrides/:id', (req, res) => {
     } else {
       overrides[id] = current
     }
-    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    saveDriverOverrides(overrides)
     res.json({ ok: true, id, override: current })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3911,7 +3864,7 @@ app.delete('/api/driver-overrides/:id', (req, res) => {
     if (!id) return res.status(400).json({ ok: false, error: 'ID requis.' })
     const overrides = loadDriverOverrides()
     delete overrides[id]
-    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    saveDriverOverrides(overrides)
     res.json({ ok: true, deleted: id })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
@@ -3953,7 +3906,7 @@ app.put('/api/driver-assignments', (req, res) => {
         overrides[key].trackerId = String(trackerId).trim()
       }
     }
-    writeJSON(DRIVER_OVERRIDES_FILE, overrides)
+    saveDriverOverrides(overrides)
     res.json({ ok: true, assignments: loadDriverAssignments(), count: Object.keys(loadDriverAssignments()).length })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
