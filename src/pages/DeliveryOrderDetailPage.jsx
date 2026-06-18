@@ -12,7 +12,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const navigate = useNavigate()
   const listOrder = useMemo(() => deliveryOrders.find((item) => String(item.id) === String(id)), [deliveryOrders, id])
   const [fallbackOrder, setFallbackOrder] = useState(null)
-  const order = listOrder || fallbackOrder
+  const order = fallbackOrder || listOrder
   const [saving, setSaving] = useState(false)
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [form, setForm] = useState(null)
@@ -186,7 +186,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="delivery-form compact-pilot-form">
           <label className="field-stack">
             <span>Statut mission</span>
-            <select value={order.status} onChange={(e) => updateMany({ status: e.target.value, active: e.target.value !== 'Livré' && e.target.value !== 'Annulé', completedAt: e.target.value === 'Livré' ? new Date().toISOString() : null })} disabled={saving}>
+            <select value={order.status || 'Prévu'} onChange={(e) => updateMany({ status: e.target.value, active: e.target.value !== 'Livré' && e.target.value !== 'Annulé', completedAt: e.target.value === 'Livré' ? new Date().toISOString() : null })} disabled={saving}>
               <option>Prévu</option>
               <option>Validé</option>
               <option>En chargement</option>

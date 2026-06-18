@@ -543,7 +543,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           </thead>
           <tbody>
             {paginatedOrders.map((item) => {
-              const statusLabel = item.active ? 'Actif' : item.status
+              const statusLabel = item.active ? 'Actif' : (item.status || 'Prévu')
               const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
               const pickerId = `proof-photo-${item.id}`
               return (
@@ -604,7 +604,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
       <div className="mobile-voucher-list">
         {paginatedOrders.map((item) => {
-          const statusLabel = item.active ? 'Actif' : item.status
+          const statusLabel = item.active ? 'Actif' : (item.status || 'Prévu')
           const pickerId = `proof-photo-mobile-${item.id}`
           return (
             <article key={`mobile-${item.id}`} className="mobile-voucher-card" onClick={() => navigate(`/delivery-order/${item.id}`)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/delivery-order/${item.id}`) }}>
