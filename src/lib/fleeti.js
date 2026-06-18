@@ -119,7 +119,7 @@ export const updateAdminUser = async (email, payload) => {
 export const deleteAdminUser = async (email) => {
   const response = await fetch(`${BACKEND_URL}/api/admin/users/${encodeURIComponent(email)}`, {
     method: 'DELETE',
-    headers: { ...getSessionHeaders() },
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
   })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Erreur de suppression')
@@ -169,7 +169,7 @@ export const deleteMasterDataItem = async (listName, value, extra = {}) => {
   Object.entries(extra || {}).forEach(([key, entry]) => {
     if (entry !== undefined && entry !== null && String(entry).trim()) params.set(key, String(entry))
   })
-  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?${params.toString()}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?${params.toString()}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -186,7 +186,7 @@ export const updateDeliveryOrder = async (id, payload) => {
   return data
 }
 export const deleteDeliveryOrder = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -221,7 +221,7 @@ export const updateFuelVoucher = async (id, payload) => {
   return data
 }
 export const deleteFuelVoucher = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
@@ -245,7 +245,7 @@ export const patchDriverOverride = async (id, data) => {
 export const deleteDriverOverride = async (id) => {
   const response = await fetch(`${BACKEND_URL}/api/driver-overrides/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { ...getSessionHeaders() },
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
   })
   const payload = await response.json()
   if (!response.ok) throw new Error(payload?.error || 'Erreur')
@@ -264,7 +264,7 @@ export const updateOilChange = async (id, payload) => {
   return data
 }
 export const deleteOilChange = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, { method: 'DELETE', headers: { ...getSessionHeaders() } })
+  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
   const data = await response.json()
   if (!response.ok) throw new Error(data?.error || 'Backend error')
   return data
