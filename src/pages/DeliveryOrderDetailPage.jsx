@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Printer, Trash2 } from 'lucide-react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -18,6 +18,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const [form, setForm] = useState(null)
   const [lightboxOpen, setLightboxOpen] = useState('')
   const [loadError, setLoadError] = useState('')
+  const formInitializedFor = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,8 +49,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     }
   }, [id, listOrder])
 
+  // Initialiser le formulaire UNE SEULE FOIS par BL (pas à chaque refresh)
   useEffect(() => {
-    if (order) {
+    if (order && formInitializedFor.current !== id) {
       setForm({
         reference: order.reference || '',
         client: order.client || '',
@@ -65,8 +67,9 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         status: order.status || '',
         active: order.active ?? true,
       })
+      formInitializedFor.current = id
     }
-  }, [order])
+  }, [order, id])
 
   if (!order && loadingOrder) {
     return <section className="panel"><div className="panel-header"><div><h3>Bon de livraison</h3><p>Chargement du bon...</p></div></div><LoadingBanner message="Chargement du bon de livraison…" /></section>
@@ -80,22 +83,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     ? order.proofPhotoDataUrls
     : (order.proofPhotoDataUrl ? [order.proofPhotoDataUrl] : [])
 
+  // Auto-save pour le statut POD uniquement (champ simple sans effet sur le formulaire)
   const updateField = async (field, value) => {
     setSaving(true)
     try {
       await updateDeliveryOrder(order.id, { [field]: value })
-      await refreshData()
-      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
-      if (refreshed) setFallbackOrder(refreshed)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const updateMany = async (payload) => {
-    setSaving(true)
-    try {
-      await updateDeliveryOrder(order.id, payload)
       await refreshData()
       const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
       if (refreshed) setFallbackOrder(refreshed)
@@ -120,10 +112,14 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         arrivalDateTime: form.arrivalDateTime || null,
         date: form.date || null,
         notes: form.notes,
+        status: form.status,
+        active: form.active,
+        completedAt: form.status === 'Livré' ? new Date().toISOString() : (order.completedAt || null),
       })
-      await refreshData()
-      const refreshed = await loadDeliveryOrder(order.id).catch(() => null)
-      if (refreshed) setFallbackOrder(refreshed)
+      // Marquer le formulaire comme sauvegardé pour ce BL (evite re-init au refresh)
+      formInitializedFor.current = id
+      // Rafraîchir l'historique en arrière-plan sans toucher au formulaire
+      refreshData()
     } finally {
       setSaving(false)
     }
@@ -161,7 +157,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
       <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button type="button" className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button type="button" className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
-      <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{order.active ? 'Actif' : order.status}</strong><small>{formatDeliveryQuantity(order.quantity)}</small></div></div>
+      <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{form?.active ? 'Actif' : (form?.status || order.status)}</strong><small>{formatDeliveryQuantity(order.quantity)}</small></div></div>
     </section>
 
     <section className="panel panel-large">
@@ -191,11 +187,6 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
             <select value={form?.status || 'Prévu'} onChange={(e) => {
               const newStatus = e.target.value
               setForm(current => ({ ...current, status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé' }))
-              // Mise a jour backend seule, sans rafraichir toutes les donnees (evite d'ecraser le formulaire)
-              setSaving(true)
-              updateDeliveryOrder(order.id, { status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé', completedAt: newStatus === 'Livré' ? new Date().toISOString() : null })
-                .then(() => refreshData())
-                .finally(() => setSaving(false))
             }} disabled={saving}>
               <option>Prévu</option>
               <option>Validé</option>
@@ -210,7 +201,6 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           </label>
           <label className="toggle-row"><input type="checkbox" checked={!!(form?.active ?? order.active)} onChange={(e) => {
             setForm(current => ({ ...current, active: e.target.checked }))
-            updateField('active', e.target.checked)
           }} disabled={saving} />Bon actif</label>
           <label className="field-stack">
             <span>Statut POD</span>
