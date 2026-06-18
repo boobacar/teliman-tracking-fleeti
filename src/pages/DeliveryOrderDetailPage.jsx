@@ -62,6 +62,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         arrivalDateTime: order.arrivalDateTime || '',
         date: order.date || '',
         notes: order.notes || '',
+        status: order.status || '',
+        active: order.active ?? true,
       })
     }
   }, [order])
@@ -186,7 +188,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="delivery-form compact-pilot-form">
           <label className="field-stack">
             <span>Statut mission</span>
-            <select value={order.status || 'Prévu'} onChange={(e) => updateMany({ status: e.target.value, active: e.target.value !== 'Livré' && e.target.value !== 'Annulé', completedAt: e.target.value === 'Livré' ? new Date().toISOString() : null })} disabled={saving}>
+            <select value={form?.status || 'Prévu'} onChange={(e) => {
+              const newStatus = e.target.value
+              setForm(current => ({ ...current, status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé' }))
+              updateMany({ status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé', completedAt: newStatus === 'Livré' ? new Date().toISOString() : null })
+            }} disabled={saving}>
               <option>Prévu</option>
               <option>Validé</option>
               <option>En chargement</option>
@@ -198,7 +204,10 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
               <option>Annulé</option>
             </select>
           </label>
-          <label className="toggle-row"><input type="checkbox" checked={!!order.active} onChange={(e) => updateField('active', e.target.checked)} disabled={saving} />Bon actif</label>
+          <label className="toggle-row"><input type="checkbox" checked={!!(form?.active ?? order.active)} onChange={(e) => {
+            setForm(current => ({ ...current, active: e.target.checked }))
+            updateField('active', e.target.checked)
+          }} disabled={saving} />Bon actif</label>
           <label className="field-stack">
             <span>Statut POD</span>
             <select value={order.proofStatus || 'En attente'} onChange={(e) => updateField('proofStatus', e.target.value)} disabled={saving}>

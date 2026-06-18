@@ -23,10 +23,10 @@ const __dirname = path.dirname(__filename)
 const DATA_DIR = process.env.TELIMAN_DATA_DIR || __dirname
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
-// ── Écriture atomique non-bloquante (fire-and-forget, évite corruption) ──
+// ── Écriture atomique (retourne une promesse pour pouvoir await si besoin) ──
 function writeJSON(filePath, data) {
   const tmp = filePath + '.tmp.' + Date.now()
-  fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+  return fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
     .then(() => fs.promises.rename(tmp, filePath))
     .catch((err) => {
       console.error(`[writeJSON] Échec ${filePath}:`, err.message)
@@ -478,8 +478,8 @@ function readDeliveryOrders() {
 
 function writeDeliveryOrders(rows) {
   const { rows: normalizedRows } = dedupeDeliveryOrders(rows)
-  writeJSON(DELIVERY_ORDERS_FILE, normalizedRows)
   deliveryOrdersCache = { data: null, mtime: 0 }
+  return writeJSON(DELIVERY_ORDERS_FILE, normalizedRows)
 }
 
 // Cache mémoire pour éviter de parser 60+ MB de JSON à chaque requête
@@ -3064,7 +3064,7 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
       return updatedItem
     })
 
-    writeDeliveryOrders(updatedItems)
+    await writeDeliveryOrders(updatedItems)
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(current, updatedItem)
     res.json({ ok: true, item: updatedItem, whatsappNotifications })
   } catch (error) {
