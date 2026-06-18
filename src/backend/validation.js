@@ -1,25 +1,27 @@
 import { z } from 'zod'
 
 // ── Delivery Order ──
+// NOTE: aucun .default() pour éviter que Zod remplisse les champs absents
+// lors des PATCH partiels. Les valeurs par défaut sont gérées par sanitizeDeliveryOrderPayload.
 export const deliveryOrderSchema = z.object({
-  reference: z.string().trim().optional().default(''),
+  reference: z.string().trim().optional(),
   trackerId: z.union([z.string().trim(), z.number()]).transform((v) => String(v)).pipe(z.string().min(1, 'Camion requis')),
   truckLabel: z.string().trim().min(1, 'Label camion requis'),
-  driver: z.string().trim().optional().default(''),
-  client: z.string().trim().optional().default(''),
-  loadingPoint: z.string().trim().optional().default(''),
-  destination: z.string().trim().optional().default(''),
-  goods: z.string().trim().optional().default(''),
-  quantity: z.string().trim().optional().default(''),
-  status: z.string().trim().optional().default(''),
-  active: z.boolean().optional().default(true),
-  date: z.string().trim().optional().default(''),
-  departureDateTime: z.string().trim().optional().default(''),
-  arrivalDateTime: z.string().trim().optional().default(''),
-  notes: z.string().trim().optional().default(''),
-  completedAt: z.string().trim().nullable().optional().default(null),
-  proofPhotoDataUrl: z.string().optional().default(''),
-  proofPhotoDataUrls: z.array(z.string()).optional().default([]),
+  driver: z.string().trim().optional(),
+  client: z.string().trim().optional(),
+  loadingPoint: z.string().trim().optional(),
+  destination: z.string().trim().optional(),
+  goods: z.string().trim().optional(),
+  quantity: z.string().trim().optional(),
+  status: z.string().trim().optional(),
+  active: z.boolean().optional(),
+  date: z.string().trim().optional(),
+  departureDateTime: z.string().trim().optional(),
+  arrivalDateTime: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+  completedAt: z.string().trim().nullable().optional(),
+  proofPhotoDataUrl: z.string().optional(),
+  proofPhotoDataUrls: z.array(z.string()).optional(),
 })
 
 export const deliveryOrderUpdateSchema = deliveryOrderSchema.partial()
@@ -29,15 +31,16 @@ export const fuelVoucherSchema = z.object({
   voucherNumber: z.string().trim().min(1, 'Numéro de bon requis'),
   trackerId: z.union([z.string().trim(), z.number()]).transform((v) => String(v)).pipe(z.string().min(1, 'Camion requis')),
   truckLabel: z.string().trim().min(1, 'Label camion requis'),
-  driver: z.string().trim().optional().default(''),
-  supplier: z.string().trim().optional().default(''),
+  driver: z.string().trim().optional(),
+  supplier: z.string().trim().optional(),
   dateTime: z.string().trim().min(1, 'Date requise'),
   quantityLiters: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Quantité ≥ 0')),
   unitPrice: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Prix ≥ 0')),
-  amount: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().optional().default(0)),
-  proofPhotoDataUrl: z.string().optional().default(''),
-  proofPhotoDataUrls: z.array(z.string()).optional().default([]),
-  notes: z.string().trim().optional().default(''),
+  amount: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().optional()),
+  proofPhotoDataUrl: z.string().optional(),
+  proofPhotoDataUrls: z.array(z.string()).optional(),
+  notes: z.string().trim().optional(),
+  client: z.string().trim().optional(),
 })
 
 export const fuelVoucherUpdateSchema = fuelVoucherSchema.partial()
@@ -48,31 +51,24 @@ export const oilChangeSchema = z.object({
   truckLabel: z.string().trim().min(1, 'Label camion requis'),
   date: z.string().trim().min(1, 'Date requise'),
   odometerKm: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Kilométrage ≥ 0')),
-  oilType: z.string().trim().optional().default(''),
+  oilType: z.string().trim().optional(),
   oilQuantityL: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Quantité ≥ 0')),
-  filterChanged: z.boolean().optional().default(true),
-  nextChangeKm: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().optional().default(0)),
-  nextChangeDate: z.string().trim().optional().default(''),
-  notes: z.string().trim().optional().default(''),
-  receiptExpiryDate: z.string().trim().optional().default(''),
+  filterChanged: z.boolean().optional(),
+  nextChangeKm: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().optional()),
+  nextChangeDate: z.string().trim().optional(),
+  notes: z.string().trim().optional(),
+  receiptExpiryDate: z.string().trim().optional(),
 })
-
-export const oilChangeUpdateSchema = oilChangeSchema.partial()
 
 // ── Admin User ──
 export const adminUserSchema = z.object({
-  email: z.string().trim().email('Email invalide').toLowerCase(),
-  role: z.enum(['admin', 'ops', 'user']).optional().default('user'),
-  password: z.string().min(6, 'Mot de passe ≥ 6 caractères'),
-  permissions: z.array(z.string().trim()).optional().default([]),
+  email: z.string().trim().email('Email invalide'),
+  role: z.string().trim().min(1, 'Rôle requis'),
+  permissions: z.array(z.string().trim()).optional(),
+  password: z.string().trim().optional(),
 })
 
-export const adminUserUpdateSchema = z.object({
-  email: z.string().trim().email('Email invalide').toLowerCase().optional(),
-  role: z.enum(['admin', 'ops', 'user']).optional(),
-  password: z.string().min(6, 'Mot de passe ≥ 6 caractères').optional(),
-  permissions: z.array(z.string().trim()).optional(),
-})
+export const adminUserUpdateSchema = adminUserSchema.partial()
 
 // ── Helper ──
 export function validateBody(schema, body) {
