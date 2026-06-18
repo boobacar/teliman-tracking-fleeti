@@ -191,7 +191,11 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
             <select value={form?.status || 'Prévu'} onChange={(e) => {
               const newStatus = e.target.value
               setForm(current => ({ ...current, status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé' }))
-              updateMany({ status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé', completedAt: newStatus === 'Livré' ? new Date().toISOString() : null })
+              // Mise a jour backend seule, sans rafraichir toutes les donnees (evite d'ecraser le formulaire)
+              setSaving(true)
+              updateDeliveryOrder(order.id, { status: newStatus, active: newStatus !== 'Livré' && newStatus !== 'Annulé', completedAt: newStatus === 'Livré' ? new Date().toISOString() : null })
+                .then(() => refreshData())
+                .finally(() => setSaving(false))
             }} disabled={saving}>
               <option>Prévu</option>
               <option>Validé</option>
