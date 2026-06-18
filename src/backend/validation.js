@@ -7,6 +7,7 @@ export const deliveryOrderSchema = z.object({
   truckLabel: z.string().trim().min(1, 'Label camion requis'),
   driver: z.string().trim().optional().default(''),
   client: z.string().trim().optional().default(''),
+  loadingPoint: z.string().trim().optional().default(''),
   destination: z.string().trim().optional().default(''),
   goods: z.string().trim().optional().default(''),
   quantity: z.string().trim().optional().default(''),
@@ -16,6 +17,7 @@ export const deliveryOrderSchema = z.object({
   departureDateTime: z.string().trim().optional().default(''),
   arrivalDateTime: z.string().trim().optional().default(''),
   notes: z.string().trim().optional().default(''),
+  completedAt: z.string().trim().nullable().optional().default(null),
   proofPhotoDataUrl: z.string().optional().default(''),
   proofPhotoDataUrls: z.array(z.string()).optional().default([]),
 })

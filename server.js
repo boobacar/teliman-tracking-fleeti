@@ -3036,7 +3036,7 @@ app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), as
     const payload = sanitizeDeliveryOrderPayload(preparedBody)
     const normalized = items.map((item) => Number(item.trackerId) === Number(payload.trackerId) && payload.active ? { ...item, active: false } : item)
     normalized.unshift(payload)
-    writeDeliveryOrders(normalized)
+    await writeDeliveryOrders(normalized)
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(null, payload)
     res.status(201).json({ ok: true, item: payload, whatsappNotifications })
   } catch (error) {

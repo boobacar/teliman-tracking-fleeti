@@ -114,7 +114,6 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         notes: form.notes,
         status: form.status,
         active: form.active,
-        completedAt: form.status === 'Livré' ? new Date().toISOString() : (order.completedAt || null),
       })
       // Marquer le formulaire comme sauvegardé pour ce BL (evite re-init au refresh)
       formInitializedFor.current = id
