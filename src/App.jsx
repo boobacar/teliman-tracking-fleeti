@@ -65,7 +65,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [refreshToastVisible, setRefreshToastVisible] = useState(false)
   const [error, setError] = useState('')
-  const search = ''
+  const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [, setSelectedTrackerId] = useState(3488326)
   const [reports, setReports] = useState({ summary: {}, rows: [] })
@@ -74,6 +74,7 @@ function App() {
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], manualTrackers: [] })
   const [authLoading, setAuthLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
+  const [lastRefreshAt, setLastRefreshAt] = useState(null)
 
   const refreshData = useCallback(async () => {
     setLoading(true)
@@ -93,6 +94,7 @@ function App() {
         setDeliveryOrders(ordersPayload?.items || [])
         setDeliveryOrdersSummary(ordersSummaryPayload || { total: 0, active: 0, delivered: 0, byTruck: {} })
         setMasterData(masterDataPayload || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+        setLastRefreshAt(new Date())
       } catch {
         setReports({ summary: {}, rows: [] })
         setDeliveryOrders([])
@@ -302,8 +304,8 @@ function App() {
 
   const filteredTrackers = useMemo(() => enrichedTrackers.filter((tracker) => {
     const text = `${tracker.label} ${tracker.employeeName}`.toLowerCase()
-    return text.includes(search.toLowerCase()) && (filter === 'all' || tracker.state.connection_status === filter)
-  }), [enrichedTrackers, search, filter])
+    return text.includes(searchQuery.toLowerCase()) && (filter === 'all' || tracker.state.connection_status === filter)
+  }), [enrichedTrackers, searchQuery, filter])
   const isEmptySearch = !loading && !error && filteredTrackers.length === 0
 
   const importantEvents = useMemo(() => ((dataset?.history?.length ? dataset.history : fallbackEvents)
@@ -319,15 +321,16 @@ function App() {
     totalMileage: Math.round(enrichedTrackers.reduce((a, t) => a + (t.latestDayMileage || 0), 0)),
   }
 
-  const priorityTrackers = [...enrichedTrackers].sort((a, b) => {
+  const searchFiltered = useMemo(() => searchQuery ? filteredTrackers : enrichedTrackers, [searchQuery, filteredTrackers, enrichedTrackers])
+  const priorityTrackers = useMemo(() => [...searchFiltered].sort((a, b) => {
     const leftScore = (a.eventCounts.speedup || 0) + (a.eventCounts.excessive_parking || 0)
     const rightScore = (b.eventCounts.speedup || 0) + (b.eventCounts.excessive_parking || 0)
     if (leftScore !== rightScore) return rightScore - leftScore
     return (b.events.length || 0) - (a.events.length || 0)
-  })
-  const offlineTrackers = enrichedTrackers.filter((tracker) => tracker.state.connection_status === 'offline')
-  const anomalyTrackers = [...enrichedTrackers].filter((tracker) => tracker.events.length > 3).sort((a, b) => b.events.length - a.events.length)
-  const topDrivers = [...enrichedTrackers].sort((a, b) => b.latestDayMileage - a.latestDayMileage).slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, events: tracker.events.length }))
+  }), [searchFiltered])
+  const offlineTrackers = useMemo(() => searchFiltered.filter((tracker) => tracker.state.connection_status === 'offline'), [searchFiltered])
+  const anomalyTrackers = useMemo(() => [...searchFiltered].filter((tracker) => tracker.events.length > 3).sort((a, b) => b.events.length - a.events.length), [searchFiltered])
+  const topDrivers = useMemo(() => [...searchFiltered].sort((a, b) => b.latestDayMileage - a.latestDayMileage).slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, events: tracker.events.length })), [searchFiltered])
   const connectionChart = [
     { name: 'Active', value: stats.active, color: '#22c55e' },
     { name: 'Offline', value: stats.offline, color: '#ef4444' },
@@ -370,7 +373,7 @@ function App() {
       <Suspense fallback={<SkeletonPage cards={4} tableRows={5} />}>
       <ErrorBoundary>
         <Routes>
-          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} />} />
+          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />} />
           <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
           <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
           <Route path="/whatsapp" element={<WhatsAppPage />} />
