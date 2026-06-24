@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { Camera, Trash2 } from 'lucide-react'
+import { Camera, CheckCircle, Trash2 } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 import { Pagination } from '../components/Pagination'
 import { SkeletonTable } from '../components/Skeleton'
@@ -561,11 +561,11 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                   <td>{item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                   <td>
                     <div className="table-actions">
-                      <button type="button" className="ghost-btn small-btn icon-btn" title="Marquer livré" aria-label="Marquer livré" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>
-                        ✅
+                      <button type="button" className="ghost-btn icon-btn" title="Marquer livré" aria-label="Marquer livré" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>
+                        <CheckCircle size={22} />
                       </button>
                       <button type="button"
-                        className="ghost-btn small-btn icon-btn"
+                        className="ghost-btn icon-btn"
                         title="Ajouter une photo"
                         aria-label="Ajouter une photo"
                         onClick={(e) => {
@@ -574,7 +574,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                           input?.click()
                         }}
                       >
-                        <Camera size={15} />
+                        <Camera size={22} />
                       </button>
                       <input
                         id={pickerId}
@@ -592,7 +592,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                           e.target.value = ''
                         }}
                       />
-                      <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={16} /></button>
+                      <button type="button" className="ghost-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={22} /></button>
                     </div>
                   </td>
                 </tr>
@@ -617,10 +617,10 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               <p><b>Destination:</b> {item.destination}</p>
               <p><b>Date:</b> {item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
               <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => markDelivered(item)} title="Marquer livré">✅</button>
-                <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo"><Camera size={15} /></button>
+                <button type="button" className="ghost-btn icon-btn" onClick={() => markDelivered(item)} title="Marquer livré"><CheckCircle size={22} /></button>
+                <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo"><Camera size={22} /></button>
                 <input id={pickerId} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const files = Array.from(e.target.files || []); for (const file of files) { await uploadProofPhoto(item, file) } e.target.value = '' }} />
-                <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer"><Trash2 size={15} /></button>
+                <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer"><Trash2 size={22} /></button>
               </div>
             </article>
           )

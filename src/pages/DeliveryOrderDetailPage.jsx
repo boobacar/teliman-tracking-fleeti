@@ -165,7 +165,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="proof-photos-grid">
           {proofPhotos.map((photo, index) => (
             <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
-              <button type="button" className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
+              <button type="button" className="ghost-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={22} /></button>
               <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
                 <img src={resolveMediaUrl(photo)} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
               </button>

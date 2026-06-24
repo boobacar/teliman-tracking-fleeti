@@ -318,9 +318,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                       <td>{hasPhoto ? 'Oui' : 'Non'}</td>
                       <td>
                         <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
+                          <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={22} /></button>
                           <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                          <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={15} /></button>
+                          <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={22} /></button>
                         </div>
                       </td>
                     </tr>
@@ -355,9 +355,9 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
                 <p><b>Quantité:</b> {Number(item.quantityLiters || 0).toLocaleString('fr-FR')} L</p>
                 <p><b>Prix/L:</b> {Number(item.unitPrice || 0).toLocaleString('fr-FR')}</p>
                 <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="ghost-btn small-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={15} /></button>
+                  <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={22} /></button>
                   <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                  <button type="button" className="ghost-btn small-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={15} /></button>
+                  <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={22} /></button>
                 </div>
               </article>
             )

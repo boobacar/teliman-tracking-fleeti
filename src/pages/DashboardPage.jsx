@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, Search, ShieldAlert, Signal, Wifi, WifiOff } from 'lucide-react'
+import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, Radio, Search, ShieldAlert, Signal, Wifi, WifiOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -15,7 +15,7 @@ import {
 } from 'recharts'
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
-import { loadSensorsLive, loadVehicles } from '../lib/fleeti'
+import { loadLiveOdometer, loadVehicles } from '../lib/fleeti'
 
 function StatCard({ icon, label, value, helper }) {
   return (
@@ -87,7 +87,7 @@ export function DashboardPage({
   lastRefreshAt,
 }) {
   const [vehicles, setVehicles] = useState([])
-  const [sensorsLive, setSensorsLive] = useState([])
+  const [liveOdo, setLiveOdo] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -112,28 +112,11 @@ export function DashboardPage({
 
   useEffect(() => {
     let cancelled = false
-    loadSensorsLive()
+    loadLiveOdometer()
       .then((data) => {
         if (!cancelled) {
-          const raw = Array.isArray(data) ? data : data?.sensors || data?.items || []
-          // Transform nested {trackerId, trackerLabel, sensors: [{name,value}]} to flat objects
-          const normalized = raw.map((group) => {
-            const sensorMap = {}
-            for (const s of group.sensors || []) {
-              const name = String(s.name || '').trim().toLowerCase()
-              if (name.includes('hardware') || name.includes('kilométrage')) sensorMap.hardware_mileage = s.value
-              else if (name.includes('obd') && (name.includes('consommation') || name.includes('carburant'))) sensorMap.obd_consumption = s.value
-              else if (name.includes('tension') || (name.includes('batterie') && !name.includes('odomètre'))) sensorMap.battery_voltage = s.value
-              else if (name === 'allumage') sensorMap.ignition = s.value
-            }
-            return {
-              id: group.trackerId,
-              label: group.trackerLabel,
-              tracker_label: group.trackerLabel,
-              ...sensorMap,
-            }
-          })
-          setSensorsLive(normalized)
+          const raw = Array.isArray(data) ? data : data?.items || data?.data || []
+          setLiveOdo(raw)
         }
       })
       .catch(() => {})
@@ -154,13 +137,13 @@ export function DashboardPage({
       (v.garage || '').toLowerCase().includes(q)
     )
   }, [vehicles, searchQuery])
-  const filteredSensors = useMemo(() => {
-    if (!searchQuery) return sensorsLive
+  const filteredOdo = useMemo(() => {
+    if (!searchQuery) return liveOdo
     const q = searchQuery.toLowerCase()
-    return sensorsLive.filter((s) =>
-      (s.label || s.tracker_label || '').toLowerCase().includes(q)
+    return liveOdo.filter((entry) =>
+      (entry.truckLabel || entry.label || '').toLowerCase().includes(q)
     )
-  }, [sensorsLive, searchQuery])
+  }, [liveOdo, searchQuery])
 
   return (
     <PageStack className="dashboard-page">
@@ -243,7 +226,7 @@ export function DashboardPage({
                   color: '#e2e8f0',
                 }}
               />
-              <Bar dataKey="mileage" fill="#5e6ad2" radius={[10, 10, 0, 0]} />
+              <Bar dataKey="mileage" fill="#946239" radius={[10, 10, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -392,20 +375,23 @@ export function DashboardPage({
           </div>
         )}
 
-        {filteredSensors.length > 0 && (
+        {filteredOdo.length > 0 && (
           <div className="panel panel-large dashboard-data-panel">
             <SectionHeader
-              title="Capteurs live"
-              description={searchQuery ? `${filteredSensors.length} résultat${filteredSensors.length > 1 ? 's' : ''}` : 'Données temps réel des capteurs par camion'}
+              title="Live odomètre"
+              description={searchQuery ? `${filteredOdo.length} résultat${filteredOdo.length > 1 ? 's' : ''}` : 'Kilométrage et statut en temps réel'}
             />
-            <div className="dashboard-card-grid dashboard-card-grid--sensors">
-              {filteredSensors.map((sensor) => (
-                <article key={sensor.id || sensor.tracker_id || sensor.label} className="dashboard-sensor-card">
-                  <strong>{sensor.label || sensor.tracker_label || '-'}</strong>
-                  <span>Km: {sensor.hardware_mileage != null ? `${Number(sensor.hardware_mileage).toLocaleString('fr-FR')} km` : '-'}</span>
-                  <span>Conso: {sensor.obd_consumption != null ? `${Number(sensor.obd_consumption).toFixed(1)} L/100km` : '-'}</span>
-                  <span>Batterie: {sensor.battery_voltage != null ? `${Number(sensor.battery_voltage).toFixed(1)} V` : '-'}</span>
-                  <span>Allumage: {sensor.ignition != null ? (sensor.ignition ? 'ON' : 'OFF') : '-'}</span>
+            <div className="dashboard-card-grid">
+              {filteredOdo.map((entry) => (
+                <article key={entry.trackerId || entry.id} className="dashboard-sensor-card">
+                  <strong>{entry.truckLabel || entry.label || '-'}</strong>
+                  <span>Km: {entry.odometer != null ? `${Number(entry.odometer).toLocaleString('fr-FR')} km` : '-'}</span>
+                  <span>Vitesse: {entry.speed != null ? `${entry.speed} km/h` : '-'}</span>
+                  <span>
+                    <Radio size={12} />{' '}
+                    {entry.isOnline ? 'En ligne' : 'Hors ligne'}
+                  </span>
+                  <span>MàJ: {entry.lastUpdate ? new Date(entry.lastUpdate).toLocaleTimeString('fr-FR') : '-'}</span>
                 </article>
               ))}
             </div>

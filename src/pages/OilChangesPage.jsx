@@ -106,7 +106,23 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
     async function loadVehicleData() {
       try {
         const data = await loadVehicles()
-        if (!cancelled) setVehicles(data?.vehicles || data?.items || [])
+        if (!cancelled) {
+          const raw = data?.vehicles || data?.items || []
+          const normalized = raw.map((v) => ({
+            ...v,
+            id: v.id || v.tracker_id,
+            name: v.label || v.name,
+            garage: v.garage_organization_name || v.garage || v.garage_name,
+            model_name: v.model || v.model_name,
+            vehicle_type: v.type || v.vehicle_type,
+            tyre_size: v.tyre_size || v.tire_size,
+            tyre_count: v.tyres_number || v.tyre_count || v.tire_count,
+            avg_consumption: v.norm_avg_fuel_consumption || v.avg_consumption,
+            tank_volume: v.fuel_tank_volume || v.tank_volume,
+            payload: v.payload_weight || v.payload,
+          }))
+          setVehicles(normalized)
+        }
       } catch {
         // silent
       }
@@ -393,16 +409,28 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
               <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.type || selectedVehicle.vehicle_type || '-'}</span>
             </div>
             <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Sous-type</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.subtype || '-'}</span>
+            </div>
+            <div className="field-stack">
               <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Garage</span>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.garage || selectedVehicle.garage_name || '-'}</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.garage || selectedVehicle.garage_name || selectedVehicle.garage_organization_name || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Couleur</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.color || '-'}</span>
+            </div>
+            <div className="field-stack">
+              <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Immatriculation</span>
+              <span style={{ fontSize: 15, fontWeight: 500, fontFamily: 'var(--font-mono)' }}>{selectedVehicle.reg_number || selectedVehicle.label || '-'}</span>
             </div>
             <div className="field-stack">
               <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Pneus (taille)</span>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tire_size || selectedVehicle.tyre_size || '-'}</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tyre_size || selectedVehicle.tire_size || '-'}</span>
             </div>
             <div className="field-stack">
               <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Nombre de pneus</span>
-              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tire_count || selectedVehicle.tyre_count || '-'}</span>
+              <span style={{ fontSize: 15, fontWeight: 500 }}>{selectedVehicle.tyre_count || selectedVehicle.tire_count || '-'}</span>
             </div>
             <div className="field-stack">
               <span style={{ fontWeight: 600, color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Carburant (type)</span>

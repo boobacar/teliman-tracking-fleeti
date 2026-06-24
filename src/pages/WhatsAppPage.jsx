@@ -12,8 +12,7 @@ import {
   sendWhatsAppTestMessage,
 } from '../lib/fleeti.js'
 
-const FALLBACK_PHONE_DISPLAY = '+225 07 00 184 839'
-const FALLBACK_PHONE_E164 = '2250700184839'
+
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
 const HISTORY_PAGE_SIZE = 5
 const TEMPLATE_CARDS = [
@@ -51,18 +50,20 @@ export function WhatsAppPage() {
   const [actionMessage, setActionMessage] = useState('')
   const [busyAction, setBusyAction] = useState('')
 
+  const isConnected = whatsAppStatus?.connected === true
   const connectedPhone = whatsAppStatus?.connectedPhone || ''
   const connectedPhoneRaw = whatsAppStatus?.user?.phoneRaw || normalizePhoneForWhatsApp(connectedPhone)
-  const displayedSender = connectedPhone || FALLBACK_PHONE_DISPLAY
-  const displayedSenderRaw = connectedPhoneRaw || FALLBACK_PHONE_E164
+  const displayedSender = isConnected && connectedPhone ? connectedPhone : 'Aucun numéro connecté'
+  const displayedSenderRaw = isConnected && connectedPhoneRaw ? connectedPhoneRaw : ''
   const normalizedRecipient = useMemo(() => normalizePhoneForWhatsApp(recipientPhone), [recipientPhone])
   const previewLink = useMemo(() => {
     const target = normalizedRecipient || displayedSenderRaw
+    if (!target) return '#'
     return `https://wa.me/${target}?text=${encodeURIComponent(message || DEFAULT_MESSAGE)}`
   }, [displayedSenderRaw, message, normalizedRecipient])
-  const connectionLabel = whatsAppStatus?.connected ? 'Connecté' : whatsAppQr?.hasQr ? 'QR à scanner' : whatsAppStatus?.state || 'Chargement…'
-  const connectionStateClass = whatsAppStatus?.connected ? 'connected' : whatsAppQr?.hasQr ? 'pairing' : 'pending'
-  const connectionHelperText = whatsAppStatus?.connected
+  const connectionLabel = isConnected ? 'Connecté' : whatsAppQr?.hasQr ? 'QR à scanner' : whatsAppStatus?.state || 'Chargement…'
+  const connectionStateClass = isConnected ? 'connected' : whatsAppQr?.hasQr ? 'pairing' : 'pending'
+  const connectionHelperText = isConnected
     ? `Session active avec ${displayedSender}. Tu peux déconnecter ce compte avant de scanner un autre téléphone.`
     : whatsAppQr?.hasQr
       ? 'QR prêt : ouvre WhatsApp sur le téléphone, puis scanne le code dans Appareils connectés.'
@@ -144,7 +145,7 @@ export function WhatsAppPage() {
           <div className="mission-highlight-card whatsapp-number-card">
             <span>Numéro WhatsApp connecté</span>
             <strong>{displayedSender}</strong>
-            <small>{whatsAppStatus?.connected ? `Compte : ${whatsAppStatus?.connectedName || 'WhatsApp connecté'}` : 'Aucun compte connecté actuellement.'}</small>
+            <small>{isConnected ? `Compte : ${whatsAppStatus?.connectedName || 'WhatsApp connecté'}` : 'Aucun compte connecté actuellement.'}</small>
           </div>
           <div className="mission-highlight-card">
             <span>Statut connexion</span>
@@ -153,13 +154,19 @@ export function WhatsAppPage() {
           </div>
           <div className="mission-highlight-card">
             <span>Lien rapide</span>
-            <strong>wa.me/{displayedSenderRaw}</strong>
-            <small>Basé sur le numéro actuellement connecté.</small>
+            <strong>{isConnected ? `wa.me/${displayedSenderRaw}` : '—'}</strong>
+            <small>{isConnected ? 'Basé sur le numéro actuellement connecté.' : 'Connectez un compte WhatsApp.'}</small>
           </div>
         </div>
         <div className="table-actions" style={{ marginTop: 18 }}>
-          <a className="primary-btn" href={`https://wa.me/${displayedSenderRaw}`} target="_blank" rel="noreferrer"><Send size={16} /> Ouvrir WhatsApp</a>
-          <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(displayedSender, 'numéro copié')}><Copy size={16} /> Copier le numéro connecté</button>
+          {isConnected ? (
+            <>
+              <a className="primary-btn" href={`https://wa.me/${displayedSenderRaw}`} target="_blank" rel="noreferrer"><Send size={16} /> Ouvrir WhatsApp</a>
+              <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(displayedSender, 'numéro copié')}><Copy size={16} /> Copier le numéro connecté</button>
+            </>
+          ) : (
+            <button type="button" className="ghost-btn small-btn" disabled>Aucun numéro connecté</button>
+          )}
           <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
           {copied && <span className="success-chip"><CheckCircle2 size={14} /> {copied}</span>}
         </div>
@@ -183,8 +190,8 @@ export function WhatsAppPage() {
             <div className="connection-card-header">
               <div className="connection-card-icon"><Smartphone size={20} /></div>
               <div>
-                <span>Compte connecté</span>
-                <strong>{displayedSender}</strong>
+                <span>{isConnected ? 'Compte connecté' : 'État'}</span>
+                <strong>{isConnected ? displayedSender : 'Aucun numéro connecté'}</strong>
               </div>
             </div>
             <p>{connectionHelperText}</p>
@@ -204,7 +211,7 @@ export function WhatsAppPage() {
             <div className="connection-qr-topline">
               <div>
                 <span>QR de connexion</span>
-                <strong>{whatsAppQr?.qrDataUrl ? 'Prêt à scanner' : whatsAppStatus?.connected ? 'Compte déjà actif' : 'En attente'}</strong>
+                <strong>{whatsAppQr?.qrDataUrl ? 'Prêt à scanner' : isConnected ? 'Compte déjà actif' : 'En attente'}</strong>
               </div>
               <QrCode size={22} />
             </div>
@@ -216,8 +223,8 @@ export function WhatsAppPage() {
             ) : (
               <div className="connection-empty-qr">
                 <QrCode size={42} />
-                <strong>{whatsAppStatus?.connected ? 'Aucun QR nécessaire' : 'QR non généré'}</strong>
-                <span>{whatsAppStatus?.connected ? `WhatsApp est connecté avec ${displayedSender}.` : 'Clique sur “Générer un nouveau QR” pour démarrer l’appairage.'}</span>
+                <strong>{isConnected ? 'Aucun QR nécessaire' : 'QR non généré'}</strong>
+                <span>{isConnected ? `WhatsApp est connecté avec ${displayedSender}.` : 'Clique sur \u201cGénérer un nouveau QR\u201d pour démarrer l\u2019appairage.'}</span>
               </div>
             )}
           </article>
@@ -243,16 +250,16 @@ export function WhatsAppPage() {
           </label>
         </div>
         <div className="table-actions" style={{ marginTop: 16 }}>
-          <button type="button" className="primary-btn" disabled={Boolean(busyAction) || !recipientPhone || !message} onClick={() => runAction('test-message', () => sendWhatsAppTestMessage({ to: recipientPhone, message }))}><MessageCircle size={16} /> Envoyer le test</button>
-          <a className="ghost-btn small-btn" href={previewLink} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Prévisualiser wa.me</a>
-          <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(previewLink, 'lien copié')}><Copy size={16} /> Copier le lien</button>
+          <button type="button" className="primary-btn" disabled={Boolean(busyAction) || !isConnected || !recipientPhone || !message} onClick={() => runAction('test-message', () => sendWhatsAppTestMessage({ to: recipientPhone, message }))}><MessageCircle size={16} /> Envoyer le test</button>
+          <a className="ghost-btn small-btn" href={isConnected ? previewLink : undefined} target="_blank" rel="noreferrer" style={isConnected ? undefined : { opacity: 0.5, pointerEvents: 'none' }}><MessageCircle size={16} /> Prévisualiser wa.me</a>
+          <button type="button" className="ghost-btn small-btn" disabled={!isConnected} onClick={() => copyValue(previewLink, 'lien copié')}><Copy size={16} /> Copier le lien</button>
         </div>
       </section>
 
       <section className="stats-grid stats-grid-tight whatsapp-info-grid">
         <article className="stat-card"><div className="stat-icon"><Smartphone size={18} /></div><div><p>Numéro émetteur</p><strong>{displayedSender}</strong></div></article>
         <article className="stat-card"><div className="stat-icon"><Webhook size={18} /></div><div><p>Déclencheurs BL</p><strong>Création BL, statut Livré</strong></div></article>
-        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Canal</p><strong>WhatsApp connecté</strong></div></article>
+        <article className="stat-card"><div className="stat-icon"><ShieldCheck size={18} /></div><div><p>Canal</p><strong>{isConnected ? 'WhatsApp connecté' : 'WhatsApp déconnecté'}</strong></div></article>
       </section>
 
       <section className="panel panel-large">
