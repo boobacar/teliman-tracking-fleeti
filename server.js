@@ -1421,6 +1421,16 @@ function normalizeDateTimeForFleetiPublicApi(value) {
   return raw
 }
 
+function isDateTimeWithinRange(value, from, to) {
+  const ts = Date.parse(normalizeDateTimeForFleetiPublicApi(value))
+  if (!Number.isFinite(ts)) return true
+  const fromTs = Date.parse(normalizeDateTimeForFleetiPublicApi(from))
+  const toTs = Date.parse(normalizeDateTimeForFleetiPublicApi(to))
+  if (Number.isFinite(fromTs) && ts < fromTs) return false
+  if (Number.isFinite(toTs) && ts > toTs) return false
+  return true
+}
+
 function assetMatchesTrackerId(asset = {}, trackerId) {
   const wanted = String(trackerId)
   return (asset?.gateways || []).some((gateway) => String(gateway?.provider?.gatewayId || gateway?.id || '') === wanted)
@@ -1444,6 +1454,55 @@ async function resolvePublicAssetForTracker(trackerId, assets = null) {
   return rows.find((asset) => assetMatchesTrackerId(asset, trackerId)) || null
 }
 
+async function fetchPublicTrackPointsByTrackId({ customerReference, assetId, trackRows = [] } = {}) {
+  const pointRowsByTrackId = {}
+  const rowsWithTrackIds = (Array.isArray(trackRows) ? trackRows : [])
+    .filter((row) => row?.trackId)
+
+  await Promise.all(rowsWithTrackIds.map(async (row) => {
+    const trackId = String(row.trackId)
+    const startAt = normalizeDateTimeForFleetiPublicApi(row.startAt || row.started_at || row.start)
+    const endAt = normalizeDateTimeForFleetiPublicApi(row.endAt || row.ended_at || row.end)
+    const payload = await publicApiPost('/Provider/GetAllAssetTrackPoint', {
+      customerReference,
+      assetId,
+      trackId,
+      startAt,
+      endAt,
+    })
+    pointRowsByTrackId[trackId] = extractArrayPayload(payload, ['results', 'items', 'list', 'data', 'result'])
+  }))
+
+  return pointRowsByTrackId
+}
+
+async function getDashboardEventsForTrack(trackerId, from, to) {
+  try {
+    const data = await getDashboardData()
+    return (data.history || [])
+      .map((event) => normalizeTrackEvent(event))
+      .filter((event) => Number(event?.tracker_id) === Number(trackerId))
+      .filter((event) => Number.isFinite(event?.lat) && Number.isFinite(event?.lng))
+      .filter((event) => isDateTimeWithinRange(event.time, from, to))
+  } catch (error) {
+    console.warn(`[tracks] Alertes dashboard indisponibles pour ${trackerId}: ${error?.message || error}`)
+    return []
+  }
+}
+
+function mergeTrackEvents(...eventGroups) {
+  const seen = new Set()
+  const events = []
+  eventGroups.flat().forEach((event) => {
+    const normalized = normalizeTrackEvent(event)
+    const key = String(normalized?.id || `${normalized?.tracker_id || ''}|${normalized?.event || ''}|${normalized?.time || ''}|${normalized?.lat || ''}|${normalized?.lng || ''}`)
+    if (!Number.isFinite(normalized?.lat) || !Number.isFinite(normalized?.lng) || seen.has(key)) return
+    seen.add(key)
+    events.push(normalized)
+  })
+  return events.sort((a, b) => (Date.parse(a?.time) || 0) - (Date.parse(b?.time) || 0))
+}
+
 async function buildFleetiApiTrackBundle(trackerId, from, to, extra = {}, assets = null) {
   const asset = await resolvePublicAssetForTracker(trackerId, assets)
   const customerReference = customerReferenceFromAsset(asset)
@@ -1461,11 +1520,19 @@ async function buildFleetiApiTrackBundle(trackerId, from, to, extra = {}, assets
   if (!trackRows.length) return buildPublicCacheTrackBundle(trackerId, from, to, extra)
 
   const cacheBundle = buildTrackBundleFromPublicCache(trackerId, from, to)
-  const bundle = buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows, fallbackPoints: cacheBundle.points || [] })
+  let pointRowsByTrackId = {}
+  try {
+    pointRowsByTrackId = await fetchPublicTrackPointsByTrackId({ customerReference, assetId: asset.id, trackRows })
+  } catch (error) {
+    console.warn(`[tracks] Points Fleeti indisponibles pour ${trackerId}: ${error?.message || error}`)
+  }
+  const bundle = buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows, pointRowsByTrackId, fallbackPoints: cacheBundle.points || [] })
+  const dashboardEvents = await getDashboardEventsForTrack(trackerId, from, to)
+  const events = mergeTrackEvents(cacheBundle.events || [], dashboardEvents)
   const lastTwoPoints = bundle.points.length >= 2 ? bundle.points.slice(-2) : []
   return {
     ...bundle,
-    events: cacheBundle.events || [],
+    events,
     lastTwoPoints,
     assetId: asset.id,
     customerReference,
