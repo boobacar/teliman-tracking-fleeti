@@ -58,22 +58,56 @@ function createTrackerIcon(tracker, hasMission = false, isActive = false, bearin
   })
 }
 
-function FleetBounds({ trackers }) {
+function FleetBounds({ trackers, fitKey }) {
   const map = useMap()
+  const trackersRef = useRef(trackers)
 
   useEffect(() => {
-    const boundsPoints = trackers
+    trackersRef.current = trackers
+  }, [trackers])
+
+  useEffect(() => {
+    const boundsPoints = trackersRef.current
       .map((tracker) => tracker?.state?.gps?.location)
       .filter((location) => Number.isFinite(location?.lat) && Number.isFinite(location?.lng))
       .map((location) => [location.lat, location.lng])
 
     if (boundsPoints.length === 0) return
     if (boundsPoints.length === 1) {
-      map.setView(boundsPoints[0], 8)
+      map.setView(boundsPoints[0], Math.max(map.getZoom(), 12), { animate: false })
       return
     }
-    map.fitBounds(boundsPoints, { padding: [50, 50] })
-  }, [map, trackers])
+    map.fitBounds(boundsPoints, { padding: [50, 50], animate: false })
+  }, [map, fitKey])
+
+  return null
+}
+
+function MapInteractionGuard() {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    let unlockTimer = null
+    const lockMarkerAnimation = () => {
+      if (unlockTimer) window.clearTimeout(unlockTimer)
+      container.classList.add('leaflet-transform-lock')
+    }
+    const unlockMarkerAnimation = () => {
+      if (unlockTimer) window.clearTimeout(unlockTimer)
+      unlockTimer = window.setTimeout(() => container.classList.remove('leaflet-transform-lock'), 120)
+    }
+
+    map.on('zoomstart movestart', lockMarkerAnimation)
+    map.on('zoomend moveend', unlockMarkerAnimation)
+
+    return () => {
+      if (unlockTimer) window.clearTimeout(unlockTimer)
+      map.off('zoomstart movestart', lockMarkerAnimation)
+      map.off('zoomend moveend', unlockMarkerAnimation)
+      container.classList.remove('leaflet-transform-lock')
+    }
+  }, [map])
 
   return null
 }
@@ -167,6 +201,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   )
 
   const displayedTrackers = selectedTrackIds.length > 0 ? selectedTrackers : allVisibleTrackers
+  const mapFitKey = `${mapFilter}|${selectedTrackIds.join(',')}`
 
   const center = displayedTrackers[0]?.state?.gps?.location
     ? [displayedTrackers[0].state.gps.location.lat, displayedTrackers[0].state.gps.location.lng]
@@ -297,7 +332,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
       <div ref={mapShellRef} className={`leaflet-wrap large-map map-shell ${isFullscreen ? 'map-shell-fullscreen' : ''}`}>
         <div className="map-overlay-controls"><div className="map-overlay-group"><div className="map-overlay-buttons"><button type="button" className={`chip ${baseMap === 'plan' ? 'selected' : ''}`} onClick={() => setBaseMap('plan')}>Plan</button><button type="button" className={`chip ${baseMap === 'satellite' ? 'selected' : ''}`} onClick={() => setBaseMap('satellite')}>Satellite</button><button type="button" className={`chip ${baseMap === 'hybrid' ? 'selected' : ''}`} onClick={() => setBaseMap('hybrid')}>Hybride</button></div></div><button type="button" className="ghost-btn small-btn map-fullscreen-btn" onClick={toggleFullscreen}>{isFullscreen ? 'Quitter plein écran' : 'Plein écran'}</button></div>
         <MapContainer center={center} zoom={7} scrollWheelZoom className="leaflet-map">
-          <FleetBounds trackers={displayedTrackers} />
+          <MapInteractionGuard />
+          <FleetBounds trackers={displayedTrackers} fitKey={mapFitKey} />
           {baseMap === 'plan' && <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
           {baseMap === 'satellite' && <TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
           {baseMap === 'hybrid' && <><TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" /><TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" opacity={1} /></>}

@@ -1864,14 +1864,22 @@ textarea:focus-visible,
 .custom-tracker-pin-wrapper {
   background: transparent;
   border: none;
-  transition: transform 2.5s linear;
+  transition: transform 1.2s linear;
 }
 
 /* ═══════════════════════════════════════════════
    Live Map — interpolation fluide des markers
    ═══════════════════════════════════════════════ */
 .leaflet-marker-icon.custom-tracker-pin-wrapper {
-  transition: transform 2.5s linear !important;
+  transition: transform 1.2s linear !important;
+  will-change: transform;
+}
+
+.leaflet-transform-lock .leaflet-marker-icon.custom-tracker-pin-wrapper,
+.leaflet-zoom-anim .leaflet-marker-icon.custom-tracker-pin-wrapper,
+.leaflet-zoom-animated .leaflet-marker-icon.custom-tracker-pin-wrapper,
+.leaflet-marker-icon.custom-tracker-pin-wrapper.leaflet-zoom-animated {
+  transition: none !important;
 }
 
 .custom-tracker-pin-shell {
