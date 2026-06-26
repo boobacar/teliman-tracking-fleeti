@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   dedupeDeliveryOrders,
   formatDeliveryQuantity,
@@ -7,6 +8,17 @@ import {
   normalizeDeliveryReference,
   parseDeliveryQuantity,
 } from '../src/lib/deliveryOrders.js'
+
+const deliveryOrdersPageSource = readFileSync(new URL('../src/pages/DeliveryOrdersPage.jsx', import.meta.url), 'utf8')
+const appCssSource = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8')
+
+test('la zone Missions prioritaires garde des colonnes espacées et sans chevauchement', () => {
+  assert.match(deliveryOrdersPageSource, /delivery-priority-row/)
+  assert.match(deliveryOrdersPageSource, /delivery-priority-ref/)
+  assert.match(appCssSource, /\.delivery-priority-row\s*\{[\s\S]*column-gap:\s*22px/)
+  assert.match(appCssSource, /\.delivery-priority-row > \*\s*\{[\s\S]*min-width:\s*0/)
+  assert.match(appCssSource, /\.delivery-priority-main span,[\s\S]*text-overflow:\s*ellipsis/)
+})
 
 test('parseDeliveryQuantity accepts values with comma decimals and trailing T', () => {
   assert.equal(parseDeliveryQuantity('52,660T'), 52.66)

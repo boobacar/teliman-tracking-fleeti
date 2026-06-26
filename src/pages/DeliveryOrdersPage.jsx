@@ -464,7 +464,15 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
 
       <section className="panel compact-side-panel">
         <div className="panel-header"><div><h3>Missions prioritaires</h3></div></div>
-        <div className="driver-ranking">{deliveryOrders.slice(0, 5).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference || '#'}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.destination}</small></div></div>)}</div>
+        <div className="driver-ranking delivery-priority-list">
+          {deliveryOrders.slice(0, 5).map((item) => (
+            <div key={item.id} className="driver-rank-row static-row delivery-priority-row">
+              <strong className="delivery-priority-ref">{item.reference || '#'}</strong>
+              <div className="delivery-priority-main"><span>{item.truckLabel}</span><small>{item.client}</small></div>
+              <div className="delivery-priority-meta"><span>{item.active ? 'Actif' : item.status}</span><small>{item.destination}</small></div>
+            </div>
+          ))}
+        </div>
       </section>
     </section>
 
