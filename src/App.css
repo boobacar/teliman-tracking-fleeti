@@ -1508,6 +1508,29 @@ textarea:focus-visible,
   color: var(--color-red-200);
 }
 
+.service-suspended-page {
+  min-height: min(520px, 70vh);
+  display: grid;
+  place-items: center;
+}
+
+.service-suspended-banner {
+  width: min(560px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 22px 24px;
+  text-align: center;
+  text-transform: none;
+}
+
+.service-suspended-banner strong {
+  display: inline-block;
+  font-size: clamp(1.35rem, 2.5vw, 2rem);
+  line-height: 1.1;
+}
+
 .info-banner,
 .empty-banner {
   padding: 14px 16px;

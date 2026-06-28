@@ -126,6 +126,7 @@ export const deleteAdminUser = async (email) => {
   return data
 }
 
+export const loadServiceStatus = () => getJson('/api/service-status')
 export const loadFleetData = () => getJson('/api/dashboard')
 export const loadTrackers = () => getJson('/api/trackers')
 export const loadDrivers = () => getJson('/api/drivers')

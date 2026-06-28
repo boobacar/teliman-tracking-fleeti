@@ -67,6 +67,8 @@ const WHATSAPP_HISTORY_LIMIT = Number(process.env.WHATSAPP_HISTORY_LIMIT || 500)
 const OIL_CHANGES_FILE = path.join(DATA_DIR, 'oil-changes.json')
 const DRIVER_ASSIGNMENTS_FILE = path.join(DATA_DIR, 'driver-assignments.json')
 const DRIVER_OVERRIDES_FILE = path.join(DATA_DIR, 'driver-overrides.json')
+const SERVICE_SUSPENSION_FILE = process.env.TELIMAN_SERVICE_SUSPENSION_FILE || path.join(DATA_DIR, 'service-suspended.lock')
+const SERVICE_SUSPENSION_MESSAGE = 'impossible de joindre le serveur'
 
 const PORT = Number(process.env.PORT || 8787)
 const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
@@ -226,6 +228,7 @@ app.use((req, res, next) => {
 app.use(requestLogger)
 app.use(protectApi)
 app.use(protectAppSession)
+app.use(blockSuspendedDataAccess)
 
 function parseCsv(value) {
   return String(value || '')
@@ -398,15 +401,33 @@ function sanitizeUserOutput(user) {
   }
 }
 
+function isServiceSuspended() {
+  return fs.existsSync(SERVICE_SUSPENSION_FILE)
+}
+
+function isSuspensionBypassPath(pathname) {
+  return pathname === '/api/auth/login'
+    || pathname === '/api/auth/me'
+    || pathname === '/api/health'
+    || pathname === '/api/service-status'
+}
+
 function protectAppSession(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
-  if (req.path === '/api/auth/login' || req.path === '/api/auth/me' || req.path === '/api/health') return next()
+  if (isSuspensionBypassPath(req.path)) return next()
   const user = getSessionUser(req)
   if (user) {
     req.authUser = user
     return next()
   }
   return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
+}
+
+function blockSuspendedDataAccess(req, res, next) {
+  if (!req.path.startsWith('/api/')) return next()
+  if (isSuspensionBypassPath(req.path)) return next()
+  if (!isServiceSuspended()) return next()
+  return res.status(503).json({ ok: false, suspended: true, error: SERVICE_SUSPENSION_MESSAGE })
 }
 
 function requirePermission(permission) {
@@ -2436,6 +2457,14 @@ app.get('/api/health', (_req, res) => {
     cacheTtlMs: CACHE_TTL_MS,
     privateApiConfigured: PRIVATE_API_CONFIGURED,
     timestamp: new Date().toISOString(),
+  })
+})
+
+app.get('/api/service-status', (_req, res) => {
+  res.json({
+    ok: true,
+    suspended: isServiceSuspended(),
+    message: SERVICE_SUSPENSION_MESSAGE,
   })
 })
 

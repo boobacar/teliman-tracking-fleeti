@@ -6,7 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { employeeFallback, fallbackEvents } from './data/mock'
-import { getCurrentUser, loadFleetData, logout } from './lib/fleeti'
+import { getCurrentUser, loadFleetData, loadServiceStatus, logout } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -38,6 +38,20 @@ L.Icon.Default.mergeOptions({
 })
 
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
+
+function ServiceSuspendedPage({ loading = false }) {
+  return (
+    <section className="page-stack service-suspended-page" aria-live="polite">
+      <div className="error-banner service-suspended-banner">
+        <AlertTriangle size={22} />
+        <div>
+          <strong>impossible de joindre le serveur</strong>
+          {loading && <span> — vérification en cours…</span>}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
   for (const key of preferredKeys) {
@@ -74,9 +88,20 @@ function App() {
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], manualTrackers: [] })
   const [authLoading, setAuthLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
+  const [serviceSuspended, setServiceSuspended] = useState(false)
+  const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [lastRefreshAt, setLastRefreshAt] = useState(null)
 
   const refreshData = useCallback(async () => {
+    if (serviceSuspended) {
+      setDataset(null)
+      setReports({ summary: {}, rows: [] })
+      setDeliveryOrders([])
+      setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
+      setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+      setError('')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -107,7 +132,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [serviceSuspended])
 
   useEffect(() => {
     let cancelled = false
@@ -126,7 +151,37 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (currentUser) refreshData()
+    let cancelled = false
+    async function checkStatusThenRefresh() {
+      if (!currentUser) return
+      setServiceStatusLoading(true)
+      try {
+        const status = await loadServiceStatus()
+        if (cancelled) return
+        const suspended = Boolean(status?.suspended)
+        setServiceSuspended(suspended)
+        if (suspended) {
+          setDataset(null)
+          setReports({ summary: {}, rows: [] })
+          setDeliveryOrders([])
+          setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
+          setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+          setError('')
+          return
+        }
+        await refreshData()
+      } catch (err) {
+        if (!cancelled) {
+          setServiceSuspended(true)
+          setDataset(null)
+          setError('')
+        }
+      } finally {
+        if (!cancelled) setServiceStatusLoading(false)
+      }
+    }
+    checkStatusThenRefresh()
+    return () => { cancelled = true }
   }, [currentUser, refreshData])
 
   useEffect(() => {
@@ -141,7 +196,7 @@ function App() {
     }
   }, [loading, refreshToastVisible])
 
-  useAutoRefresh(currentUser ? refreshData : null, 90000)
+  useAutoRefresh(currentUser && !serviceSuspended ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
     const normalizeKey = (value) => String(value || '').trim().toUpperCase()
@@ -365,8 +420,16 @@ function App() {
     )
   }
 
+  if (serviceSuspended) {
+    return (
+      <Layout loading={serviceStatusLoading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
+        <ServiceSuspendedPage loading={serviceStatusLoading} />
+      </Layout>
+    )
+  }
+
   return (
-    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null) }}>
+    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
       {error && <div className="error-banner">{error}</div>}
       {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
