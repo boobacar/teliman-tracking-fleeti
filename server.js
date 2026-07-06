@@ -271,6 +271,7 @@ function buildCorsOptions() {
       if (host === 'teliman-tracking-fleeti.vercel.app') return true
       if (host.endsWith('.vercel.app') && host.includes('teliman-tracking-fleeti')) return true
       if (host === 'telimanlogistique.com' || host === 'www.telimanlogistique.com') return true
+      if (host.endsWith('.ts.net')) return true
       // Origines locales / réseau privé (dev + prod locale)
       if (host === 'localhost' || host === '127.0.0.1') return true
       if (host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) return true

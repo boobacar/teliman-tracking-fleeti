@@ -1,6 +1,7 @@
 import { normalizeBackendUrl } from './backendUrl.js'
 
 const BACKEND_URL = normalizeBackendUrl(import.meta.env.VITE_BACKEND_URL)
+const REQUEST_TIMEOUT_MS = 12000
 
 function isBrowser() {
   return typeof window !== 'undefined'
@@ -13,6 +14,36 @@ function getSessionHeaders() {
   return email && sessionToken ? { 'x-user-email': email, 'x-session-token': sessionToken } : {}
 }
 
+function createTimeoutSignal(timeoutMs = REQUEST_TIMEOUT_MS) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(timeoutMs)
+  }
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
+  return controller.signal
+}
+
+async function fetchJson(path, options = {}) {
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      signal: createTimeoutSignal(),
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+      },
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    return data
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Le serveur ne répond pas. Vérifiez l’URL backend ou son exposition publique.')
+    }
+    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    throw error
+  }
+}
+
 export function resolveMediaUrl(path) {
   const value = String(path || '')
   if (!value) return ''
@@ -22,58 +53,32 @@ export function resolveMediaUrl(path) {
 }
 
 async function getJson(path) {
-  try {
-    const response = await fetch(`${BACKEND_URL}${path}`, { headers: { ...getSessionHeaders() } })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
-    return data
-  } catch (error) {
-    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
-    throw error
-  }
+  return fetchJson(path, { headers: { ...getSessionHeaders() } })
 }
 
 async function postJson(path, body) {
-  try {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
-      body: JSON.stringify(body),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
-    return data
-  } catch (error) {
-    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
-    throw error
-  }
+  return fetchJson(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify(body),
+  })
 }
 
 async function putJson(path, body) {
-  try {
-    const response = await fetch(`${BACKEND_URL}${path}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
-      body: JSON.stringify(body),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
-    return data
-  } catch (error) {
-    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
-    throw error
-  }
+  return fetchJson(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify(body),
+  })
 }
 
 export async function login(email, password) {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    const data = await fetchJson('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || 'Connexion impossible. Veuillez réessayer.')
     if (isBrowser()) {
       localStorage.setItem('teliman_user_email', data.user.email)
       localStorage.setItem('teliman_session_token', data.sessionToken)
@@ -98,9 +103,7 @@ export function logout() {
 }
 
 export async function getCurrentUser() {
-  const response = await fetch(`${BACKEND_URL}/api/auth/me`, { headers: { ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Session invalide')
+  const data = await getJson('/api/auth/me')
   return data.user
 }
 

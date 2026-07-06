@@ -9,6 +9,20 @@ test('normalizeBackendUrl corrige le domaine API mal orthographié taliman vers 
   )
 })
 
-test('normalizeBackendUrl garde le fallback localhost si aucune URL backend n’est fournie', () => {
-  assert.equal(normalizeBackendUrl(''), 'http://localhost:8787')
+test('normalizeBackendUrl garde le fallback localhost si aucune URL backend n’est fournie en local', () => {
+  assert.equal(normalizeBackendUrl('', { currentFrontendHost: 'localhost' }), 'http://localhost:8787')
+})
+
+test('normalizeBackendUrl bascule vers l’API publique quand le frontend public reçoit une URL backend privée', () => {
+  assert.equal(
+    normalizeBackendUrl('https://home-server.tail660cfd.ts.net', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    'https://home-server-1.tail660cfd.ts.net',
+  )
+})
+
+test('normalizeBackendUrl utilise l’API publique par défaut si aucun backend n’est fourni sur un frontend public', () => {
+  assert.equal(
+    normalizeBackendUrl('', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    'https://home-server-1.tail660cfd.ts.net',
+  )
 })
