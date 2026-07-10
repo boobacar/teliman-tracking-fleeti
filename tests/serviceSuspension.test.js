@@ -14,11 +14,12 @@ test('le mode suspension expose un statut public et bloque les API de donnees', 
   assert.match(SERVER_SOURCE, /app\.use\(blockSuspendedDataAccess\)/)
 })
 
-test('le frontend masque les routes de donnees et affiche le message demande en suspension', () => {
+test('le frontend affiche globalement le message demande sur toutes les pages', () => {
   assert.match(FLEETI_SOURCE, /export const loadServiceStatus = \(\) => getJson\('\/api\/service-status'\)/)
   assert.match(FLEETI_SOURCE, /SERVICE_SUSPENSION_EVENT = 'teliman:service-suspended'/)
   assert.match(FLEETI_SOURCE, /window\.dispatchEvent\(new CustomEvent\(SERVICE_SUSPENSION_EVENT/)
+  assert.match(APP_SOURCE, /const FORCE_GLOBAL_SERVER_MESSAGE = true/)
+  assert.match(APP_SOURCE, /showGlobalServerMessage && <GlobalServerMessageBanner loading=\{serviceStatusLoading\} \/>/)
   assert.match(APP_SOURCE, /window\.addEventListener\(SERVICE_SUSPENSION_EVENT, handleServiceSuspended\)/)
-  assert.match(APP_SOURCE, /<ServiceSuspendedPage loading=\{serviceStatusLoading\} \/>/)
   assert.match(APP_SOURCE, /<strong>impossible de joindre le serveur<\/strong>/)
 })

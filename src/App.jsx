@@ -38,18 +38,17 @@ L.Icon.Default.mergeOptions({
 })
 
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
+const FORCE_GLOBAL_SERVER_MESSAGE = true
 
-function ServiceSuspendedPage({ loading = false }) {
+function GlobalServerMessageBanner({ loading = false }) {
   return (
-    <section className="page-stack service-suspended-page" aria-live="polite">
-      <div className="error-banner service-suspended-banner">
-        <AlertTriangle size={22} />
-        <div>
-          <strong>impossible de joindre le serveur</strong>
-          {loading && <span> — vérification en cours…</span>}
-        </div>
+    <div className="error-banner service-suspended-banner" aria-live="polite">
+      <AlertTriangle size={22} />
+      <div>
+        <strong>impossible de joindre le serveur</strong>
+        {loading && <span> — vérification en cours…</span>}
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -91,6 +90,7 @@ function App() {
   const [serviceSuspended, setServiceSuspended] = useState(false)
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [lastRefreshAt, setLastRefreshAt] = useState(null)
+  const showGlobalServerMessage = FORCE_GLOBAL_SERVER_MESSAGE || serviceSuspended
 
   const clearOperationalState = useCallback(() => {
     setDataset(null)
@@ -134,7 +134,6 @@ function App() {
     } catch (err) {
       if (err?.serviceSuspended) {
         setServiceSuspended(true)
-        clearOperationalState()
         return
       }
       const message = err?.message || 'Chargement impossible. Veuillez vérifier votre session.'
@@ -170,10 +169,6 @@ function App() {
         if (cancelled) return
         const suspended = Boolean(status?.suspended)
         setServiceSuspended(suspended)
-        if (suspended) {
-          clearOperationalState()
-          return
-        }
         await refreshData()
       } catch (err) {
         if (!cancelled) {
@@ -192,7 +187,6 @@ function App() {
     if (typeof window === 'undefined') return undefined
     const handleServiceSuspended = () => {
       setServiceSuspended(true)
-      clearOperationalState()
     }
     window.addEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
     return () => window.removeEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
@@ -437,13 +431,39 @@ function App() {
   if (serviceSuspended) {
     return (
       <Layout loading={serviceStatusLoading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
-        <ServiceSuspendedPage loading={serviceStatusLoading} />
+        <GlobalServerMessageBanner loading={serviceStatusLoading} />
+        <Suspense fallback={<SkeletonPage cards={4} tableRows={5} />}>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />} />
+              <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
+              <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+              <Route path="/whatsapp" element={<WhatsAppPage />} />
+              <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+              <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
+              <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
+              <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
+              <Route path="/reports" element={<ReportsPage reports={reports} />} />
+              <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
+              <Route path="/trips-report" element={<TripsReportPage filteredTrackers={enrichedTrackers} />} />
+              <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
+              <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={operationalTrackers} />} />
+              <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />} />
+              <Route path="/oil-changes" element={<OilChangesPage enrichedTrackers={operationalTrackers} />} />
+              <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
+              <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />} />
+              <Route path="/data" element={<DataPage />} />
+              <Route path="/admin-users" element={<AdminUsersPage />} />
+            </Routes>
+          </ErrorBoundary>
+        </Suspense>
       </Layout>
     )
   }
 
   return (
     <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
+      {showGlobalServerMessage && <GlobalServerMessageBanner loading={serviceStatusLoading} />}
       {error && <div className="error-banner">{error}</div>}
       {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
       {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
