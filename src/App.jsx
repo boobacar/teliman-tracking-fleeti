@@ -42,13 +42,38 @@ const FORCE_GLOBAL_SERVER_MESSAGE = true
 
 function GlobalServerMessageBanner({ loading = false }) {
   return (
-    <div className="error-banner service-suspended-banner" aria-live="polite">
-      <AlertTriangle size={22} />
-      <div>
-        <strong>impossible de joindre le serveur</strong>
-        {loading && <span> — vérification en cours…</span>}
+    <section
+      className="service-suspended-page"
+      aria-live="polite"
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: '24px',
+        background: 'linear-gradient(180deg, #0f172a, #111827)',
+      }}
+    >
+      <div
+        className="error-banner service-suspended-banner"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          maxWidth: '720px',
+          width: '100%',
+          padding: '20px 24px',
+          textAlign: 'center',
+          borderRadius: '18px',
+        }}
+      >
+        <AlertTriangle size={22} />
+        <div>
+          <strong>impossible de joindre le serveur</strong>
+          {loading && <span> — vérification en cours…</span>}
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -405,6 +430,10 @@ function App() {
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
+
+  if (showGlobalServerMessage) {
+    return <GlobalServerMessageBanner loading={serviceStatusLoading || authLoading} />
+  }
 
   if (authLoading) {
     return (
