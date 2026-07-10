@@ -2,6 +2,17 @@ import { normalizeBackendUrl } from './backendUrl.js'
 
 const BACKEND_URL = normalizeBackendUrl(import.meta.env.VITE_BACKEND_URL)
 const REQUEST_TIMEOUT_MS = 12000
+export const SERVICE_SUSPENSION_EVENT = 'teliman:service-suspended'
+
+function emitServiceSuspended(message = 'impossible de joindre le serveur') {
+  if (!isBrowser() || typeof window.dispatchEvent !== 'function') return
+  window.dispatchEvent(new CustomEvent(SERVICE_SUSPENSION_EVENT, {
+    detail: {
+      suspended: true,
+      message,
+    },
+  }))
+}
 
 function isBrowser() {
   return typeof window !== 'undefined'
@@ -33,7 +44,15 @@ async function fetchJson(path, options = {}) {
       },
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data?.error || 'Erreur serveur')
+    if (!response.ok) {
+      if (data?.suspended) {
+        emitServiceSuspended(data?.error || 'impossible de joindre le serveur')
+        const error = new Error(data?.error || 'impossible de joindre le serveur')
+        error.serviceSuspended = true
+        throw error
+      }
+      throw new Error(data?.error || 'Erreur serveur')
+    }
     return data
   } catch (error) {
     if (error?.name === 'AbortError') {

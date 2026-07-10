@@ -6,7 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
 import { employeeFallback, fallbackEvents } from './data/mock'
-import { getCurrentUser, loadFleetData, loadServiceStatus, logout } from './lib/fleeti'
+import { getCurrentUser, loadFleetData, loadServiceStatus, logout, SERVICE_SUSPENSION_EVENT } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -92,14 +92,19 @@ function App() {
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [lastRefreshAt, setLastRefreshAt] = useState(null)
 
+  const clearOperationalState = useCallback(() => {
+    setDataset(null)
+    setReports({ summary: {}, rows: [] })
+    setDeliveryOrders([])
+    setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
+    setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+    setLastRefreshAt(null)
+    setError('')
+  }, [])
+
   const refreshData = useCallback(async () => {
     if (serviceSuspended) {
-      setDataset(null)
-      setReports({ summary: {}, rows: [] })
-      setDeliveryOrders([])
-      setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-      setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
-      setError('')
+      clearOperationalState()
       return
     }
     setLoading(true)
@@ -127,12 +132,17 @@ function App() {
         setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
       }
     } catch (err) {
+      if (err?.serviceSuspended) {
+        setServiceSuspended(true)
+        clearOperationalState()
+        return
+      }
       const message = err?.message || 'Chargement impossible. Veuillez vérifier votre session.'
       setError(message === 'Failed to fetch' ? 'Impossible de joindre le serveur. Vérifiez la configuration réseau ou CORS.' : message)
     } finally {
       setLoading(false)
     }
-  }, [serviceSuspended])
+  }, [serviceSuspended, clearOperationalState])
 
   useEffect(() => {
     let cancelled = false
@@ -161,20 +171,14 @@ function App() {
         const suspended = Boolean(status?.suspended)
         setServiceSuspended(suspended)
         if (suspended) {
-          setDataset(null)
-          setReports({ summary: {}, rows: [] })
-          setDeliveryOrders([])
-          setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-          setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
-          setError('')
+          clearOperationalState()
           return
         }
         await refreshData()
       } catch (err) {
         if (!cancelled) {
           setServiceSuspended(true)
-          setDataset(null)
-          setError('')
+          clearOperationalState()
         }
       } finally {
         if (!cancelled) setServiceStatusLoading(false)
@@ -182,7 +186,17 @@ function App() {
     }
     checkStatusThenRefresh()
     return () => { cancelled = true }
-  }, [currentUser, refreshData])
+  }, [currentUser, refreshData, clearOperationalState])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handleServiceSuspended = () => {
+      setServiceSuspended(true)
+      clearOperationalState()
+    }
+    window.addEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
+    return () => window.removeEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
+  }, [clearOperationalState])
 
   useEffect(() => {
     let hideTimer
