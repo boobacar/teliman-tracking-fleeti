@@ -32,6 +32,12 @@ self.addEventListener('fetch', (event) => {
   // Ne pas intercepter les requêtes non-GET
   if (request.method !== 'GET') return
 
+  // Les API de production sont servies par un autre domaine (Tailscale Funnel).
+  // Laisser le navigateur gérer directement ces requêtes afin de préserver CORS
+  // et d'éviter qu'une erreur du service worker ne transforme une API disponible
+  // en faux statut « Hors ligne ».
+  if (url.origin !== self.location.origin) return
+
   // API : network-first avec cache fallback
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, CACHE_API))
