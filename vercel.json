@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://home-server-1.tail660cfd.ts.net/api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://home-server-1.tail660cfd.ts.net/uploads/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

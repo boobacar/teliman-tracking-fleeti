@@ -11,3 +11,14 @@ test('le service worker laisse passer les requêtes vers le backend public exter
       < SERVICE_WORKER_SOURCE.indexOf("url.pathname.startsWith('/api/')"),
   )
 })
+
+test('le service worker ne met jamais les API authentifiées en cache', () => {
+  assert.match(
+    SERVICE_WORKER_SOURCE,
+    /if \(url\.pathname\.startsWith\('\/api\/'\)\) \{\s*return\s*\}/,
+  )
+  assert.doesNotMatch(
+    SERVICE_WORKER_SOURCE,
+    /if \(url\.pathname\.startsWith\('\/api\/'\)\) \{\s*event\.respondWith/,
+  )
+})

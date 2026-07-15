@@ -38,9 +38,9 @@ self.addEventListener('fetch', (event) => {
   // en faux statut « Hors ligne ».
   if (url.origin !== self.location.origin) return
 
-  // API : network-first avec cache fallback
+  // Les réponses API authentifiées ne doivent jamais être interceptées ni
+  // mises en cache par le service worker.
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(request, CACHE_API))
     return
   }
 

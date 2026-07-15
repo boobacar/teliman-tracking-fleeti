@@ -1,5 +1,10 @@
 const LOCAL_DEFAULT_BACKEND_URL = 'http://localhost:8787'
 const PUBLIC_DEFAULT_BACKEND_URL = 'https://home-server-1.tail660cfd.ts.net'
+const SAME_ORIGIN_PROXY_HOSTS = new Set([
+  'teliman-tracking-fleeti.vercel.app',
+  'www.telimanlogistique.com',
+  'telimanlogistique.com',
+])
 
 function normalizeHost(host) {
   return String(host || '').trim().toLowerCase()
@@ -39,6 +44,10 @@ function readCurrentFrontendHost(explicitHost) {
 export function normalizeBackendUrl(value, options = {}) {
   const currentFrontendHost = readCurrentFrontendHost(options.currentFrontendHost)
   const raw = sanitizeBackendUrl(value)
+
+  // Vercel relaie /api et /uploads vers le backend public. Utiliser ce proxy
+  // même si une ancienne variable VITE_BACKEND_URL est encore configurée.
+  if (SAME_ORIGIN_PROXY_HOSTS.has(currentFrontendHost)) return ''
 
   if (!raw) {
     return isPublicFrontendHost(currentFrontendHost)

@@ -13,16 +13,23 @@ test('normalizeBackendUrl garde le fallback localhost si aucune URL backend n’
   assert.equal(normalizeBackendUrl('', { currentFrontendHost: 'localhost' }), 'http://localhost:8787')
 })
 
-test('normalizeBackendUrl bascule vers l’API publique quand le frontend public reçoit une URL backend privée', () => {
+test('normalizeBackendUrl bascule vers l’API publique quand un autre frontend public reçoit une URL backend privée', () => {
   assert.equal(
-    normalizeBackendUrl('https://home-server.tail660cfd.ts.net', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    normalizeBackendUrl('https://home-server.tail660cfd.ts.net', { currentFrontendHost: 'example.com' }),
     'https://home-server-1.tail660cfd.ts.net',
   )
 })
 
 test('normalizeBackendUrl utilise l’API publique par défaut si aucun backend n’est fourni sur un frontend public', () => {
   assert.equal(
-    normalizeBackendUrl('', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    normalizeBackendUrl('', { currentFrontendHost: 'example.com' }),
     'https://home-server-1.tail660cfd.ts.net',
+  )
+})
+
+test('normalizeBackendUrl utilise le proxy même origine sur le déploiement Vercel', () => {
+  assert.equal(
+    normalizeBackendUrl('https://home-server.tail660cfd.ts.net', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    '',
   )
 })
