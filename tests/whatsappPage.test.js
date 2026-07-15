@@ -13,11 +13,13 @@ test('la page WhatsApp est branchée dans une route et le menu latéral', () => 
   assert.match(layoutSource, /label: 'WhatsApp'/)
 })
 
-test('le numéro API WhatsApp Teliman est centralisé sur la page', () => {
+test('la page WhatsApp affiche uniquement le numéro réellement connecté', () => {
   const pageSource = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
 
-  assert.match(pageSource, /\+225 07 00 184 839/)
-  assert.match(pageSource, /2250700184839/)
+  assert.doesNotMatch(pageSource, /\+225 07 00 184 839/)
+  assert.doesNotMatch(pageSource, /2250700184839/)
+  assert.match(pageSource, /const isConnected = whatsAppStatus\?\.connected === true/)
+  assert.match(pageSource, /Aucun numéro connecté/)
   assert.match(pageSource, /wa\.me\//)
 })
 

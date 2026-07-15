@@ -38,8 +38,6 @@ L.Icon.Default.mergeOptions({
 })
 
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
-const FORCE_GLOBAL_SERVER_MESSAGE = true
-
 function GlobalServerMessageBanner({ loading = false }) {
   return (
     <section
@@ -115,7 +113,7 @@ function App() {
   const [serviceSuspended, setServiceSuspended] = useState(false)
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [lastRefreshAt, setLastRefreshAt] = useState(null)
-  const showGlobalServerMessage = FORCE_GLOBAL_SERVER_MESSAGE || serviceSuspended
+  const showGlobalServerMessage = serviceSuspended
 
   const clearOperationalState = useCallback(() => {
     setDataset(null)
