@@ -4693,3 +4693,604 @@ body {
   color: var(--ops-muted);
   font-size: 14px;
 }
+
+/* Bons de livraison — poste de pilotage unifié */
+.delivery-orders-page {
+  gap: 20px;
+}
+
+.delivery-error-banner {
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  background: rgba(127, 29, 29, 0.22) !important;
+  color: #fecaca !important;
+}
+
+.delivery-command-header,
+.delivery-create-heading,
+.delivery-workspace-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.delivery-command-header {
+  background: var(--ops-panel-strong);
+}
+
+.delivery-command-copy h1,
+.delivery-create-heading h2,
+.delivery-workspace-heading h2 {
+  margin: 0;
+  color: var(--ops-text);
+  letter-spacing: -0.035em;
+}
+
+.delivery-command-copy h1 {
+  margin-top: 10px;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1;
+}
+
+.delivery-command-copy p,
+.delivery-create-heading p,
+.delivery-workspace-heading p {
+  margin: 9px 0 0;
+  color: var(--ops-muted);
+  line-height: 1.5;
+}
+
+.delivery-command-eyebrow,
+.delivery-section-index {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #d7b99d;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.delivery-command-actions,
+.delivery-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.delivery-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.delivery-kpi-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--ops-border);
+  border-radius: 18px;
+  background: var(--ops-panel);
+}
+
+.delivery-kpi-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(35, 81, 31, 0.22);
+  color: #c8e6c9;
+}
+
+.delivery-kpi-card--active .delivery-kpi-icon { color: #bfdbfe; background: rgba(59, 130, 246, 0.15); }
+.delivery-kpi-card--success .delivery-kpi-icon { color: #86efac; background: rgba(34, 197, 94, 0.14); }
+.delivery-kpi-card--warning .delivery-kpi-icon { color: #fcd34d; background: rgba(245, 158, 11, 0.14); }
+
+.delivery-kpi-card small,
+.delivery-kpi-card p {
+  display: block;
+  margin: 0;
+  color: var(--ops-muted);
+  font-size: 12px;
+}
+
+.delivery-kpi-card strong {
+  display: block;
+  margin: 2px 0;
+  color: var(--ops-text);
+  font-size: 25px;
+  line-height: 1;
+}
+
+.delivery-create-panel,
+.delivery-workspace {
+  display: grid;
+  gap: 24px;
+}
+
+.delivery-create-heading h2,
+.delivery-workspace-heading h2 {
+  margin-top: 6px;
+  font-size: 25px;
+}
+
+.delivery-create-form {
+  display: grid;
+  gap: 20px;
+}
+
+.delivery-form-section {
+  min-width: 0;
+  margin: 0;
+  padding: 20px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ops-border-soft);
+}
+
+.delivery-form-section legend {
+  padding: 0 12px 0 0;
+  color: var(--ops-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.delivery-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.delivery-form-grid--planning {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.delivery-create-form input,
+.delivery-create-form select,
+.delivery-create-form textarea,
+.delivery-filter-grid input,
+.delivery-filter-grid select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--ops-border);
+  border-radius: 14px;
+  background: #0f172a;
+  color: var(--ops-text);
+}
+
+.delivery-create-form select,
+.delivery-filter-grid select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: linear-gradient(45deg, transparent 50%, #97a3b6 50%), linear-gradient(135deg, #97a3b6 50%, transparent 50%);
+  background-position: calc(100% - 22px) calc(50% - 3px), calc(100% - 16px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.delivery-notes-field textarea {
+  resize: vertical;
+}
+
+.delivery-active-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--ops-border-soft);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.delivery-active-switch > span {
+  display: grid;
+  gap: 3px;
+}
+
+.delivery-active-switch small { color: var(--ops-muted); }
+
+.delivery-active-switch input {
+  appearance: none;
+  width: 48px;
+  height: 26px;
+  flex: 0 0 48px;
+  padding: 3px;
+  border: 1px solid var(--ops-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.delivery-active-switch input::after {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ops-muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.delivery-active-switch input:checked { background: rgba(34, 197, 94, 0.22); }
+.delivery-active-switch input:checked::after { transform: translateX(20px); background: #86efac; }
+.delivery-active-switch input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.delivery-workspace {
+  overflow: visible;
+}
+
+.delivery-reset-filters:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.delivery-status-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.delivery-status-tabs .chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.delivery-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.7fr) repeat(2, minmax(160px, 0.8fr)) minmax(190px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.delivery-operations-table {
+  min-width: 1040px;
+}
+
+.delivery-operations-table th:last-child,
+.delivery-operations-table td:last-child {
+  text-align: center;
+}
+
+.delivery-operations-table td {
+  vertical-align: middle;
+}
+
+.delivery-operations-table td > strong,
+.delivery-operations-table td > small,
+.delivery-operations-table td > a,
+.delivery-active-label {
+  display: block;
+}
+
+.delivery-operations-table td > small,
+.delivery-active-label {
+  margin-top: 4px;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.delivery-order-reference,
+.delivery-table-primary {
+  color: var(--ops-text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.delivery-order-reference { color: #e8d5c0; }
+
+.delivery-proof-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.has-proof { color: #86efac; }
+.missing-proof { color: #fcd34d; }
+
+.delivery-empty-state {
+  height: 180px;
+  text-align: center !important;
+  color: var(--ops-muted);
+}
+
+.delivery-empty-state > * {
+  display: block;
+  margin: 6px auto;
+}
+
+.delivery-empty-state strong { color: var(--ops-text); }
+
+.delivery-mobile-card {
+  gap: 12px;
+  padding: 14px;
+  background: var(--ops-panel-strong);
+}
+
+.delivery-mobile-card .mobile-voucher-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.delivery-mobile-card .mobile-voucher-head small { color: var(--ops-muted); }
+
+.delivery-mobile-route {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--ops-border-soft);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.delivery-mobile-route svg { flex: 0 0 auto; color: #c8e6c9; }
+.delivery-mobile-route div { min-width: 0; display: grid; gap: 3px; }
+.delivery-mobile-route small { color: var(--ops-text); font-size: 12px; }
+.delivery-mobile-route span { color: var(--ops-muted); font-size: 12px; overflow-wrap: anywhere; }
+
+.delivery-mobile-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.delivery-mobile-details > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.delivery-mobile-details dt { color: var(--ops-muted); font-size: 12px; }
+.delivery-mobile-details dd { margin: 0; text-align: right; font-size: 13px; overflow-wrap: anywhere; }
+.delivery-mobile-empty { display: grid; place-items: center; gap: 8px; min-height: 140px; color: var(--ops-muted); }
+
+@media (max-width: 1180px) {
+  .delivery-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .delivery-form-grid--planning { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .delivery-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .delivery-orders-page { gap: 14px; }
+  .delivery-command-header { align-items: stretch; }
+  .delivery-command-actions { justify-content: flex-start; }
+  .delivery-desktop-table { display: none; }
+  .delivery-filter-grid { grid-template-columns: 1fr; }
+  .delivery-search-field { grid-column: auto; }
+  .delivery-create-panel, .delivery-workspace { gap: 18px; }
+}
+
+@media (max-width: 680px) {
+  .delivery-command-header,
+  .delivery-create-heading,
+  .delivery-workspace-heading { flex-direction: column; gap: 16px; }
+  .delivery-command-actions { width: 100%; }
+  .delivery-command-actions > button { flex: 1 1 0; }
+  .delivery-kpi-grid { gap: 8px; }
+  .delivery-kpi-card { align-items: flex-start; gap: 9px; padding: 12px; border-radius: 15px; }
+  .delivery-kpi-icon { width: 36px; height: 36px; flex-basis: 36px; border-radius: 11px; }
+  .delivery-kpi-card strong { font-size: 21px; }
+  .delivery-kpi-card p { display: none; }
+  .delivery-form-grid, .delivery-form-grid--planning { grid-template-columns: 1fr; }
+  .delivery-active-switch { align-items: center; }
+  .delivery-form-actions > button { flex: 1 1 0; }
+  .delivery-workspace { padding: 16px; }
+  .delivery-mobile-card .table-actions { justify-content: flex-end; flex-wrap: nowrap; }
+}
+
+@media (max-width: 390px) {
+  .delivery-command-actions { display: grid; grid-template-columns: 1fr; }
+  .delivery-kpi-card { padding: 10px; }
+  .delivery-kpi-card small { font-size: 11px; }
+  .delivery-kpi-card strong { font-size: 19px; }
+}
+
+/* Bons carburant — même poste de pilotage opérationnel que les BL */
+.fuel-vouchers-page {
+  gap: 20px;
+}
+
+.fuel-live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin-top: 14px;
+  padding: 7px 10px;
+  border: 1px solid var(--ops-border-soft);
+  border-radius: 999px;
+  background: rgba(35, 81, 31, 0.12);
+  color: #c8e6c9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fuel-kpi-card--volume .delivery-kpi-icon {
+  color: #7dd3fc;
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.fuel-kpi-card--amount .delivery-kpi-icon {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.fuel-kpi-card--price .delivery-kpi-icon {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.fuel-kpi-grid .delivery-kpi-card strong {
+  font-size: clamp(20px, 2vw, 25px);
+  letter-spacing: -0.025em;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.fuel-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(220px, 0.9fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.fuel-input-with-unit {
+  position: relative;
+}
+
+.fuel-input-with-unit input {
+  padding-right: 76px;
+}
+
+.fuel-input-with-unit > span {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: var(--ops-muted);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.fuel-amount-preview {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 12px 16px;
+  border: 1px solid var(--ops-border);
+  border-radius: 14px;
+  background: rgba(35, 81, 31, 0.13);
+}
+
+.fuel-amount-preview small,
+.fuel-amount-preview span {
+  color: var(--ops-muted);
+  font-size: 11px;
+}
+
+.fuel-amount-preview strong {
+  color: var(--ops-text);
+  font-size: 20px;
+}
+
+.fuel-form-error {
+  margin: 0;
+}
+
+.fuel-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.6fr) minmax(180px, 0.8fr) minmax(210px, 0.9fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.fuel-filter-grid input,
+.fuel-filter-grid select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid var(--ops-border);
+  border-radius: 14px;
+  background: #0f172a;
+  color: var(--ops-text);
+}
+
+.fuel-filter-grid select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: linear-gradient(45deg, transparent 50%, #97a3b6 50%), linear-gradient(135deg, #97a3b6 50%, transparent 50%);
+  background-position: calc(100% - 22px) calc(50% - 3px), calc(100% - 16px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.fuel-operations-table {
+  min-width: 1040px;
+}
+
+.fuel-operations-table th:last-child,
+.fuel-operations-table td:last-child {
+  text-align: center;
+}
+
+.fuel-operations-table td {
+  vertical-align: middle;
+}
+
+.fuel-operations-table td > strong,
+.fuel-operations-table td > small,
+.fuel-operations-table td > a {
+  display: block;
+}
+
+.fuel-operations-table td > small {
+  margin-top: 4px;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.fuel-voucher-reference,
+.fuel-table-primary {
+  color: var(--ops-text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.fuel-voucher-reference {
+  color: #e8d5c0;
+}
+
+.fuel-amount-cell {
+  white-space: nowrap;
+  color: #86efac;
+}
+
+.fuel-mobile-amount {
+  color: #86efac;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.fuel-mobile-card .table-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1180px) {
+  .fuel-cost-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fuel-amount-preview {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .fuel-vouchers-page { gap: 14px; }
+  .fuel-filter-grid { grid-template-columns: 1fr; }
+  .fuel-desktop-table { display: none; }
+}
+
+@media (max-width: 680px) {
+  .fuel-cost-grid { grid-template-columns: 1fr; }
+  .fuel-amount-preview { grid-column: auto; }
+  .fuel-kpi-grid .delivery-kpi-card strong { font-size: 17px; }
+  .fuel-mobile-card .table-actions { flex-wrap: nowrap; }
+}

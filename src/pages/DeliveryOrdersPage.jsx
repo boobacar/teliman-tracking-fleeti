@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { Camera, CheckCircle, Trash2 } from 'lucide-react'
+import { Camera, CheckCircle, ClipboardList, Download, PackageCheck, Plus, Trash2, Truck, X } from 'lucide-react'
 import { createDeliveryOrder, deleteDeliveryOrder, loadDeliveryOrders, loadDeliveryOrdersSummary, loadMasterData, updateDeliveryOrder } from '../lib/fleeti'
 import { Pagination } from '../components/Pagination'
 import { SkeletonTable } from '../components/Skeleton'
-import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { PageStack } from '../components/UIPrimitives'
 import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 
 async function fileToDataUrl(file) {
   const objectUrl = URL.createObjectURL(file)
@@ -129,7 +130,17 @@ function matchesDeliveryOrderSearch(item = {}, query = '') {
   return haystack.includes(normalizedQuery)
 }
 
+function formatMissionDate(value, withTime = true) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('fr-FR', withTime
+    ? { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+    : { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
 export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enrichedTrackers, refreshData, setDeliveryOrders, setDeliveryOrdersSummary, masterData = { clients: [], goods: [], destinations: [] }, setMasterData }) {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -142,8 +153,9 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const [page, setPage] = useState(1)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const PER_PAGE = 10
-  const navigate = useNavigate()
+
 
   const trackerOptions = useMemo(() => enrichedTrackers.map((tracker) => ({
     id: tracker.id,
@@ -198,8 +210,9 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     setSaving(true)
     setError('')
     try {
-      await createDeliveryOrder(form)
+      await createDeliveryOrder(form.status === 'Livré' ? { ...form, active: false } : form)
       setForm(initialForm)
+      setShowCreateForm(false)
       if (setDeliveryOrders && setDeliveryOrdersSummary && setMasterData) {
         const [ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
           loadDeliveryOrders(),
@@ -220,6 +233,8 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   }
 
   const markDelivered = async (item) => {
+    if (!item.active || item.status === 'Livré') return
+    if (!await confirm({ title: 'Clôturer le bon de livraison ?', message: `Le bon ${item.reference || item.id} sera marqué livré et désactivé.`, confirmLabel: 'Marquer livré' })) return
     setError('')
     try {
       await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
@@ -239,6 +254,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   }
 
   const removeOrder = async (item) => {
+    if (!await confirm({ title: 'Supprimer le bon de livraison ?', message: `Le bon ${item.reference || item.id} et ses preuves seront supprimés.`, confirmLabel: 'Supprimer' })) return
     setError('')
     try {
       await deleteDeliveryOrder(item.id)
@@ -257,21 +273,22 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     }
   }
 
-  const uploadProofPhoto = async (item, file) => {
-    if (!file) return
+  const uploadProofPhotos = async (item, files) => {
+    if (!files.length) return
     setSaving(true)
     setPhotoUploadProgress(8)
     const progressTimer = setInterval(() => {
       setPhotoUploadProgress((prev) => (prev >= 90 ? prev : prev + 7))
     }, 180)
     try {
-      const proofPhotoDataUrl = await fileToDataUrl(file)
+      const newPhotos = await Promise.all(files.map(fileToDataUrl))
+      const proofPhotoDataUrl = newPhotos.at(-1)
       const currentPhotos = Array.isArray(item.proofPhotoDataUrls)
         ? item.proofPhotoDataUrls
         : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
       await updateDeliveryOrder(item.id, {
         proofPhotoDataUrl,
-        proofPhotoDataUrls: [...currentPhotos, proofPhotoDataUrl].slice(0, 10),
+        proofPhotoDataUrls: [...currentPhotos, ...newPhotos].slice(0, 10),
         proofStatus: item.proofStatus === 'En attente' ? 'Reçue' : (item.proofStatus || 'Reçue'),
       })
       if (setDeliveryOrders && setDeliveryOrdersSummary) {
@@ -285,13 +302,13 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         await refreshData()
       }
       setPhotoUploadProgress(100)
-      setPhotoUploadNotice('✅ Photo uploadée avec succès')
+      setPhotoUploadNotice({ kind: 'success', message: `${newPhotos.length} photo(s) uploadée(s) avec succès` })
       setTimeout(() => {
         setPhotoUploadNotice('')
         setPhotoUploadProgress(0)
       }, 1400)
     } catch (error) {
-      setPhotoUploadNotice(`❌ Upload photo échoué: ${error.message}`)
+      setPhotoUploadNotice({ kind: 'error', message: `Upload photo échoué: ${error.message}` })
       setPhotoUploadProgress(0)
       setTimeout(() => setPhotoUploadNotice(''), 3500)
     } finally {
@@ -310,354 +327,151 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     const searchOk = matchesDeliveryOrderSearch(item, searchQuery)
     return statusOk && trackerOk && clientOk && dateOk && searchOk
   })
+  const hasActiveFilters = statusFilter !== 'all' || trackerFilter !== 'all' || clientFilter !== 'all' || Boolean(dateFilter) || Boolean(searchQuery.trim())
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PER_PAGE))
   // Réinitialiser la page si elle dépasse après changement de filtre
   const safePage = Math.min(page, totalPages)
   const paginatedOrders = filteredOrders.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE)
 
-  const groupedByTracker = enrichedTrackers
-    .map((tracker) => ({ tracker, orders: deliveryOrders.filter((item) => Number(item.trackerId) === Number(tracker.id)) }))
-    .filter((group) => group.orders.length > 0)
-
   const missionStats = {
-    total: deliveryOrdersSummary?.total || 0,
+    total: deliveryOrdersSummary?.total || deliveryOrders.length,
     active: deliveryOrders.filter((item) => item.active).length,
     delivered: deliveryOrders.filter((item) => item.status === 'Livré').length,
-    planned: deliveryOrders.filter((item) => item.status === 'Prévu').length,
+    pendingProofs: deliveryOrders.filter((item) => item.proofStatus === 'En attente').length,
   }
 
-  const topClients = Object.entries(deliveryOrders.reduce((acc, item) => {
-    acc[item.client] = (acc[item.client] || 0) + 1
-    return acc
-  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 3)
-  const pendingProofs = deliveryOrders.filter((item) => item.proofStatus === 'En attente').slice(0, 3)
+  return <PageStack className="ops-page-stack delivery-orders-page">
+    {pageLoading && <SkeletonTable rows={4} cols={7} />}
+    {error && <div className="info-banner delivery-error-banner" role="alert">{error}</div>}
 
-  return <PageStack className="ops-page-stack">
-    {pageLoading && <SkeletonTable rows={4} cols={8} />}
-    {error && <div className="info-banner" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>{error}</div>}
-    <section className="panel panel-large delivery-hero-panel">
-      <SectionHeader title="Centre de missions & bons de livraison" right={<div className="mission-hero-badge">BL Ops</div>} />
-      <div className="mission-highlight-grid">
-        <div className="mission-highlight-card"><span>Total bons</span><strong>{missionStats.total}</strong><small>missions enregistrées</small></div>
-        <div className="mission-highlight-card"><span>Actifs</span><strong>{missionStats.active}</strong><small>en cours</small></div>
-        <div className="mission-highlight-card"><span>Livrés</span><strong>{missionStats.delivered}</strong><small>terminés</small></div>
+    <header className="panel panel-large delivery-command-header">
+      <div className="delivery-command-copy">
+        <span className="delivery-command-eyebrow"><ClipboardList size={16} /> Exploitation</span>
+        <h1>Bons de livraison</h1>
+        <p>Créez, suivez et clôturez les missions de livraison depuis une seule vue.</p>
       </div>
+      <div className="delivery-command-actions">
+        <button type="button" className="ghost-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}><Download size={20} /> Exporter</button>
+        <button type="button" className="primary-btn" onClick={() => setShowCreateForm((visible) => !visible)} aria-expanded={showCreateForm} aria-controls="bl-form">
+          {showCreateForm ? <X size={20} /> : <Plus size={20} />}{showCreateForm ? 'Fermer' : 'Nouveau bon'}
+        </button>
+      </div>
+    </header>
+
+    <section className="delivery-kpi-grid" aria-label="Synthèse des bons de livraison">
+      <article className="delivery-kpi-card"><span className="delivery-kpi-icon"><ClipboardList size={22} /></span><div><small>Total</small><strong>{missionStats.total}</strong><p>bons enregistrés</p></div></article>
+      <article className="delivery-kpi-card delivery-kpi-card--active"><span className="delivery-kpi-icon"><Truck size={22} /></span><div><small>Actifs</small><strong>{missionStats.active}</strong><p>missions à suivre</p></div></article>
+      <article className="delivery-kpi-card delivery-kpi-card--success"><span className="delivery-kpi-icon"><PackageCheck size={22} /></span><div><small>Livrés</small><strong>{missionStats.delivered}</strong><p>missions clôturées</p></div></article>
+      <article className="delivery-kpi-card delivery-kpi-card--warning"><span className="delivery-kpi-icon"><Camera size={22} /></span><div><small>Preuves attendues</small><strong>{missionStats.pendingProofs}</strong><p>photos à récupérer</p></div></article>
     </section>
 
-    <section className="panel sticky-subnav-panel delivery-subnav">
-      <div className="filters">
-        <a className="chip selected" href="#bl-form">Nouveau bon</a>
-        <a className="chip" href="#bl-table">Historique</a>
-        <a className="chip" href="#bl-insights">Insights</a>
-        <a className="chip" href="#bl-trucks">Par camion</a>
-      </div>
-    </section>
+    {showCreateForm && (
+      <section id="bl-form" className="panel panel-large delivery-create-panel">
+        <div className="delivery-create-heading">
+          <div><span className="delivery-section-index">Nouveau</span><h2>Créer un bon de livraison</h2><p>Les champs marqués d’un astérisque sont obligatoires.</p></div>
+          <button type="button" className="ghost-btn icon-btn" onClick={() => setShowCreateForm(false)} aria-label="Fermer le formulaire"><X size={22} /></button>
+        </div>
 
-    <section id="bl-form" className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel panel-large delivery-form-panel">
-        <div className="panel-header"><div><h3>Nouveau bon de livraison</h3></div></div>
-        <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <label className="field-stack">
-            <span>Camion</span>
-            <select aria-label="Camion" value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required>
-              <option value="">Sélectionner un camion</option>
-              {trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Chauffeur</span>
-            <input
-              aria-label="Chauffeur"
-              placeholder="Nom du chauffeur"
-              value={form.driver}
-              onChange={(e) => setForm({ ...form, driver: e.target.value })}
-            />
-          </label>
-          <label className="field-stack">
-            <span>Référence BL</span>
-            <input
-              aria-label="Référence BL"
-              placeholder="Référence BL (ex: 0001234)"
-              value={form.reference}
-              onChange={(e) => setForm({ ...form, reference: e.target.value })}
-              required
-              pattern="^(?!.*\.(jpe?g|png|webp|heic|heif|gif|bmp|svg|tiff?)($|\s|[^a-z0-9])).+"
-              title="La référence ne peut pas être un nom de fichier image. Ex: 0001234"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Client</span>
-            <select aria-label="Client" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required>
-              <option value="">Sélectionner un client</option>
-              {(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Destination</span>
-            <select aria-label="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required>
-              <option value="">Sélectionner une destination</option>
-              {(masterData.destinations || []).map((destination) => <option key={destination} value={destination}>{destination}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Marchandise</span>
-            <select aria-label="Marchandise" value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}>
-              <option value="">Sélectionner une marchandise</option>
-              {(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Quantité / tonnage</span>
-            <input aria-label="Quantité ou tonnage" placeholder="Quantité / tonnage" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-          </label>
-          <label className="field-stack">
-            <span>Départ</span>
-            <StableDatePicker
-              value={form.departureDateTime ? new Date(form.departureDateTime) : null}
-              onChange={(value) => setForm({ ...form, departureDateTime: value ? value.toISOString() : '' })}
-              withTime
-              placeholder="Choisir date et heure de départ"
-              clearable
-              className="filter-control modern-date-input"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Arrivée</span>
-            <StableDatePicker
-              value={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null}
-              onChange={(value) => setForm({ ...form, arrivalDateTime: value ? value.toISOString() : '' })}
-              withTime
-              placeholder="Choisir date et heure d'arrivée"
-              clearable
-              className="filter-control modern-date-input"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Date Déchargement</span>
-            <StableDatePicker
-              value={form.date ? new Date(form.date) : null}
-              onChange={(value) => setForm({ ...form, date: value ? value.toISOString() : '' })}
-              withTime
-              placeholder="Choisir date et heure de déchargement"
-              clearable
-              className="filter-control modern-date-input"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Statut de mission</span>
-            <select aria-label="Statut de mission" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              <option>Prévu</option>
-              <option>En chargement</option>
-              <option>En cours</option>
-              <option>Livré</option>
-            </select>
-          </label>
-          <label className="toggle-row"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />Bon actif</label>
-          <label className="field-stack" style={{ gridColumn: '1 / -1' }}>
-            <span>Notes de mission</span>
-            <textarea aria-label="Notes de mission" placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={4} />
-          </label>
-          <button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
+        <form className="delivery-create-form" onSubmit={submit}>
+          <fieldset className="delivery-form-section">
+            <legend>Mission</legend>
+            <div className="delivery-form-grid">
+              <label className="field-stack"><span>Camion *</span><select aria-label="Camion" value={form.trackerId} onChange={(e) => handleTrackerChange(e.target.value)} required><option value="">Sélectionner un camion</option>{trackerOptions.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.driver}</option>)}</select></label>
+              <label className="field-stack"><span>Chauffeur</span><input aria-label="Chauffeur" placeholder="Nom du chauffeur" value={form.driver} onChange={(e) => setForm({ ...form, driver: e.target.value })} /></label>
+              <label className="field-stack"><span>Référence BL *</span><input aria-label="Référence BL" placeholder="Ex. BL-0001234" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} required pattern="^(?!.*\.(jpe?g|png|webp|heic|heif|gif|bmp|svg|tiff?)($|\s|[^a-z0-9])).+" title="La référence ne peut pas être un nom de fichier image. Ex: 0001234" /></label>
+              <label className="field-stack"><span>Client *</span><select aria-label="Client" value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} required><option value="">Sélectionner un client</option>{(masterData.clients || []).map((client) => <option key={client} value={client}>{client}</option>)}</select></label>
+            </div>
+          </fieldset>
+
+          <fieldset className="delivery-form-section">
+            <legend>Trajet et chargement</legend>
+            <div className="delivery-form-grid">
+              <label className="field-stack"><span>Point de chargement</span><input aria-label="Point de chargement" placeholder="Lieu de départ" value={form.loadingPoint} onChange={(e) => setForm({ ...form, loadingPoint: e.target.value })} /></label>
+              <label className="field-stack"><span>Destination *</span><select aria-label="Destination" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} required><option value="">Sélectionner une destination</option>{(masterData.destinations || []).map((destination) => <option key={destination} value={destination}>{destination}</option>)}</select></label>
+              <label className="field-stack"><span>Marchandise</span><select aria-label="Marchandise" value={form.goods} onChange={(e) => setForm({ ...form, goods: e.target.value })}><option value="">Sélectionner une marchandise</option>{(masterData.goods || []).map((goods) => <option key={goods} value={goods}>{goods}</option>)}</select></label>
+              <label className="field-stack"><span>Quantité / tonnage</span><input aria-label="Quantité ou tonnage" placeholder="Ex. 32 tonnes" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></label>
+            </div>
+          </fieldset>
+
+          <fieldset className="delivery-form-section">
+            <legend>Planning</legend>
+            <div className="delivery-form-grid delivery-form-grid--planning">
+              <label className="field-stack"><span>Départ</span><StableDatePicker value={form.departureDateTime ? new Date(form.departureDateTime) : null} onChange={(value) => setForm({ ...form, departureDateTime: value ? value.toISOString() : '' })} withTime placeholder="Date et heure de départ" clearable className="filter-control modern-date-input" /></label>
+              <label className="field-stack"><span>Arrivée prévue</span><StableDatePicker value={form.arrivalDateTime ? new Date(form.arrivalDateTime) : null} onChange={(value) => setForm({ ...form, arrivalDateTime: value ? value.toISOString() : '' })} withTime placeholder="Date et heure d’arrivée" clearable className="filter-control modern-date-input" /></label>
+              <label className="field-stack"><span>Déchargement</span><StableDatePicker value={form.date ? new Date(form.date) : null} onChange={(value) => setForm({ ...form, date: value ? value.toISOString() : '' })} withTime placeholder="Date et heure de déchargement" clearable className="filter-control modern-date-input" /></label>
+              <label className="field-stack"><span>Statut</span><select aria-label="Statut de mission" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value, active: e.target.value === 'Livré' ? false : form.active })}><option>Prévu</option><option>En chargement</option><option>En cours</option><option>Livré</option></select></label>
+            </div>
+            <label className="delivery-active-switch"><span><strong>Mission active</strong><small>Le bon apparaît dans les missions à suivre.</small></span><input type="checkbox" role="switch" checked={form.active} disabled={form.status === 'Livré'} onChange={(e) => setForm({ ...form, active: e.target.checked })} /></label>
+          </fieldset>
+
+          <label className="field-stack delivery-notes-field"><span>Notes de mission</span><textarea aria-label="Notes de mission" placeholder="Consignes, contact sur place, contraintes de livraison…" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} /></label>
+          <div className="delivery-form-actions"><button type="button" className="ghost-btn" onClick={() => { setForm(initialForm); setShowCreateForm(false) }}>Annuler</button><button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer le bon'}</button></div>
         </form>
       </section>
+    )}
 
-      <section className="panel compact-side-panel">
-        <div className="panel-header"><div><h3>Missions prioritaires</h3></div></div>
-        <div className="driver-ranking delivery-priority-list">
-          {deliveryOrders.slice(0, 5).map((item) => (
-            <div key={item.id} className="driver-rank-row static-row delivery-priority-row">
-              <strong className="delivery-priority-ref">{item.reference || '#'}</strong>
-              <div className="delivery-priority-main"><span>{item.truckLabel}</span><small>{item.client}</small></div>
-              <div className="delivery-priority-meta"><span>{item.active ? 'Actif' : item.status}</span><small>{item.destination}</small></div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </section>
+    <section className="panel panel-large delivery-workspace">
+      <div className="delivery-workspace-heading">
+        <div><span className="delivery-section-index">Suivi</span><h2>Missions de livraison</h2><p>{filteredOrders.length} bon{filteredOrders.length > 1 ? 's' : ''} affiché{filteredOrders.length > 1 ? 's' : ''}</p></div>
+        <button type="button" className="ghost-btn delivery-reset-filters" disabled={!hasActiveFilters} onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter(null); setSearchQuery('') }}><X size={18} /> Réinitialiser</button>
+      </div>
+      <div className="delivery-status-tabs" aria-label="Filtrer par statut">
+        {[['all', 'Tous'], ['active', 'Actifs'], ['Prévu', 'Prévus'], ['En chargement', 'En chargement'], ['En cours', 'En cours'], ['Livré', 'Livrés']].map(([value, label]) => <button key={value} type="button" className={`chip ${statusFilter === value ? 'selected' : ''}`} onClick={() => setStatusFilter(value)}>{label}</button>)}
+      </div>
+      <div className="delivery-filter-grid">
+        <label className="field-stack delivery-search-field"><span>Recherche BL</span><input aria-label="Recherche bons de livraison" className="filter-control" type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Référence, camion, chauffeur, client…" /></label>
+        <label className="field-stack"><span>Camion</span><select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}><option value="all">Tous les camions</option>{enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}</select></label>
+        <label className="field-stack"><span>Client</span><select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}><option value="all">Tous les clients</option>{[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}</select></label>
+        <label className="field-stack"><span>Date de déchargement</span><StableDatePicker value={dateFilter} onChange={setDateFilter} placeholder="Toutes les dates" clearable className="filter-control modern-date-input" /></label>
+      </div>
 
-    <section id="bl-table" className="panel panel-large delivery-table-panel">
-      <div className="panel-header"><div><h3>Historique des bons</h3></div></div>
-      <div className="filters filter-row">
-        <button type="button" className={`chip ${statusFilter === 'all' ? 'selected' : ''}`} onClick={() => setStatusFilter('all')}>Tous</button>
-        <button type="button" className={`chip ${statusFilter === 'active' ? 'selected' : ''}`} onClick={() => setStatusFilter('active')}>Actifs</button>
-        <button type="button" className={`chip ${statusFilter === 'Prévu' ? 'selected' : ''}`} onClick={() => setStatusFilter('Prévu')}>Prévu</button>
-        <button type="button" className={`chip ${statusFilter === 'En cours' ? 'selected' : ''}`} onClick={() => setStatusFilter('En cours')}>En cours</button>
-        <button type="button" className={`chip ${statusFilter === 'Livré' ? 'selected' : ''}`} onClick={() => setStatusFilter('Livré')}>Livré</button>
-      </div>
-      <div className="filters filter-row ops-filter-row">
-        <label className="field-stack">
-          <span>Recherche BL</span>
-          <input
-            aria-label="Recherche bons de livraison"
-            className="filter-control"
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Référence, camion, chauffeur, client, destination…"
-          />
-        </label>
-        <label className="field-stack">
-          <span>Camion</span>
-          <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
-            <option value="all">Tous les camions</option>
-            {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-          </select>
-        </label>
-        <label className="field-stack">
-          <span>Client</span>
-          <select className="filter-control" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
-            <option value="all">Tous les clients</option>
-            {[...new Set(deliveryOrders.map((item) => item.client).filter(Boolean))].map((client) => <option key={client} value={client}>{client}</option>)}
-          </select>
-        </label>
-        <label className="field-stack">
-          <span>Date</span>
-          <StableDatePicker
-            value={dateFilter}
-            onChange={(value) => setDateFilter(value)}
-            placeholder="Filtrer par date"
-            clearable
-            className="filter-control modern-date-input"
-          />
-        </label>
-        <div className="field-stack">
-          <span>Export</span>
-          <button type="button" className="ghost-btn small-btn" onClick={() => exportDeliveryOrdersCsv(filteredOrders)}>Exporter CSV</button>
-        </div>
-      </div>
-      {photoUploadProgress > 0 && (
-        <div className="upload-progress-wrap" aria-label="Progression upload photo">
-          <div className="upload-progress-bar" style={{ width: `${photoUploadProgress}%` }} />
-        </div>
-      )}
-      <div className="reports-table-wrap">
-        <table className="reports-table">
-          <thead>
-            <tr>
-              <th>Référence</th>
-              <th>Camion</th>
-              <th>Chauffeur</th>
-              <th>Client</th>
-              <th>Destination</th>
-              <th>Marchandise</th>
-              <th>Quantité</th>
-              <th>Statut</th>
-              <th>Départ</th>
-              <th>Arrivée</th>
-              <th>Dechargement</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+      {photoUploadProgress > 0 && <div className="upload-progress-wrap" aria-label="Progression upload photo"><div className="upload-progress-bar" style={{ width: `${photoUploadProgress}%` }} /></div>}
+
+      <div className="reports-table-wrap delivery-desktop-table">
+        <table className="reports-table delivery-operations-table">
+          <caption>Bons de livraison filtrés</caption>
+          <thead><tr><th>Bon</th><th>Mission</th><th>Client & destination</th><th>Chargement</th><th>Statut</th><th>Preuve</th><th>Actions</th></tr></thead>
           <tbody>
             {paginatedOrders.map((item) => {
-              const statusLabel = item.active ? 'Actif' : (item.status || 'Prévu')
-              const statusClass = item.active ? 'status-live' : item.status === 'Livré' ? 'status-success' : item.status === 'En cours' || item.status === 'En chargement' ? 'status-warn' : 'status-neutral'
+              const statusLabel = item.status || (item.active ? 'En cours' : 'Prévu')
+              const statusClass = statusLabel === 'Livré' ? 'status-success' : statusLabel === 'En cours' || statusLabel === 'En chargement' ? 'status-warn' : 'status-neutral'
               const pickerId = `proof-photo-${item.id}`
-              return (
-                <tr key={item.id} className={item.active ? 'active-order-row clickable-row' : 'clickable-row'} onClick={() => navigate(`/delivery-order/${item.id}`)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/delivery-order/${item.id}`) }}>
-                  <td><Link className={`link-row order-ref ${item.active ? 'active-ref' : ''}`} to={`/delivery-order/${item.id}`} onClick={(e) => e.stopPropagation()}>{item.reference}</Link></td>
-                  <td><Link className="link-row" to={`/tracker/${item.trackerId}`} onClick={(e) => e.stopPropagation()}>{item.truckLabel}</Link></td>
-                  <td>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || '-'}</td>
-                  <td>{item.client}</td>
-                  <td>{item.destination}</td>
-                  <td>{item.goods}</td>
-                  <td>{formatDeliveryQuantity(item.quantity)}</td>
-                  <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span></td>
-                  <td>{item.departureDateTime ? new Date(item.departureDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                  <td>{item.arrivalDateTime ? new Date(item.arrivalDateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                  <td>{item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                  <td>
-                    <div className="table-actions">
-                      <button type="button" className="ghost-btn icon-btn" title="Marquer livré" aria-label="Marquer livré" onClick={(e) => { e.stopPropagation(); markDelivered(item) }}>
-                        <CheckCircle size={22} />
-                      </button>
-                      <button type="button"
-                        className="ghost-btn icon-btn"
-                        title="Ajouter une photo"
-                        aria-label="Ajouter une photo"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const input = document.getElementById(pickerId)
-                          input?.click()
-                        }}
-                      >
-                        <Camera size={22} />
-                      </button>
-                      <input
-                        id={pickerId}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        style={{ display: 'none' }}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={async (e) => {
-                          e.stopPropagation()
-                          const files = Array.from(e.target.files || [])
-                          for (const file of files) {
-                            await uploadProofPhoto(item, file)
-                          }
-                          e.target.value = ''
-                        }}
-                      />
-                      <button type="button" className="ghost-btn danger-btn icon-btn" onClick={(e) => { e.stopPropagation(); removeOrder(item) }} aria-label="Supprimer"><Trash2 size={22} /></button>
-                    </div>
-                  </td>
-                </tr>
-              )
+              const proofCount = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.length : (item.proofPhotoDataUrl ? 1 : 0)
+              return <tr key={item.id} className={item.active ? 'active-order-row' : ''}>
+                <td><Link className="delivery-order-reference" to={`/delivery-order/${item.id}`}>{item.reference || `BL-${item.id}`}</Link><small>{formatMissionDate(item.date, false)}</small></td>
+                <td><Link className="delivery-table-primary" to={`/tracker/${item.trackerId}`}>{item.truckLabel || 'Camion non renseigné'}</Link><small>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'}</small></td>
+                <td><strong>{item.client || '—'}</strong><small>{item.loadingPoint ? `${item.loadingPoint} → ` : ''}{item.destination || '—'}</small></td>
+                <td><strong>{item.goods || '—'}</strong><small>{formatDeliveryQuantity(item.quantity)}</small></td>
+                <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span>{item.active && <small className="delivery-active-label">Mission active</small>}</td>
+                <td><span className={`delivery-proof-state ${proofCount ? 'has-proof' : 'missing-proof'}`}><Camera size={17} /> {proofCount ? `${proofCount} photo${proofCount > 1 ? 's' : ''}` : 'En attente'}</span></td>
+                <td><div className="table-actions"><button type="button" className="ghost-btn icon-btn" title="Marquer livré" aria-label={`Marquer ${item.reference} livré`} disabled={saving || !item.active || item.status === 'Livré'} onClick={() => markDelivered(item)}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.reference}`} onClick={() => document.getElementById(pickerId)?.click()}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div></td>
+              </tr>
             })}
+            {!paginatedOrders.length && <tr><td colSpan="7" className="delivery-empty-state"><ClipboardList size={28} /><strong>Aucun bon trouvé</strong><span>Modifiez les filtres ou créez un nouveau bon.</span></td></tr>}
           </tbody>
         </table>
       </div>
 
-      <div className="mobile-voucher-list">
+      <div className="mobile-voucher-list delivery-mobile-list">
         {paginatedOrders.map((item) => {
-          const statusLabel = item.active ? 'Actif' : (item.status || 'Prévu')
+          const statusLabel = item.status || (item.active ? 'En cours' : 'Prévu')
           const pickerId = `proof-photo-mobile-${item.id}`
-          return (
-            <article key={`mobile-${item.id}`} className="mobile-voucher-card" onClick={() => navigate(`/delivery-order/${item.id}`)} role="link" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/delivery-order/${item.id}`) }}>
-              <div className="mobile-voucher-head">
-                <strong>{item.reference}</strong>
-                <span>{statusLabel}</span>
-              </div>
-              <p><b>Camion:</b> {item.truckLabel}</p>
-              <p><b>Client:</b> {item.client}</p>
-              <p><b>Destination:</b> {item.destination}</p>
-              <p><b>Date:</b> {item.date ? new Date(item.date).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
-              <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                <button type="button" className="ghost-btn icon-btn" onClick={() => markDelivered(item)} title="Marquer livré"><CheckCircle size={22} /></button>
-                <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo"><Camera size={22} /></button>
-                <input id={pickerId} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={async (e) => { const files = Array.from(e.target.files || []); for (const file of files) { await uploadProofPhoto(item, file) } e.target.value = '' }} />
-                <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer"><Trash2 size={22} /></button>
-              </div>
-            </article>
-          )
+          const proofCount = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.length : (item.proofPhotoDataUrl ? 1 : 0)
+          return <article key={`mobile-${item.id}`} className="mobile-voucher-card delivery-mobile-card">
+            <header className="mobile-voucher-head"><div><small>Bon de livraison</small><strong><Link className="touch-link" to={`/delivery-order/${item.id}`}>{item.reference || `BL-${item.id}`}</Link></strong></div><span className={`status-chip ${statusLabel === 'Livré' ? 'status-success' : statusLabel === 'Prévu' ? 'status-neutral' : 'status-warn'}`}>{statusLabel}</span></header>
+            <div className="delivery-mobile-route"><Truck size={20} /><div><strong>{item.truckLabel || 'Camion non renseigné'}</strong><small>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'}</small><span>{item.loadingPoint || 'Départ non renseigné'} → {item.destination || 'Destination non renseignée'}</span></div></div>
+            <dl className="delivery-mobile-details"><div><dt>Client</dt><dd>{item.client || '—'}</dd></div><div><dt>Chargement</dt><dd>{item.goods || '—'} · {formatDeliveryQuantity(item.quantity)}</dd></div><div><dt>Déchargement</dt><dd>{formatMissionDate(item.date)}</dd></div><div><dt>Preuve</dt><dd className={proofCount ? 'has-proof' : 'missing-proof'}>{proofCount ? `${proofCount} photo${proofCount > 1 ? 's' : ''}` : 'En attente'}</dd></div></dl>
+            <div className="table-actions"><button type="button" className="ghost-btn icon-btn" disabled={saving || !item.active || item.status === 'Livré'} onClick={() => markDelivered(item)} title="Marquer livré" aria-label={`Marquer ${item.reference} livré`}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label={`Ajouter une photo au bon ${item.reference}`}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div>
+          </article>
         })}
+        {!paginatedOrders.length && <div className="delivery-mobile-empty"><ClipboardList size={26} /><strong>Aucun bon trouvé</strong></div>}
       </div>
+
+      <Pagination page={safePage} totalPages={totalPages} total={filteredOrders.length} onPageChange={setPage} />
     </section>
 
-    <Pagination page={safePage} totalPages={totalPages} total={filteredOrders.length} onPageChange={setPage} />
-
-    <section id="bl-insights" className="dashboard-grid premium-grid phase2-grid">
-      <section className="panel">
-        <div className="panel-header"><div><h3>Insights opérationnels</h3></div></div>
-        <div className="driver-ranking"><div className="driver-rank-row static-row"><strong>{missionStats.planned}</strong><div><span>Prévu</span><small>à lancer</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.active || 0}</strong><div><span>Actifs</span><small>suivi terrain</small></div></div><div className="driver-rank-row static-row"><strong>{deliveryOrdersSummary?.delivered || 0}</strong><div><span>Livrés</span><small>clôturés</small></div></div></div>
-      </section>
-      <section className="panel">
-        <div className="panel-header"><div><h3>Top clients & preuves</h3></div></div>
-        <div className="driver-ranking">{topClients.map(([client, count], index) => <div key={client} className="driver-rank-row static-row"><strong>#{index + 1}</strong><div><span>{client}</span><small>fréquence</small></div><div><span>{count}</span><small>bons</small></div></div>)}{pendingProofs.map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.truckLabel}</span><small>{item.client}</small></div><div><span>{item.proofStatus || 'En attente'}</span><small>{item.destination}</small></div></div>)}</div>
-      </section>
-    </section>
-
-    <section id="bl-trucks" className="panel panel-large delivery-history-panel">
-      <div className="panel-header"><div><h3>Historique par camion</h3></div></div>
-      <div className="driver-ranking">{groupedByTracker.map((group) => <div key={group.tracker.id} className="tracker-history-card"><div className="panel-header"><div><h3 style={{ fontSize: 18 }}>{group.tracker.label}</h3><p>{group.tracker.employeeName}</p></div><Link className="ghost-btn small-btn" to={`/tracker/${group.tracker.id}`}>Voir tracker</Link></div><div className="driver-ranking">{group.orders.slice(0, 4).map((item) => <div key={item.id} className="driver-rank-row static-row"><strong>{item.reference}</strong><div><span>{item.client}</span><small>{item.destination}</small></div><div><span>{item.active ? 'Actif' : item.status}</span><small>{item.date ? new Date(item.date).toLocaleDateString() : '-'}</small></div></div>)}</div></div>)}</div>
-    </section>
-
-    {photoUploadNotice && (
-      <div className={`upload-toast ${photoUploadNotice.startsWith('❌') ? 'error' : 'success'}`}>
-        {photoUploadNotice}
-      </div>
-    )}
+    {photoUploadNotice && <div className={`upload-toast ${photoUploadNotice.kind}`} role="status" aria-live="polite">{photoUploadNotice.message}</div>}
+    {confirmationDialog}
   </PageStack>
 }

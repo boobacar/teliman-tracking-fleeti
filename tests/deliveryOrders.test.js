@@ -12,12 +12,16 @@ import {
 const deliveryOrdersPageSource = readFileSync(new URL('../src/pages/DeliveryOrdersPage.jsx', import.meta.url), 'utf8')
 const appCssSource = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8')
 
-test('la zone Missions prioritaires garde des colonnes espacées et sans chevauchement', () => {
-  assert.match(deliveryOrdersPageSource, /delivery-priority-row/)
-  assert.match(deliveryOrdersPageSource, /delivery-priority-ref/)
-  assert.match(appCssSource, /\.delivery-priority-row\s*\{[\s\S]*column-gap:\s*22px/)
-  assert.match(appCssSource, /\.delivery-priority-row > \*\s*\{[\s\S]*min-width:\s*0/)
-  assert.match(appCssSource, /\.delivery-priority-main span,[\s\S]*text-overflow:\s*ellipsis/)
+test('la page BL est centrée sur le suivi, avec création progressive et vue mobile dédiée', () => {
+  assert.match(deliveryOrdersPageSource, /Bons de livraison/)
+  assert.match(deliveryOrdersPageSource, /showCreateForm/)
+  assert.match(deliveryOrdersPageSource, /delivery-operations-table/)
+  assert.match(deliveryOrdersPageSource, /delivery-mobile-card/)
+  assert.match(deliveryOrdersPageSource, /Point de chargement/)
+  assert.match(deliveryOrdersPageSource, /delivery-reset-filters/)
+  assert.match(deliveryOrdersPageSource, /Chauffeur non renseigné/)
+  assert.match(appCssSource, /\.delivery-kpi-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4/)
+  assert.match(appCssSource, /@media \(max-width: 900px\)[\s\S]*\.delivery-desktop-table\s*\{\s*display:\s*none/)
 })
 
 test('parseDeliveryQuantity accepts values with comma decimals and trailing T', () => {

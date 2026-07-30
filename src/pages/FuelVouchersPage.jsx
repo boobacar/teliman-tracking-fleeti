@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { Camera, Trash2 } from 'lucide-react'
-import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { Banknote, Camera, Download, Droplets, Fuel, Plus, ReceiptText, Trash2, X } from 'lucide-react'
 import { SkeletonTable } from '../components/Skeleton'
-import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { PageStack } from '../components/UIPrimitives'
 import { Pagination } from '../components/Pagination'
 import { createFuelVoucher, deleteFuelVoucher, loadFuelVouchers, loadLiveFuelLevels, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 
 const initialForm = {
   trackerId: '',
@@ -48,6 +48,13 @@ function matchesFuelVoucherSearch(item = {}, query = '') {
   return haystack.includes(normalizedQuery)
 }
 
+function formatFuelDate(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 function exportCsv(rows) {
   const headers = ['Camion', 'Numéro bon', 'Date', 'Quantité (L)', 'Prix/L', 'Montant', 'Photo']
   const csvRows = rows.map((item) => {
@@ -77,7 +84,8 @@ function exportCsv(rows) {
 }
 
 export function FuelVouchersPage({ enrichedTrackers = [] }) {
-  const navigate = useNavigate()
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
+
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [items, setItems] = useState([])
@@ -88,6 +96,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   const [dateFilter, setDateFilter] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const PER_PAGE = 10
 
   const [error, setError] = useState('')
@@ -172,6 +181,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
       })
       await reload()
       setForm(initialForm)
+      setShowCreateForm(false)
       setError('')
     } catch (err) {
       setError(err?.message || 'Erreur lors de l\'enregistrement.')
@@ -181,6 +191,7 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
   }
 
   const remove = async (item) => {
+    if (!await confirm({ title: 'Supprimer le bon carburant ?', message: `Le bon ${item.voucherNumber || item.id} et ses preuves seront supprimés.`, confirmLabel: 'Supprimer' })) return
     await deleteFuelVoucher(item.id)
     await reload()
   }
@@ -199,173 +210,134 @@ export function FuelVouchersPage({ enrichedTrackers = [] }) {
     await reload()
   }
 
+  const fuelStats = items.reduce((acc, item) => {
+    acc.liters += toNumber(item.quantityLiters)
+    acc.amount += toNumber(item.amount)
+    return acc
+  }, { liters: 0, amount: 0 })
+  const averagePrice = fuelStats.liters > 0 ? fuelStats.amount / fuelStats.liters : 0
+  const liveFuelCount = Array.isArray(liveFuel) ? liveFuel.length : (liveFuel?.items?.length || 0)
+  const hasActiveFilters = trackerFilter !== 'all' || Boolean(dateFilter) || Boolean(searchQuery.trim())
+
   return (
-    <PageStack className="ops-page-stack">
-      <section className="panel panel-large delivery-hero-panel">
-        <SectionHeader title="Centre des bons carburant" right={<div className="mission-hero-badge">Fuel Ops</div>} />
-        <div className="mission-highlight-grid compact-mission-grid">
-          <div className="mission-highlight-card"><span>Total bons</span><strong>{items.length}</strong><small>bons carburant enregistrés</small></div>
-          <div className="mission-highlight-card"><span>Total litres</span><strong>{items.reduce((acc, item) => acc + (Number(item.quantityLiters) || 0), 0).toLocaleString('fr-FR')}</strong><small>volume cumulé</small></div>
-          <div className="mission-highlight-card"><span>Montant total</span><strong>{items.reduce((acc, item) => acc + (Number(item.amount) || 0), 0).toLocaleString('fr-FR')} FCFA</strong><small>historique</small></div>
-          {liveFuel && (
-            <div className="mission-highlight-card"><span>Niveaux live</span><strong>{Array.isArray(liveFuel) ? liveFuel.length : (liveFuel?.items?.length || '—')}</strong><small>véhicules suivis en direct</small></div>
-          )}
+    <PageStack className="ops-page-stack fuel-vouchers-page">
+      <header className="panel panel-large delivery-command-header fuel-command-header">
+        <div className="delivery-command-copy">
+          <span className="delivery-command-eyebrow"><Fuel size={16} /> Exploitation</span>
+          <h1>Bons carburant</h1>
+          <p>Enregistrez les ravitaillements et contrôlez les dépenses carburant de la flotte.</p>
+          {liveFuel !== null && <span className="fuel-live-indicator"><Droplets size={16} /> {liveFuelCount} niveau{liveFuelCount > 1 ? 'x' : ''} carburant en direct</span>}
         </div>
+        <div className="delivery-command-actions">
+          <button type="button" className="ghost-btn" onClick={() => exportCsv(filtered)}><Download size={20} /> Exporter</button>
+          <button type="button" className="primary-btn" onClick={() => setShowCreateForm((visible) => !visible)} aria-expanded={showCreateForm} aria-controls="fuel-form">
+            {showCreateForm ? <X size={20} /> : <Plus size={20} />}{showCreateForm ? 'Fermer' : 'Nouveau bon'}
+          </button>
+        </div>
+      </header>
+
+      <section className="delivery-kpi-grid fuel-kpi-grid" aria-label="Synthèse des bons carburant">
+        <article className="delivery-kpi-card"><span className="delivery-kpi-icon"><ReceiptText size={22} /></span><div><small>Total bons</small><strong>{items.length}</strong><p>ravitaillements enregistrés</p></div></article>
+        <article className="delivery-kpi-card fuel-kpi-card--volume"><span className="delivery-kpi-icon"><Droplets size={22} /></span><div><small>Volume total</small><strong>{fuelStats.liters.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L</strong><p>litres distribués</p></div></article>
+        <article className="delivery-kpi-card fuel-kpi-card--amount"><span className="delivery-kpi-icon"><Banknote size={22} /></span><div><small>Dépenses</small><strong>{fuelStats.amount.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}</strong><p>FCFA cumulés</p></div></article>
+        <article className="delivery-kpi-card fuel-kpi-card--price"><span className="delivery-kpi-icon"><Fuel size={22} /></span><div><small>Prix moyen / litre</small><strong>{averagePrice.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</strong><p>FCFA par litre</p></div></article>
       </section>
 
-      <section className="panel panel-large delivery-form-panel">
-        <SectionHeader title="Nouveau bon de carburant" />
-        <form className="delivery-form delivery-form-premium" onSubmit={submit}>
-          <label className="field-stack">
-            <span>Numéro de bon carburant</span>
-            <input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Numéro bon" required />
-          </label>
-          <label className="field-stack">
-            <span>Date et heure</span>
-            <StableDatePicker
-              value={form.dateTime ? new Date(form.dateTime) : null}
-              onChange={(value) => setForm((c) => ({ ...c, dateTime: value ? value.toISOString() : '' }))}
-              withTime
-              placeholder="Choisir date et heure"
-              clearable
-              className="filter-control modern-date-input"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Camion</span>
-            <select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required>
-              <option value="">Sélection Camion</option>
-              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Fournisseur</span>
-            <select aria-label="Fournisseur" value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required>
-              <option value="">Fournisseur</option>
-              {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
-            </select>
-          </label>
-          <label className="field-stack"><span>Quantité (L)</span><input type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} required /></label>
-          <label className="field-stack"><span>Prix unitaire par litre</span><input type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} required /></label>
-          <label className="field-stack"><span>Montant total</span><input value={Number.isFinite(amount) ? amount.toLocaleString('fr-FR') : '0'} readOnly /></label>
-          {error && <div className="error-banner" style={{ marginBottom: 8 }}>{error}</div>}
-          <button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement...' : 'Enregistrer le bon'}</button>
-        </form>
-      </section>
-
-      <section className="panel panel-large delivery-table-panel">
-        <SectionHeader title="Historique bons carburant" />
-        <div className="filters filter-row ops-filter-row">
-          <label className="field-stack">
-            <span>Recherche carburant</span>
-            <input
-              aria-label="Recherche bons de carburant"
-              className="filter-control"
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Numéro, camion, chauffeur, fournisseur…"
-            />
-          </label>
-          <label className="field-stack">
-            <span>Camion</span>
-            <select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}>
-              <option value="all">Tous les camions</option>
-              {enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}
-            </select>
-          </label>
-          <label className="field-stack">
-            <span>Date</span>
-            <StableDatePicker
-              value={dateFilter}
-              onChange={(value) => setDateFilter(value)}
-              placeholder="Filtrer par date"
-              clearable
-              className="filter-control modern-date-input"
-            />
-          </label>
-          <div className="field-stack">
-            <span>Export</span>
-            <button type="button" className="ghost-btn small-btn" onClick={() => exportCsv(filtered)}>Exporter CSV</button>
+      {showCreateForm && (
+        <section id="fuel-form" className="panel panel-large delivery-create-panel fuel-create-panel">
+          <div className="delivery-create-heading">
+            <div><span className="delivery-section-index">Nouveau</span><h2>Créer un bon carburant</h2><p>Renseignez le ravitaillement et son coût réel.</p></div>
+            <button type="button" className="ghost-btn icon-btn" onClick={() => setShowCreateForm(false)} aria-label="Fermer le formulaire"><X size={22} /></button>
           </div>
+
+          <form className="delivery-create-form fuel-create-form" onSubmit={submit}>
+            <fieldset className="delivery-form-section">
+              <legend>Identification</legend>
+              <div className="delivery-form-grid">
+                <label className="field-stack"><span>Numéro du bon *</span><input aria-label="Numéro de bon carburant" value={form.voucherNumber} onChange={(e) => setForm((c) => ({ ...c, voucherNumber: e.target.value }))} placeholder="Ex. CARB-00281" required /></label>
+                <label className="field-stack"><span>Date et heure *</span><StableDatePicker value={form.dateTime ? new Date(form.dateTime) : null} onChange={(value) => setForm((c) => ({ ...c, dateTime: value ? value.toISOString() : '' }))} withTime placeholder="Date et heure du ravitaillement" clearable className="filter-control modern-date-input" /></label>
+              </div>
+            </fieldset>
+
+            <fieldset className="delivery-form-section">
+              <legend>Affectation</legend>
+              <div className="delivery-form-grid">
+                <label className="field-stack"><span>Camion *</span><select aria-label="Camion" value={form.trackerId} onChange={(e) => onTruckChange(e.target.value)} required><option value="">Sélectionner un camion</option>{enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label} — {tracker.employeeName || 'Sans chauffeur'}</option>)}</select></label>
+                <label className="field-stack"><span>Fournisseur *</span><select aria-label="Fournisseur" value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} required><option value="">Sélectionner un fournisseur</option>{suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select></label>
+              </div>
+            </fieldset>
+
+            <fieldset className="delivery-form-section fuel-cost-section">
+              <legend>Volume et coût</legend>
+              <div className="fuel-cost-grid">
+                <label className="field-stack"><span>Quantité *</span><div className="fuel-input-with-unit"><input aria-label="Quantité en litres" type="number" step="0.001" min="0" value={form.quantityLiters} onChange={(e) => setForm((c) => ({ ...c, quantityLiters: e.target.value }))} placeholder="0" required /><span>litres</span></div></label>
+                <label className="field-stack"><span>Prix unitaire *</span><div className="fuel-input-with-unit"><input aria-label="Prix unitaire par litre" type="number" step="0.01" min="0" value={form.unitPrice} onChange={(e) => setForm((c) => ({ ...c, unitPrice: e.target.value }))} placeholder="0" required /><span>FCFA/L</span></div></label>
+                <div className="fuel-amount-preview"><small>Montant calculé</small><strong>{amount.toLocaleString('fr-FR')} FCFA</strong><span>Quantité × prix unitaire</span></div>
+              </div>
+            </fieldset>
+
+            {error && <div className="error-banner fuel-form-error" role="alert">{error}</div>}
+            <div className="delivery-form-actions"><button type="button" className="ghost-btn" onClick={() => { setForm(initialForm); setError(''); setShowCreateForm(false) }}>Annuler</button><button type="submit" className="primary-btn" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer le bon'}</button></div>
+          </form>
+        </section>
+      )}
+
+      <section className="panel panel-large delivery-workspace fuel-workspace">
+        <div className="delivery-workspace-heading">
+          <div><span className="delivery-section-index">Suivi</span><h2>Ravitaillements</h2><p>{filtered.length} bon{filtered.length > 1 ? 's' : ''} affiché{filtered.length > 1 ? 's' : ''}</p></div>
+          <button type="button" className="ghost-btn delivery-reset-filters" disabled={!hasActiveFilters} onClick={() => { setTrackerFilter('all'); setDateFilter(null); setSearchQuery('') }}><X size={18} /> Réinitialiser</button>
         </div>
-        {loading ? <SkeletonTable rows={4} cols={7} /> : (
-          <div className="reports-table-wrap">
-            <table className="reports-table">
-              <thead><tr><th>Camion</th><th>Numéro bon</th><th>Date</th><th>Quantité (L)</th><th>Montant</th><th>Photo</th><th>Actions</th></tr></thead>
+
+        <div className="fuel-filter-grid">
+          <label className="field-stack fuel-search-field"><span>Recherche carburant</span><input aria-label="Recherche bons de carburant" className="filter-control" type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Numéro, camion, chauffeur, fournisseur…" /></label>
+          <label className="field-stack"><span>Camion</span><select className="filter-control" value={trackerFilter} onChange={(e) => setTrackerFilter(e.target.value)}><option value="all">Tous les camions</option>{enrichedTrackers.map((tracker) => <option key={tracker.id} value={tracker.id}>{tracker.label}</option>)}</select></label>
+          <label className="field-stack"><span>Date du ravitaillement</span><StableDatePicker value={dateFilter} onChange={setDateFilter} placeholder="Toutes les dates" clearable className="filter-control modern-date-input" /></label>
+        </div>
+
+        {loading ? <SkeletonTable rows={4} cols={7} /> : <>
+          <div className="reports-table-wrap fuel-desktop-table">
+            <table className="reports-table fuel-operations-table">
+              <caption>Historique des bons carburant</caption>
+              <thead><tr><th scope="col">Bon</th><th scope="col">Affectation</th><th scope="col">Fournisseur</th><th scope="col">Volume & prix</th><th scope="col">Montant</th><th scope="col">Preuve</th><th scope="col">Actions</th></tr></thead>
               <tbody>
                 {paginated.map((item) => {
                   const pickerId = `fuel-photo-${item.id}`
-                  const hasPhoto = Array.isArray(item.proofPhotoDataUrls)
-                    ? item.proofPhotoDataUrls.some(Boolean)
-                    : Boolean(item.proofPhotoDataUrl)
-                  return (
-                    <tr
-                      key={item.id}
-                      className="clickable-row"
-                      onClick={() => navigate(`/fuel-voucher/${item.id}`)}
-                      role="link"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') navigate(`/fuel-voucher/${item.id}`)
-                      }}
-                    >
-                      <td>{item.truckLabel || '-'}</td>
-                      <td>{item.voucherNumber || '-'}</td>
-                      <td>{item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                      <td>{Number(item.quantityLiters || 0).toLocaleString('fr-FR')}</td>
-                      <td>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</td>
-                      <td>{hasPhoto ? 'Oui' : 'Non'}</td>
-                      <td>
-                        <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={22} /></button>
-                          <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                          <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label="Supprimer"><Trash2 size={22} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
+                  const photos = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.filter(Boolean) : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
+                  const driver = item.driver || enrichedTrackers.find((tracker) => String(tracker.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'
+                  return <tr key={item.id}>
+                    <td><Link className="fuel-voucher-reference" to={`/fuel-voucher/${item.id}`}>{item.voucherNumber || `BON-${item.id}`}</Link><small>{formatFuelDate(item.dateTime)}</small></td>
+                    <td><Link className="fuel-table-primary" to={`/tracker/${item.trackerId}`}>{item.truckLabel || 'Camion non renseigné'}</Link><small>{driver}</small></td>
+                    <td><strong>{item.supplier || '—'}</strong></td>
+                    <td><strong>{toNumber(item.quantityLiters).toLocaleString('fr-FR')} L</strong><small>{toNumber(item.unitPrice).toLocaleString('fr-FR')} FCFA/L</small></td>
+                    <td><strong className="fuel-amount-cell">{toNumber(item.amount).toLocaleString('fr-FR')} FCFA</strong></td>
+                    <td><span className={`delivery-proof-state ${photos.length ? 'has-proof' : 'missing-proof'}`}><Camera size={17} /> {photos.length ? `${photos.length} photo${photos.length > 1 ? 's' : ''}` : 'En attente'}</span></td>
+                    <td><div className="table-actions"><button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.voucherNumber || item.id}`}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" hidden onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.voucherNumber || item.id}`}><Trash2 size={22} /></button></div></td>
+                  </tr>
                 })}
-                {filtered.length === 0 && <tr><td colSpan={7} className="table-empty-cell">Aucun bon carburant enregistré.</td></tr>}
+                {!paginated.length && <tr><td colSpan="7" className="delivery-empty-state"><ReceiptText size={28} /><strong>Aucun bon trouvé</strong><span>Modifiez les filtres ou créez un nouveau bon carburant.</span></td></tr>}
               </tbody>
             </table>
           </div>
-        )}
 
-        <div className="mobile-voucher-list">
-          {paginated.map((item) => {
-            const pickerId = `fuel-photo-mobile-${item.id}`
-            return (
-              <article
-                key={`mobile-fuel-${item.id}`}
-                className="mobile-voucher-card"
-                onClick={() => navigate(`/fuel-voucher/${item.id}`)}
-                role="link"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') navigate(`/fuel-voucher/${item.id}`)
-                }}
-              >
-                <div className="mobile-voucher-head">
-                  <strong>{item.voucherNumber || '-'}</strong>
-                  <span>{Number(item.amount || 0).toLocaleString('fr-FR')} FCFA</span>
-                </div>
-                <p><b>Camion:</b> {item.truckLabel || '-'}</p>
-                <p><b>Date:</b> {item.dateTime ? new Date(item.dateTime).toLocaleString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</p>
-                <p><b>Quantité:</b> {Number(item.quantityLiters || 0).toLocaleString('fr-FR')} L</p>
-                <p><b>Prix/L:</b> {Number(item.unitPrice || 0).toLocaleString('fr-FR')}</p>
-                <div className="table-actions" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label="Ajouter photo"><Camera size={22} /></button>
-                  <input id={pickerId} type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} />
-                  <button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer"><Trash2 size={22} /></button>
-                </div>
+          <div className="mobile-voucher-list fuel-mobile-list">
+            {paginated.map((item) => {
+              const pickerId = `fuel-photo-mobile-${item.id}`
+              const photos = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.filter(Boolean) : (item.proofPhotoDataUrl ? [item.proofPhotoDataUrl] : [])
+              const driver = item.driver || enrichedTrackers.find((tracker) => String(tracker.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'
+              return <article key={`mobile-fuel-${item.id}`} className="mobile-voucher-card delivery-mobile-card fuel-mobile-card">
+                <header className="mobile-voucher-head"><div><small>Bon carburant</small><strong><Link className="touch-link" to={`/fuel-voucher/${item.id}`}>{item.voucherNumber || `BON-${item.id}`}</Link></strong></div><span className="fuel-mobile-amount">{toNumber(item.amount).toLocaleString('fr-FR')} FCFA</span></header>
+                <div className="delivery-mobile-route fuel-mobile-truck"><Fuel size={20} /><div><strong>{item.truckLabel || 'Camion non renseigné'}</strong><small>{driver}</small><span>{item.supplier || 'Fournisseur non renseigné'}</span></div></div>
+                <dl className="delivery-mobile-details"><div><dt>Date</dt><dd>{formatFuelDate(item.dateTime)}</dd></div><div><dt>Quantité</dt><dd>{toNumber(item.quantityLiters).toLocaleString('fr-FR')} L</dd></div><div><dt>Prix unitaire</dt><dd>{toNumber(item.unitPrice).toLocaleString('fr-FR')} FCFA/L</dd></div><div><dt>Preuve</dt><dd className={photos.length ? 'has-proof' : 'missing-proof'}>{photos.length ? `${photos.length} photo${photos.length > 1 ? 's' : ''}` : 'En attente'}</dd></div></dl>
+                <div className="table-actions"><button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.voucherNumber || item.id}`}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" hidden onChange={async (e) => { const file = e.target.files?.[0]; await uploadPhoto(item, file); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => remove(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.voucherNumber || item.id}`}><Trash2 size={22} /></button></div>
               </article>
-            )
-          })}
-          {filtered.length === 0 && <EmptyBanner message="Aucun bon carburant enregistré." />}
-        </div>
+            })}
+            {!paginated.length && <div className="delivery-mobile-empty"><ReceiptText size={26} /><strong>Aucun bon trouvé</strong></div>}
+          </div>
+        </>}
+
         <Pagination page={safePage} totalPages={totalPages} total={filtered.length} onPageChange={setPage} />
       </section>
+      {confirmationDialog}
     </PageStack>
   )
 }
