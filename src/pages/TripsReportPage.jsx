@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Route, Truck, UserRound } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { Pagination } from '../components/Pagination'
 import { loadTracksBatch } from '../lib/fleeti'
 
 const MIN_TRIP_DISTANCE_KM = 0
+const DETAIL_PAGE_SIZE = 25
+const TRIPS_CACHE_TTL_MS = 60_000
 
 function dateToYmd(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) return ''
@@ -166,6 +169,7 @@ function pointsInWindow(points = [], start, end) {
     .sort((a, b) => a.time - b.time)
 }
 
+// eslint-disable-next-line no-unused-vars -- conservé pour la reconstruction locale des trajets dégradés
 function distanceFromPointsKm(points = [], start, end) {
   const scoped = pointsInWindow(points, start, end)
   if (scoped.length < 2) return 0
@@ -177,6 +181,7 @@ function distanceFromPointsKm(points = [], start, end) {
   return Number(total.toFixed(3))
 }
 
+// eslint-disable-next-line no-unused-vars -- conservé pour la reconstruction locale des trajets dégradés
 function movingDurationFromPointsMinutes(points = [], start, end, minSpeedKmh = 5) {
   const scoped = pointsInWindow(points, start, end)
   if (scoped.length < 2) return 0
@@ -217,6 +222,7 @@ function estimateSegmentDistanceKm(points = []) {
   return Number(total.toFixed(3))
 }
 
+// eslint-disable-next-line no-unused-vars -- fallback prêt pour réactivation si Fleeti ne fournit aucun segment
 function inferSegmentsFromPoints(points = [], trackerId) {
   const normalized = normalizedTrackPoints(points)
   if (normalized.length < 2) return []
@@ -399,6 +405,9 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
   const [trips, setTrips] = useState([])
+  const [showZeroActivity, setShowZeroActivity] = useState(false)
+  const [detailPage, setDetailPage] = useState(1)
+  const tripsCacheRef = useRef(new Map())
 
   const trackerOptions = useMemo(() => filteredTrackers.map((tracker) => ({
     id: String(tracker.id),
@@ -425,6 +434,8 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
     async function run() {
       const candidateTrackers = filteredTrackers
+        .filter((tracker) => !selectedTrackerId || String(tracker.id) === selectedTrackerId)
+        .filter((tracker) => !selectedDriver || fleetiDriverName(tracker) === selectedDriver)
 
       if (!candidateTrackers.length) {
         setTrips([])
@@ -435,11 +446,18 @@ export function TripsReportPage({ filteredTrackers = [] }) {
       setError('')
       setWarning('')
       try {
-        const payload = await loadTracksBatch({
-          trackerIds: candidateTrackers.map((tracker) => tracker.id),
-          from: `${from} 00:00:00`,
-          to: `${to} 23:59:59`,
-        })
+        const cacheKey = `${from}:${to}:${candidateTrackers.map((tracker) => tracker.id).sort().join(',')}`
+        const cached = tripsCacheRef.current.get(cacheKey)
+        const payload = cached && Date.now() - cached.cachedAt < TRIPS_CACHE_TTL_MS
+          ? cached.payload
+          : await loadTracksBatch({
+              trackerIds: candidateTrackers.map((tracker) => tracker.id),
+              from: `${from} 00:00:00`,
+              to: `${to} 23:59:59`,
+            })
+        if (!cached || Date.now() - cached.cachedAt >= TRIPS_CACHE_TTL_MS) {
+          tripsCacheRef.current.set(cacheKey, { cachedAt: Date.now(), payload })
+        }
 
         if (cancelled) return
 
@@ -463,13 +481,25 @@ export function TripsReportPage({ filteredTrackers = [] }) {
 
     run()
     return () => { cancelled = true }
-  }, [filteredTrackers, from, to])
+  }, [filteredTrackers, from, selectedDriver, selectedTrackerId, to])
 
   const filteredTrips = useMemo(() => trips.filter((trip) => {
     if (selectedTrackerId && String(trip.trackerId) !== selectedTrackerId) return false
     if (selectedDriver && trip.driver !== selectedDriver) return false
+    if (!showZeroActivity && trip.distanceKm <= 0 && trip.durationMinutes <= 0 && trip.eventCount <= 0) return false
     return true
-  }), [trips, selectedDriver, selectedTrackerId])
+  }), [trips, selectedDriver, selectedTrackerId, showZeroActivity])
+
+  const detailTotalPages = Math.max(1, Math.ceil(filteredTrips.length / DETAIL_PAGE_SIZE))
+  const visibleTrips = useMemo(() => filteredTrips.slice((detailPage - 1) * DETAIL_PAGE_SIZE, detailPage * DETAIL_PAGE_SIZE), [detailPage, filteredTrips])
+
+  useEffect(() => {
+    setDetailPage(1)
+  }, [from, selectedDriver, selectedTrackerId, showZeroActivity, to])
+
+  useEffect(() => {
+    if (detailPage > detailTotalPages) setDetailPage(detailTotalPages)
+  }, [detailPage, detailTotalPages])
 
   const summaryByTruck = useMemo(() => {
     const grouped = new Map()
@@ -619,7 +649,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
   return (
     <PageStack className="ops-page-stack">
       <section className="panel panel-large delivery-hero-panel reports-v2-hero">
-        <SectionHeader title="Rapport Trajets Fleeti" description="Chaque ligne correspond directement à un segment de trajet renvoyé par Fleeti, sans regroupement." />
+        <SectionHeader title="Rapport Trajets Fleeti" description="Chaque ligne correspond directement à un segment de trajet renvoyé par Fleeti, sans regroupement." headingLevel="h1" />
       </section>
 
       <section className="panel panel-large" style={{ minHeight: 'unset', paddingBottom: 18 }}>
@@ -650,6 +680,10 @@ export function TripsReportPage({ filteredTrackers = [] }) {
             <span>Export</span>
             <button type="button" className="primary-btn" onClick={exportPdf} style={{ width: '100%', minHeight: 48 }} disabled={loading || !filteredTrips.length}><Download size={16} />Exporter PDF</button>
           </div>
+          <label className="field-stack">
+            <span>Activité nulle</span>
+            <span><input type="checkbox" checked={showZeroActivity} onChange={(event) => setShowZeroActivity(event.target.checked)} /> Afficher les lignes sans activité</span>
+          </label>
         </div>
       </section>
 
@@ -714,7 +748,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           <table className="reports-table">
             <thead><tr><th>Départ</th><th>Arrivée</th><th>Camion</th><th>Chauffeur</th><th>Distance</th><th>Durée</th><th>Vitesse moy.</th><th>Vitesse max</th><th>Événements</th></tr></thead>
             <tbody>
-              {filteredTrips.map((trip) => (
+              {visibleTrips.map((trip) => (
                 <tr key={trip.id}>
                   <td>{formatDateTime(trip.start)}</td>
                   <td>{formatDateTime(trip.end)}</td>
@@ -731,6 +765,8 @@ export function TripsReportPage({ filteredTrackers = [] }) {
             </tbody>
           </table>
         </div>
+        <div className="pagination-summary" role="status">Page {detailPage} sur {detailTotalPages}</div>
+        <Pagination page={detailPage} totalPages={detailTotalPages} total={filteredTrips.length} onPageChange={setDetailPage} />
       </section>
     </PageStack>
   )

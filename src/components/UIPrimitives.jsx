@@ -2,11 +2,12 @@ export function PageStack({ children, className = '' }) {
   return <div className={`page-stack ${className}`.trim()}>{children}</div>
 }
 
-export function SectionHeader({ title, description, right = null }) {
+export function SectionHeader({ title, description, right = null, headingLevel = 'h3' }) {
+  const Heading = headingLevel
   return (
     <div className="ui-section-header">
       <div>
-        <h3>{title}</h3>
+        <Heading>{title}</Heading>
         {description ? <p>{description}</p> : null}
       </div>
       {right}

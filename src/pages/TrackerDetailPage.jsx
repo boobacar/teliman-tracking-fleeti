@@ -8,9 +8,9 @@ import { SectionHeader } from '../components/UIPrimitives'
 import { loadVehicles } from '../lib/fleeti'
 
 function statusLabel(status) {
-  if (status === 'active') return { label: 'Active', color: '#22c55e' }
-  if (status === 'idle') return { label: 'Idle', color: '#f59e0b' }
-  if (status === 'offline') return { label: 'Offline', color: '#ef4444' }
+  if (status === 'active') return { label: 'Actif', color: '#22c55e' }
+  if (status === 'idle') return { label: 'À l’arrêt', color: '#f59e0b' }
+  if (status === 'offline') return { label: 'Hors ligne', color: '#ef4444' }
   return { label: 'Inconnu', color: '#64748b' }
 }
 
@@ -34,7 +34,7 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
 
   if (!tracker) return (
     <section className="panel">
-      <div className="panel-header"><div><h3>Fiche unité</h3><p>Sélectionnez une unité dans la liste trackers</p></div></div>
+      <div className="panel-header"><div><h1>Fiche unité</h1><p>Sélectionnez une unité dans la liste trackers</p></div></div>
       <EmptyBanner message="Aucune unité trouvée pour l'identifiant demandé." />
     </section>
   )
@@ -48,6 +48,7 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
+      <h1 className="visually-hidden">Fiche unité {tracker.label}</h1>
       <section className="panel">
         <div className="panel-header">
           <div><h3>{tracker.label}</h3><p>Vue complète de l'unité</p></div>
@@ -117,27 +118,33 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
       <div className="dashboard-grid premium-grid phase2-grid">
         <div className="panel">
           <div className="panel-header"><div><h3>Kilométrage</h3><p>Activité par journée</p></div></div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={mileageData}>
-              <defs><linearGradient id="detailFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.8} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0.05} /></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
-              <XAxis dataKey="day" stroke="#8da2c0" /><YAxis stroke="#8da2c0" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-              <Area type="monotone" dataKey="mileage" stroke="#60a5fa" fill="url(#detailFill)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <figure aria-label="Kilométrage quotidien">
+            {mileageData.length ? <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={mileageData}>
+                <defs><linearGradient id="detailFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.8} /><stop offset="95%" stopColor="#60a5fa" stopOpacity={0.05} /></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
+                <XAxis dataKey="day" stroke="#8da2c0" /><YAxis stroke="#8da2c0" />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
+                <Area type="monotone" dataKey="mileage" stroke="#60a5fa" fill="url(#detailFill)" />
+              </AreaChart>
+            </ResponsiveContainer> : <p className="chart-data-summary">Aucune donnée kilométrique.</p>}
+            <figcaption className="chart-data-summary">{mileageData.length ? `${mileageData.length} jours de kilométrage affichés.` : 'Aucune donnée disponible.'}</figcaption>
+          </figure>
         </div>
 
         <div className="panel">
           <div className="panel-header"><div><h3>Répartition des alertes</h3><p>Par type d'événement</p></div></div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={eventsByType}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
-              <XAxis dataKey="event" stroke="#8da2c0" tick={{ fontSize: 11 }} /><YAxis stroke="#8da2c0" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-              <Bar dataKey="count" fill="#f59e0b" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <figure aria-label="Alertes par type">
+            {eventsByType.length ? <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={eventsByType}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
+                <XAxis dataKey="event" stroke="#8da2c0" tick={{ fontSize: 11 }} /><YAxis stroke="#8da2c0" />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
+                <Bar dataKey="count" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer> : <p className="chart-data-summary">Aucune donnée d’alerte.</p>}
+            <figcaption className="chart-data-summary">{eventsByType.length ? `${eventsByType.length} types d’alertes affichés.` : 'Aucune donnée disponible.'}</figcaption>
+          </figure>
         </div>
       </div>
 

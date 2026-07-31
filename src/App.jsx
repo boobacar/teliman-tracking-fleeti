@@ -1,17 +1,13 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 import './App.css'
-import { employeeFallback, fallbackEvents } from './data/mock'
-import { getCurrentUser, loadFleetData, loadServiceStatus, logout, SERVICE_SUSPENSION_EVENT } from './lib/fleeti'
+import { getCurrentUser, loadDeliveryOrders, loadDeliveryOrdersSummary, loadFleetData, loadMasterData, loadServiceStatus, logout, SERVICE_SUSPENSION_EVENT } from './lib/fleeti'
 import { useAutoRefresh } from './hooks'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SkeletonPage } from './components/Skeleton'
-import { DashboardPage } from './pages/DashboardPage'
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default: module.MapPage })))
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
 const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage').then((module) => ({ default: module.WhatsAppPage })))
@@ -30,49 +26,47 @@ const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ defau
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
-
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
-function GlobalServerMessageBanner({ loading = false }) {
+function GlobalServerMessageBanner({ kind = 'serverError', loading = false, onRetry, onLogout }) {
+  const copy = {
+    suspended: ['Service temporairement suspendu', 'Les données opérationnelles restent indisponibles jusqu’à la réactivation du service.'],
+    offline: ['Connexion indisponible', 'Vérifiez le réseau puis réessayez. Les données affichées peuvent être anciennes.'],
+    timeout: ['Le serveur tarde à répondre', 'La demande a expiré. Réessayez dans un instant.'],
+    sessionExpired: ['Session expirée', 'Reconnectez-vous pour continuer.'],
+    serverError: ['Erreur serveur', 'Le serveur a rencontré un problème inattendu.'],
+  }[kind] || ['Erreur de connexion', 'Réessayez dans un instant.']
   return (
-    <section
-      className="service-suspended-page"
-      aria-live="polite"
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        padding: '24px',
-        background: 'linear-gradient(180deg, #0f172a, #111827)',
-      }}
-    >
-      <div
-        className="error-banner service-suspended-banner"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px',
-          maxWidth: '720px',
-          width: '100%',
-          padding: '20px 24px',
-          textAlign: 'center',
-          borderRadius: '18px',
-        }}
-      >
+    <section className="service-suspended-page" aria-live="assertive">
+      <div className="error-banner service-suspended-banner">
         <AlertTriangle size={22} />
         <div>
-          <strong>impossible de joindre le serveur</strong>
-          {loading && <span> — vérification en cours…</span>}
+          <strong>{copy[0]}</strong>
+          <p>{loading ? 'Vérification en cours…' : copy[1]}</p>
+          <div className="table-actions server-state-actions">
+            {kind !== 'sessionExpired' && <button type="button" className="primary-btn" onClick={onRetry} disabled={loading}>Réessayer</button>}
+            <button type="button" className="ghost-btn" onClick={onLogout}>Déconnexion</button>
+          </div>
         </div>
       </div>
     </section>
   )
+}
+
+function PermissionRoute({ user, permission, children }) {
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : []
+  if (permission && !permissions.includes('*') && !permissions.includes(permission)) {
+    return <section className="panel panel-large route-state-page"><h1>Accès refusé</h1><p>Vous n’avez pas la permission d’ouvrir cette page.</p><Link className="primary-btn" to="/">Retour au dashboard</Link></section>
+  }
+  return children
+}
+
+function hasPermission(user, permission) {
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : []
+  return permissions.includes('*') || permissions.includes(permission)
+}
+
+function NotFoundPage() {
+  return <section className="panel panel-large route-state-page"><h1>Page introuvable</h1><p>L’adresse demandée n’existe pas.</p><Link className="primary-btn" to="/">Retour au dashboard</Link></section>
 }
 
 function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
@@ -97,6 +91,7 @@ function pickLatestMileage(mileageByDay = {}, preferredKeys = []) {
 }
 
 function App() {
+  const location = useLocation()
   const [dataset, setDataset] = useState(null)
   const [loading, setLoading] = useState(false)
   const [refreshToastVisible, setRefreshToastVisible] = useState(false)
@@ -104,67 +99,55 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [, setSelectedTrackerId] = useState(3488326)
-  const [reports, setReports] = useState({ summary: {}, rows: [] })
   const [deliveryOrders, setDeliveryOrders] = useState([])
   const [deliveryOrdersSummary, setDeliveryOrdersSummary] = useState({ total: 0, active: 0, delivered: 0, byTruck: {} })
   const [masterData, setMasterData] = useState({ clients: [], goods: [], destinations: [], suppliers: [], manualTrackers: [] })
   const [authLoading, setAuthLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
-  const [serviceSuspended, setServiceSuspended] = useState(false)
+  const [serviceIssue, setServiceIssue] = useState('')
   const [serviceStatusLoading, setServiceStatusLoading] = useState(false)
   const [lastRefreshAt, setLastRefreshAt] = useState(null)
-  const showGlobalServerMessage = serviceSuspended
 
-  const clearOperationalState = useCallback(() => {
-    setDataset(null)
-    setReports({ summary: {}, rows: [] })
-    setDeliveryOrders([])
-    setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-    setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
-    setLastRefreshAt(null)
-    setError('')
-  }, [])
 
   const refreshData = useCallback(async () => {
-    if (serviceSuspended) {
-      clearOperationalState()
-      return
-    }
+    if (serviceIssue === 'suspended') return
     setLoading(true)
     setError('')
     try {
       const fleet = await loadFleetData()
       setDataset(fleet)
-      try {
-        const module = await import('./lib/fleeti')
-        const [reportsPayload, ordersPayload, ordersSummaryPayload, masterDataPayload] = await Promise.all([
-          module.loadReports().catch(() => ({ summary: {}, rows: [] })),
-          module.loadDeliveryOrders().catch(() => ({ items: [] })),
-          module.loadDeliveryOrdersSummary().catch(() => ({ total: 0, active: 0, delivered: 0, byTruck: {} })),
-          module.loadMasterData().catch(() => ({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })),
-        ])
-        setReports(reportsPayload)
-        setDeliveryOrders(ordersPayload?.items || [])
-        setDeliveryOrdersSummary(ordersSummaryPayload || { total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData(masterDataPayload || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
-        setLastRefreshAt(new Date())
-      } catch {
-        setReports({ summary: {}, rows: [] })
-        setDeliveryOrders([])
-        setDeliveryOrdersSummary({ total: 0, active: 0, delivered: 0, byTruck: {} })
-        setMasterData({ clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+      const secondaryLoads = []
+      if (hasPermission(currentUser, 'page_reports') || hasPermission(currentUser, 'manage_delivery_orders')) {
+        secondaryLoads.push({ key: 'orders', load: loadDeliveryOrders })
       }
+      if (hasPermission(currentUser, 'manage_delivery_orders')) {
+        secondaryLoads.push({ key: 'ordersSummary', load: loadDeliveryOrdersSummary })
+      }
+      if (hasPermission(currentUser, 'manage_delivery_orders') || hasPermission(currentUser, 'manage_data') || hasPermission(currentUser, 'page_fleet')) {
+        secondaryLoads.push({ key: 'masterData', load: loadMasterData })
+      }
+      const secondaryResults = await Promise.allSettled(secondaryLoads.map(({ load }) => load()))
+      secondaryResults.forEach((result, index) => {
+        if (result.status !== 'fulfilled') return
+        const key = secondaryLoads[index].key
+        if (key === 'orders') setDeliveryOrders(result.value?.items || [])
+        if (key === 'ordersSummary') setDeliveryOrdersSummary(result.value || { total: 0, active: 0, delivered: 0, byTruck: {} })
+        if (key === 'masterData') setMasterData(result.value || { clients: [], goods: [], destinations: [], suppliers: [], purchaseOrders: {}, manualTrackers: [] })
+      })
+      setLastRefreshAt(new Date())
     } catch (err) {
       if (err?.serviceSuspended) {
-        setServiceSuspended(true)
+        setServiceIssue('suspended')
         return
       }
+      if (err?.kind === 'sessionExpired') setCurrentUser(null)
+      setServiceIssue(err?.kind || 'serverError')
       const message = err?.message || 'Chargement impossible. Veuillez vérifier votre session.'
       setError(message === 'Failed to fetch' ? 'Impossible de joindre le serveur. Vérifiez la configuration réseau ou CORS.' : message)
     } finally {
       setLoading(false)
     }
-  }, [serviceSuspended, clearOperationalState])
+  }, [currentUser, serviceIssue])
 
   useEffect(() => {
     let cancelled = false
@@ -172,8 +155,11 @@ function App() {
       try {
         const user = await getCurrentUser()
         if (!cancelled) setCurrentUser(user)
-      } catch {
-        if (!cancelled) setCurrentUser(null)
+      } catch (err) {
+        if (!cancelled) {
+          setCurrentUser(null)
+          if (err?.kind !== 'sessionExpired') setServiceIssue(err?.kind || 'serverError')
+        }
       } finally {
         if (!cancelled) setAuthLoading(false)
       }
@@ -191,12 +177,12 @@ function App() {
         const status = await loadServiceStatus()
         if (cancelled) return
         const suspended = Boolean(status?.suspended)
-        setServiceSuspended(suspended)
-        await refreshData()
+        setServiceIssue(suspended ? 'suspended' : '')
+        if (!suspended) await refreshData()
       } catch (err) {
         if (!cancelled) {
-          setServiceSuspended(true)
-          clearOperationalState()
+          if (err?.kind === 'sessionExpired') setCurrentUser(null)
+          setServiceIssue(err?.kind || 'serverError')
         }
       } finally {
         if (!cancelled) setServiceStatusLoading(false)
@@ -204,16 +190,16 @@ function App() {
     }
     checkStatusThenRefresh()
     return () => { cancelled = true }
-  }, [currentUser, refreshData, clearOperationalState])
+  }, [currentUser, refreshData])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
     const handleServiceSuspended = () => {
-      setServiceSuspended(true)
+      setServiceIssue('suspended')
     }
     window.addEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
     return () => window.removeEventListener(SERVICE_SUSPENSION_EVENT, handleServiceSuspended)
-  }, [clearOperationalState])
+  }, [])
 
   useEffect(() => {
     let hideTimer
@@ -227,7 +213,7 @@ function App() {
     }
   }, [loading, refreshToastVisible])
 
-  useAutoRefresh(currentUser && !serviceSuspended ? refreshData : null, 90000)
+  useAutoRefresh(currentUser && !serviceIssue ? refreshData : null, 90000)
 
   const enrichedTrackers = useMemo(() => {
     const normalizeKey = (value) => String(value || '').trim().toUpperCase()
@@ -249,16 +235,6 @@ function App() {
 
     const fallbackDriverByTrackerId = {}
     const fallbackDriverByLabel = {}
-
-    for (const employee of employeeFallback) {
-      const first = String(employee?.first_name || '').trim()
-      const last = String(employee?.last_name || '').trim()
-      const fullName = [first, last].filter(Boolean).join(' ').trim()
-      const trackerId = Number(employee?.tracker_id)
-      if (Number.isFinite(trackerId) && fullName && !fallbackDriverByTrackerId[trackerId]) {
-        fallbackDriverByTrackerId[trackerId] = fullName
-      }
-    }
 
     for (const row of (deliveryOrders ?? [])) {
       const driver = String(row?.driver || '').trim()
@@ -340,6 +316,7 @@ function App() {
         || 'Non assigné'
       const base = {
         ...tracker,
+        source: 'fleeti',
         state,
         mileage,
         employeeNameFromApi: employeeNameFromApi || '',
@@ -364,11 +341,11 @@ function App() {
         const id = Number(item?.id)
         const label = String(item?.label || '').trim()
         const driver = String(item?.driver || '').trim()
-        if (!label || !driver) return null
+        if (!label) return null
         return {
           id: Number.isInteger(id) && id > 0 ? id : (9000000 + index + 1),
           label,
-          employeeName: driver,
+          employeeName: driver || 'Non assigné',
           employeePhone: 'N/A',
           state: {},
           mileage: {},
@@ -388,26 +365,26 @@ function App() {
     return Array.from(byId.values())
   }, [enrichedTrackers, masterData])
 
-  const filteredTrackers = useMemo(() => enrichedTrackers.filter((tracker) => {
+  const filteredTrackers = useMemo(() => operationalTrackers.filter((tracker) => {
     const text = `${tracker.label} ${tracker.employeeName}`.toLowerCase()
     return text.includes(searchQuery.toLowerCase()) && (filter === 'all' || tracker.state.connection_status === filter)
-  }), [enrichedTrackers, searchQuery, filter])
+  }), [operationalTrackers, searchQuery, filter])
   const isEmptySearch = !loading && !error && filteredTrackers.length === 0
 
-  const importantEvents = useMemo(() => ((dataset?.history?.length ? dataset.history : fallbackEvents)
+  const importantEvents = useMemo(() => ((dataset?.history ?? [])
     .filter((event) => ['speedup', 'fuel_level_leap', 'excessive_parking'].includes(event.event))
     .sort((a, b) => new Date(b.time) - new Date(a.time))), [dataset])
 
   const stats = {
-    total: enrichedTrackers.length,
-    active: enrichedTrackers.filter((t) => t.state.connection_status === 'active').length,
-    offline: enrichedTrackers.filter((t) => t.state.connection_status === 'offline').length,
-    moving: enrichedTrackers.filter((t) => t.state.movement_status === 'moving').length,
-    avgSpeed: enrichedTrackers.length ? Math.round(enrichedTrackers.reduce((a, t) => a + (t.state?.gps?.speed ?? 0), 0) / enrichedTrackers.length) : 0,
-    totalMileage: Math.round(enrichedTrackers.reduce((a, t) => a + (t.latestDayMileage || 0), 0)),
+    total: operationalTrackers.length,
+    active: operationalTrackers.filter((t) => t.state.connection_status === 'active').length,
+    offline: operationalTrackers.filter((t) => t.state.connection_status === 'offline').length,
+    moving: operationalTrackers.filter((t) => t.state.movement_status === 'moving').length,
+    avgSpeed: operationalTrackers.length ? Math.round(operationalTrackers.reduce((a, t) => a + (t.state?.gps?.speed ?? 0), 0) / operationalTrackers.length) : 0,
+    totalMileage: Math.round(operationalTrackers.reduce((a, t) => a + (t.latestDayMileage || 0), 0)),
   }
 
-  const searchFiltered = useMemo(() => searchQuery ? filteredTrackers : enrichedTrackers, [searchQuery, filteredTrackers, enrichedTrackers])
+  const searchFiltered = useMemo(() => filteredTrackers, [filteredTrackers])
   const priorityTrackers = useMemo(() => [...searchFiltered].sort((a, b) => {
     const leftScore = (a.eventCounts.speedup || 0) + (a.eventCounts.excessive_parking || 0)
     const rightScore = (b.eventCounts.speedup || 0) + (b.eventCounts.excessive_parking || 0)
@@ -424,13 +401,15 @@ function App() {
   ]
   const executiveCards = [
     { title: 'Kilométrage total', value: `${stats.totalMileage} km`, helper: 'activité consolidée du jour' },
-    { title: 'Événements suivis', value: `${importantEvents.length}`, helper: 'alertes critiques et surveillance' },
     { title: 'Alertes critiques', value: `${importantEvents.length}`, helper: 'événements surveillés' },
     { title: 'Trackers offline', value: `${stats.offline}`, helper: 'unités à vérifier' },
   ]
 
-  if (showGlobalServerMessage) {
-    return <GlobalServerMessageBanner loading={serviceStatusLoading || authLoading} />
+  const handleLogout = async () => {
+    try { await logout() } finally {
+      setCurrentUser(null)
+      setServiceIssue('')
+    }
   }
 
   if (authLoading) {
@@ -439,6 +418,9 @@ function App() {
         <div style={{ padding: 24, borderRadius: 18, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(6px)' }}>Vérification de session...</div>
       </div>
     )
+  }
+  if (serviceIssue && !currentUser) {
+    return <GlobalServerMessageBanner kind={serviceIssue} loading={serviceStatusLoading} onRetry={() => window.location.reload()} onLogout={handleLogout} />
   }
   if (!currentUser) {
     return (
@@ -455,67 +437,42 @@ function App() {
     )
   }
 
-  if (serviceSuspended) {
+  const guard = (permission, element) => <PermissionRoute user={currentUser} permission={permission}>{element}</PermissionRoute>
+
+  if (serviceIssue === 'suspended') {
     return (
-      <Layout loading={serviceStatusLoading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
-        <GlobalServerMessageBanner loading={serviceStatusLoading} />
-        <Suspense fallback={<SkeletonPage cards={4} tableRows={5} />}>
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />} />
-              <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
-              <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-              <Route path="/whatsapp" element={<WhatsAppPage />} />
-              <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-              <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-              <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
-              <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
-              <Route path="/reports" element={<ReportsPage reports={reports} />} />
-              <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
-              <Route path="/trips-report" element={<TripsReportPage filteredTrackers={enrichedTrackers} />} />
-              <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
-              <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={operationalTrackers} />} />
-              <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />} />
-              <Route path="/oil-changes" element={<OilChangesPage enrichedTrackers={operationalTrackers} />} />
-              <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
-              <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />} />
-              <Route path="/data" element={<DataPage />} />
-              <Route path="/admin-users" element={<AdminUsersPage />} />
-            </Routes>
-          </ErrorBoundary>
-        </Suspense>
-      </Layout>
+      <GlobalServerMessageBanner kind="suspended" loading={serviceStatusLoading} onRetry={() => window.location.reload()} onLogout={handleLogout} />
     )
   }
 
   return (
-    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={() => { logout(); setCurrentUser(null); setServiceSuspended(false) }}>
-      {showGlobalServerMessage && <GlobalServerMessageBanner loading={serviceStatusLoading} />}
-      {error && <div className="error-banner">{error}</div>}
-      {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`}>Actualisation des données flotte en cours...</div>}
-      {isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
+    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={handleLogout}>
+      {(serviceIssue ? null : error) && <div className="error-banner" role="alert">{error}</div>}
+      {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`} role="status" aria-live="polite">Actualisation des données flotte en cours...</div>}
+      {location.pathname === '/' && isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}
       <Suspense fallback={<SkeletonPage cards={4} tableRows={5} />}>
-      <ErrorBoundary>
+      <ErrorBoundary resetKey={location.pathname}>
         <Routes>
-          <Route path="/" element={<DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />} />
-          <Route path="/map" element={<MapPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />} />
-          <Route path="/fleet" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-          <Route path="/whatsapp" element={<WhatsAppPage />} />
-          <Route path="/trackers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-          <Route path="/drivers" element={<FleetPage filteredTrackers={filteredTrackers} setSelectedTrackerId={setSelectedTrackerId} />} />
-          <Route path="/alerts" element={<AlertsPage importantEvents={importantEvents} />} />
-          <Route path="/analytics" element={<AnalyticsPage filteredTrackers={filteredTrackers} importantEvents={importantEvents} />} />
-          <Route path="/reports" element={<ReportsPage reports={reports} />} />
-          <Route path="/drivers-report" element={<DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={filteredTrackers} />} />
-          <Route path="/trips-report" element={<TripsReportPage filteredTrackers={enrichedTrackers} />} />
-          <Route path="/delivery-orders" element={<DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />} />
-          <Route path="/fuel-vouchers" element={<FuelVouchersPage enrichedTrackers={operationalTrackers} />} />
-          <Route path="/fuel-voucher/:id" element={<FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />} />
-          <Route path="/oil-changes" element={<OilChangesPage enrichedTrackers={operationalTrackers} />} />
-          <Route path="/delivery-order/:id" element={<DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />} />
-          <Route path="/tracker/:id" element={<TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />} />
-          <Route path="/data" element={<DataPage />} />
-          <Route path="/admin-users" element={<AdminUsersPage />} />
+          <Route path="/" element={guard('page_dashboard', <DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />)} />
+          <Route path="/map" element={guard('page_map', <MapPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />)} />
+          <Route path="/fleet" element={guard('page_fleet', <FleetPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} />)} />
+          <Route path="/whatsapp" element={guard('page_whatsapp', <WhatsAppPage />)} />
+          <Route path="/trackers" element={guard('page_fleet', <FleetPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} initialMode="trackers" />)} />
+          <Route path="/drivers" element={guard('page_fleet', <FleetPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} initialMode="drivers" />)} />
+          <Route path="/alerts" element={guard('page_alerts', <AlertsPage importantEvents={importantEvents} />)} />
+          <Route path="/analytics" element={guard('page_analytics', <AnalyticsPage filteredTrackers={operationalTrackers} importantEvents={importantEvents} />)} />
+          <Route path="/reports" element={guard('page_reports', <ReportsPage />)} />
+          <Route path="/drivers-report" element={guard('page_reports', <DriversReportPage deliveryOrders={deliveryOrders} filteredTrackers={operationalTrackers} />)} />
+          <Route path="/trips-report" element={guard('page_reports', <TripsReportPage filteredTrackers={operationalTrackers} />)} />
+          <Route path="/delivery-orders" element={guard('manage_delivery_orders', <DeliveryOrdersPage deliveryOrders={deliveryOrders} deliveryOrdersSummary={deliveryOrdersSummary} enrichedTrackers={operationalTrackers} refreshData={refreshData} setDeliveryOrders={setDeliveryOrders} setDeliveryOrdersSummary={setDeliveryOrdersSummary} masterData={masterData} setMasterData={setMasterData} />)} />
+          <Route path="/fuel-vouchers" element={guard('manage_fuel_vouchers', <FuelVouchersPage enrichedTrackers={operationalTrackers} />)} />
+          <Route path="/fuel-voucher/:id" element={guard('manage_fuel_vouchers', <FuelVoucherDetailPage enrichedTrackers={operationalTrackers} />)} />
+          <Route path="/oil-changes" element={guard('manage_delivery_orders', <OilChangesPage enrichedTrackers={operationalTrackers} />)} />
+          <Route path="/delivery-order/:id" element={guard('manage_delivery_orders', <DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />)} />
+          <Route path="/tracker/:id" element={guard('page_fleet', <TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />)} />
+          <Route path="/data" element={guard('manage_data', <DataPage />)} />
+          <Route path="/admin-users" element={guard('manage_users', <AdminUsersPage />)} />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </ErrorBoundary>
       </Suspense>

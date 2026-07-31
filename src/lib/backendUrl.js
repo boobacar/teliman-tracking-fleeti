@@ -45,6 +45,10 @@ export function normalizeBackendUrl(value, options = {}) {
   const currentFrontendHost = readCurrentFrontendHost(options.currentFrontendHost)
   const raw = sanitizeBackendUrl(value)
 
+  // Tailscale Funnel reverse-proxyfie déjà l'application et ses API.
+  // Toute origine explicite contournerait le Funnel et serait inaccessible au navigateur.
+  if (currentFrontendHost.endsWith('.ts.net')) return ''
+
   // Vercel relaie /api et /uploads vers le backend public. Utiliser ce proxy
   // même si une ancienne variable VITE_BACKEND_URL est encore configurée.
   if (SAME_ORIGIN_PROXY_HOSTS.has(currentFrontendHost)) return ''

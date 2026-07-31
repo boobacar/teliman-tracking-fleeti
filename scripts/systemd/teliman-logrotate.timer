@@ -1,0 +1,11 @@
+[Unit]
+Description=Planification quotidienne de la rotation des logs Teliman
+
+[Timer]
+OnCalendar=*-*-* 03:10:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=teliman-logrotate.service
+
+[Install]
+WantedBy=timers.target

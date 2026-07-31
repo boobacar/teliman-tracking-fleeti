@@ -22,3 +22,12 @@ test('le service worker ne met jamais les API authentifiées en cache', () => {
     /if \(url\.pathname\.startsWith\('\/api\/'\)\) \{\s*event\.respondWith/,
   )
 })
+
+test('le service worker purge les anciens caches de preuves et laisse passer uploads', () => {
+  assert.match(SERVICE_WORKER_SOURCE, /keys\.filter\(\(k\) => k !== CACHE_STATIC\)/)
+  assert.match(
+    SERVICE_WORKER_SOURCE,
+    /if \(url\.pathname\.startsWith\('\/uploads\/'\)\) \{\s*return\s*\}/,
+  )
+  assert.doesNotMatch(SERVICE_WORKER_SOURCE, /CACHE_IMAGES|teliman-images-v1/)
+})

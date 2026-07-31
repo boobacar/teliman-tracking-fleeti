@@ -1,0 +1,8 @@
+[Unit]
+Description=Rotation bornée des logs PM2 et sauvegarde Teliman
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStartPre=/usr/bin/mkdir -p /home/pi/.local/state/logrotate /home/pi/.local/state/teliman-backup
+ExecStart=/usr/sbin/logrotate --state /home/pi/.local/state/logrotate/teliman.state /home/pi/.config/logrotate/teliman.conf

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Copy, MessageCircle, Power, QrCode, RefreshCcw, RotateCcw, Save, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Copy, MessageCircle, Power, QrCode, RefreshCcw, RotateCcw, Save, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
 import {
   disconnectWhatsApp,
   loadWhatsAppHistory,
@@ -11,6 +11,7 @@ import {
   saveWhatsAppTemplates,
   sendWhatsAppTestMessage,
 } from '../lib/fleeti.js'
+import { useAutoRefresh } from '../hooks.js'
 
 
 const DEFAULT_MESSAGE = 'Bonjour, ici Teliman Logistique. Nous vous contactons concernant votre opération de transport.'
@@ -37,6 +38,14 @@ const TEMPLATE_CARDS = [
 ]
 const TEMPLATE_VARIABLES = ['reference', 'client', 'status', 'truckLabel', 'driver', 'loadingPoint', 'destination', 'goods', 'quantity', 'date', 'departureDateTime', 'arrivalDateTime', 'notes']
 
+function translateWhatsAppError(error, domain = 'WhatsApp') {
+  const raw = String(error?.message || error || '').trim()
+  if (!raw) return `Impossible de charger ${domain}.`
+  if (/timeout|aborted/i.test(raw)) return `Le chargement de ${domain} a expiré. Réessayez.`
+  if (/network|fetch|connexion|serveur/i.test(raw)) return `Impossible de joindre le serveur pour ${domain}.`
+  return raw
+}
+
 export function WhatsAppPage() {
   const [recipientPhone, setRecipientPhone] = useState('')
   const [message, setMessage] = useState(DEFAULT_MESSAGE)
@@ -46,8 +55,8 @@ export function WhatsAppPage() {
   const [templates, setTemplates] = useState({})
   const [history, setHistory] = useState([])
   const [historyPage, setHistoryPage] = useState(1)
-  const [statusError, setStatusError] = useState('')
-  const [actionMessage, setActionMessage] = useState('')
+  const [loadErrors, setLoadErrors] = useState({ status: '', qr: '', templates: '', history: '' })
+  const [actionFeedback, setActionFeedback] = useState(null)
   const [busyAction, setBusyAction] = useState('')
 
   const isConnected = whatsAppStatus?.connected === true
@@ -77,26 +86,32 @@ export function WhatsAppPage() {
   const displayedHistoryEnd = Math.min(historyEndIndex, filteredHistory.length)
 
   const refreshWhatsAppConnection = useCallback(async () => {
-    try {
-      const [status, qr, templatePayload, historyPayload] = await Promise.all([loadWhatsAppStatus(), loadWhatsAppQr(), loadWhatsAppTemplates(), loadWhatsAppHistory()])
-      setWhatsAppStatus(status)
-      setWhatsAppQr(qr)
-      setTemplates(templatePayload.templates || {})
-      setHistory(historyPayload.history || [])
-      setStatusError('')
-    } catch (error) {
-      setStatusError(error?.message || 'Impossible de charger la configuration WhatsApp.')
-    }
+    const results = await Promise.allSettled([
+      loadWhatsAppStatus(),
+      loadWhatsAppQr(),
+      loadWhatsAppTemplates(),
+      loadWhatsAppHistory(),
+    ])
+    const [statusResult, qrResult, templatesResult, historyResult] = results
+
+    if (statusResult.status === 'fulfilled') setWhatsAppStatus(statusResult.value)
+    if (qrResult.status === 'fulfilled') setWhatsAppQr(qrResult.value)
+    if (templatesResult.status === 'fulfilled') setTemplates(templatesResult.value.templates || {})
+    if (historyResult.status === 'fulfilled') setHistory(historyResult.value.history || [])
+
+    setLoadErrors({
+      status: statusResult.status === 'rejected' ? translateWhatsAppError(statusResult.reason, 'le statut') : '',
+      qr: qrResult.status === 'rejected' ? translateWhatsAppError(qrResult.reason, 'le QR') : '',
+      templates: templatesResult.status === 'rejected' ? translateWhatsAppError(templatesResult.reason, 'les templates') : '',
+      history: historyResult.status === 'rejected' ? translateWhatsAppError(historyResult.reason, 'l’historique') : '',
+    })
   }, [])
 
   useEffect(() => {
-    const initialTimer = window.setTimeout(refreshWhatsAppConnection, 0)
-    const timer = window.setInterval(refreshWhatsAppConnection, 10000)
-    return () => {
-      window.clearTimeout(initialTimer)
-      window.clearInterval(timer)
-    }
+    const initialTimer = window.setTimeout(() => { void refreshWhatsAppConnection() }, 0)
+    return () => window.clearTimeout(initialTimer)
   }, [refreshWhatsAppConnection])
+  useAutoRefresh(refreshWhatsAppConnection, 10000)
 
   useEffect(() => {
     if (historyPage > historyTotalPages) {
@@ -106,16 +121,21 @@ export function WhatsAppPage() {
 
   async function runAction(label, action) {
     setBusyAction(label)
-    setActionMessage('')
+    setActionFeedback(null)
     try {
       const result = await action()
-      setActionMessage(result?.reason || result?.message || 'Action effectuée.')
+      if (result?.ok === false || result?.success === false) throw new Error(result?.reason || result?.message || 'Action impossible.')
+      setActionFeedback({ kind: 'success', message: translateWhatsAppError(result?.message || 'Action effectuée.') })
       await refreshWhatsAppConnection()
     } catch (error) {
-      setActionMessage(error?.message || 'Action impossible.')
+      setActionFeedback({ kind: 'error', message: translateWhatsAppError(error) })
     } finally {
       setBusyAction('')
     }
+  }
+
+  function confirmAndRun(messageText, label, action) {
+    if (window.confirm(messageText)) void runAction(label, action)
   }
 
   async function copyValue(value, label) {
@@ -136,7 +156,7 @@ export function WhatsAppPage() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Canal client</p>
-            <h3>WhatsApp</h3>
+            <h1>WhatsApp</h1>
             <p>Configuration complète : connexion, déconnexion, test d’envoi et templates actifs des notifications BL.</p>
           </div>
           <div className="whatsapp-hero-icon"><MessageCircle size={28} /></div>
@@ -150,7 +170,7 @@ export function WhatsAppPage() {
           <div className="mission-highlight-card">
             <span>Statut connexion</span>
             <strong>{connectionLabel}</strong>
-            <small>{statusError || (whatsAppStatus?.lastError ? whatsAppStatus.lastError : 'Session stockée côté serveur hors Git.')}</small>
+            <small>{loadErrors.status || (whatsAppStatus?.lastError ? whatsAppStatus.lastError : 'Session stockée côté serveur hors Git.')}</small>
           </div>
           <div className="mission-highlight-card">
             <span>Lien rapide</span>
@@ -201,7 +221,7 @@ export function WhatsAppPage() {
               <span><b>3</b> Scanner avec WhatsApp → Appareils connectés</span>
             </div>
             <div className="connection-action-stack">
-              <button type="button" className="danger-btn" disabled={Boolean(busyAction)} onClick={() => runAction('disconnect', () => disconnectWhatsApp(true))}><Power size={16} /> Déconnecter ce WhatsApp</button>
+              <button type="button" className="danger-btn" disabled={Boolean(busyAction) || !isConnected} onClick={() => confirmAndRun('Déconnecter le compte WhatsApp actif ?', 'disconnect', () => disconnectWhatsApp(true))}><Power size={16} /> Déconnecter ce WhatsApp</button>
               <button type="button" className="primary-btn" disabled={Boolean(busyAction)} onClick={() => runAction('reconnect', () => reconnectWhatsApp(true))}><QrCode size={16} /> Générer un nouveau QR</button>
               <button type="button" className="ghost-btn small-btn" disabled={Boolean(busyAction)} onClick={() => runAction('soft-reconnect', () => reconnectWhatsApp(false))}><RefreshCcw size={16} /> Relancer la connexion</button>
             </div>
@@ -229,7 +249,15 @@ export function WhatsAppPage() {
             )}
           </article>
         </div>
-        {actionMessage && <p className="connection-action-message"><CheckCircle2 size={15} /> {actionMessage}</p>}
+        {Object.values(loadErrors).some(Boolean) && (
+          <div className="error-banner" role="alert">{Object.values(loadErrors).filter(Boolean).join(' · ')}</div>
+        )}
+        {actionFeedback && (
+          <p className={`connection-action-message ${actionFeedback.kind === 'error' ? 'error-banner' : ''}`} role={actionFeedback.kind === 'error' ? 'alert' : 'status'}>
+            {actionFeedback.kind === 'error' ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+            {actionFeedback.message}
+          </p>
+        )}
       </section>
 
       <section className="panel panel-large">

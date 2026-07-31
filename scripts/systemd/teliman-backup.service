@@ -1,0 +1,21 @@
+[Unit]
+Description=Sauvegarde cohérente quotidienne Teliman
+Documentation=file:///home/pi/teliman-tracking-fleeti/docs/exploitation-sauvegarde-recuperation.md
+After=mnt-netac\x2dstorage.mount
+ConditionPathIsMountPoint=/mnt/netac-storage
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/teliman-tracking-fleeti
+UMask=0077
+ExecStartPre=/usr/bin/mkdir -p /home/pi/.local/state/teliman-backup
+ExecStartPre=/home/pi/.hermes/node/bin/node /home/pi/teliman-tracking-fleeti/scripts/check-storage.js
+Environment=TELIMAN_DATA_DIR=/mnt/netac-storage/teliman-data
+Environment=TELIMAN_BACKUP_ROOT=/home/pi/backups/teliman
+Environment=TELIMAN_BACKUP_RETENTION_DAYS=14
+EnvironmentFile=-/home/pi/teliman-tracking-fleeti/.env
+ExecStart=/home/pi/.hermes/node/bin/node /home/pi/teliman-tracking-fleeti/scripts/backup-teliman.js
+StandardOutput=append:/home/pi/.local/state/teliman-backup/backup.log
+StandardError=append:/home/pi/.local/state/teliman-backup/backup.log
+Nice=10
+NoNewPrivileges=true

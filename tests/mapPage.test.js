@@ -4,6 +4,17 @@ import { readFileSync } from 'node:fs'
 
 const mapPageSource = readFileSync(new URL('../src/pages/MapPage.jsx', import.meta.url), 'utf8')
 
+test('la Live Map charge la feuille de style Leaflet indispensable au positionnement des tuiles', () => {
+  assert.match(mapPageSource, /import ['"]leaflet\/dist\/leaflet\.css['"]/)
+})
+
+test('la Live Map garde des contrôles opérationnels de recherche, recentrage et sélection', () => {
+  assert.match(mapPageSource, /aria-label="Rechercher un camion sur la carte"/)
+  assert.match(mapPageSource, />Recentrer</)
+  assert.match(mapPageSource, />Tout afficher</)
+  assert.match(mapPageSource, /tileLoadState/)
+})
+
 test('la Live Map affiche les infos camion au survol du marqueur sans clic', () => {
   assert.match(mapPageSource, /Tooltip/)
   assert.match(mapPageSource, /<Tooltip[\s>]/)
@@ -17,7 +28,7 @@ test('la Live Map ne recadre pas automatiquement à chaque position live', () =>
   assert.doesNotMatch(mapPageSource, /\}, \[map, trackers\]\)/)
 })
 
-test('la Live Map bloque les transitions marqueurs pendant zoom\/pan', () => {
+test('la Live Map bloque les transitions marqueurs pendant zoom/pan', () => {
   assert.match(mapPageSource, /function MapInteractionGuard\(\)/)
   assert.match(mapPageSource, /leaflet-transform-lock/)
   assert.match(mapPageSource, /map\.on\('zoomstart movestart'/)

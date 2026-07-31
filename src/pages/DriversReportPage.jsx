@@ -73,7 +73,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
 
   const selectedSummary = driverSummaries.find((item) => item.driver === selectedDriver) || null
   const visibleSummaries = selectedDriver ? driverSummaries.filter((item) => item.driver === selectedDriver) : driverSummaries
-  const totals = useMemo(() => buildDriverReportTotals(driverSummaries), [driverSummaries])
+  const totals = useMemo(() => buildDriverReportTotals(visibleSummaries), [visibleSummaries])
 
   async function exportPdf() {
     const brandBrown = [120, 72, 32]
@@ -107,7 +107,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
     autoTable(doc, {
       startY: 56,
       head: [['Chauffeur', 'Camion', 'BL', 'Tonnage', 'Clients', 'Destination actuelle', 'Statut actuel', 'Position actuelle']],
-      body: driverSummaries.map((item) => [
+      body: visibleSummaries.map((item) => [
         item.driver,
         item.truckLabel,
         item.blCount,
@@ -129,7 +129,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
     doc.setTextColor(...brandBrown)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
-    doc.text(`Total chauffeurs: ${driverSummaries.length}`, 278, summaryY + 10, { align: 'right' })
+    doc.text(`Total chauffeurs: ${visibleSummaries.length}`, 278, summaryY + 10, { align: 'right' })
 
     doc.setLineWidth(0.4)
     doc.line(14, 200, 283, 200)
@@ -143,7 +143,7 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
   return (
     <PageStack className="ops-page-stack">
       <section className="panel panel-large delivery-hero-panel reports-v2-hero">
-        <SectionHeader title="Rapport Chauffeurs" description="Vue consolidée des BL, tonnages, clients desservis et position actuelle par chauffeur." />
+        <SectionHeader title="Rapport Chauffeurs" description="Vue consolidée des BL, tonnages, clients desservis et position actuelle par chauffeur." headingLevel="h1" />
         <section className="stats-grid stats-grid-tight" style={{ marginTop: 18 }}>
           <article className="stat-card"><div className="stat-icon"><UserRound size={18} /></div><div><p>Chauffeurs actifs</p><strong>{totals.drivers}</strong></div></article>
           <article className="stat-card"><div className="stat-icon"><PackageCheck size={18} /></div><div><p>Bons livraison</p><strong>{totals.blCount}</strong></div></article>

@@ -1,14 +1,12 @@
 // Service Worker — Teliman Logistique
 // Stratégie : Cache-First pour assets statiques, Network-First pour API
 
-const CACHE_STATIC = 'teliman-static-v1'
-const CACHE_API = 'teliman-api-v1'
-const CACHE_IMAGES = 'teliman-images-v1'
+const CACHE_STATIC = 'teliman-static-20260728-mapfix'
 
 const STATIC_EXTENSIONS = /\.(js|css|svg|png|jpg|jpeg|webp|ico|woff2?|json)$/
 
 // ── Installation : pré-cache l'app shell ──
-self.addEventListener('install', (event) => {
+self.addEventListener('install', (_event) => {
   console.log('[SW] Install')
   self.skipWaiting()
 })
@@ -18,7 +16,7 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activate')
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_STATIC && k !== CACHE_API && k !== CACHE_IMAGES).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE_STATIC).map((k) => caches.delete(k)))
     )
   )
   self.clients.claim()
@@ -44,9 +42,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Images et uploads : cache-first
-  if (url.pathname.startsWith('/uploads/') || request.destination === 'image') {
-    event.respondWith(cacheFirst(request, CACHE_IMAGES))
+  // Les preuves privées doivent toujours repasser par le backend authentifié.
+  // L'activation ci-dessus supprime également les anciens caches d'images.
+  if (url.pathname.startsWith('/uploads/')) {
     return
   }
 
@@ -72,7 +70,7 @@ async function cacheFirst(request, cacheName) {
       cache.put(request, clone)
     }
     return response
-  } catch (err) {
+  } catch (_err) {
     // Offline fallback pour les pages : renvoyer index.html
     if (request.destination === 'document' || request.mode === 'navigate') {
       const cachedIndex = await caches.match('/')
@@ -92,7 +90,7 @@ async function networkFirst(request, cacheName) {
       cache.put(request, clone)
     }
     return response
-  } catch (err) {
+  } catch (_err) {
     const cached = await caches.match(request)
     if (cached) return cached
     // Pour les API, renvoyer une erreur JSON

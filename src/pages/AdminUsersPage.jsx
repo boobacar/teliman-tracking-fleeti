@@ -4,11 +4,23 @@ import { APP_VIEWS } from '../components/Layout'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { createAdminUser, deleteAdminUser, loadAdminUsers, updateAdminUser } from '../lib/fleeti'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 
-const PAGE_PERMISSIONS = APP_VIEWS.map((view) => ({ permission: view.permission, label: view.label }))
+const PERMISSION_LABELS = {
+  manage_delivery_orders: 'Gérer les bons de livraison',
+  manage_fuel_vouchers: 'Gérer les bons carburant',
+  manage_data: 'Gérer les données de référence',
+  manage_users: 'Gérer les utilisateurs',
+  manage_drivers: 'Gérer les chauffeurs',
+  manage_whatsapp: 'Gérer WhatsApp',
+}
+const PAGE_PERMISSIONS = Array.from(new Map([
+  ...APP_VIEWS.map((view) => ({ permission: view.permission, label: `Accéder à ${view.label}` })),
+  ...Object.entries(PERMISSION_LABELS).map(([permission, label]) => ({ permission, label })),
+].filter((item) => item.permission).map((item) => [item.permission, item])).values())
 
 const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin', permissions: ['*'] },
+  { value: 'admin', label: 'Administrateur', permissions: ['*'] },
   { value: 'ops', label: 'Exploitation', permissions: ['manage_delivery_orders', 'manage_fuel_vouchers', 'page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports'] },
   { value: 'viewer', label: 'Lecture seule', permissions: ['page_dashboard', 'page_map', 'page_fleet', 'page_alerts', 'page_analytics', 'page_reports'] },
 ]
@@ -28,6 +40,8 @@ function PermissionToggle({ label, checked, onChange }) {
           type="checkbox"
           checked={checked}
           onChange={onChange}
+          role="switch"
+          aria-checked={checked}
         />
         <span className={`ui-toggle-track ${checked ? 'is-checked' : ''}`}>
           <span className={`ui-toggle-knob ${checked ? 'is-checked' : ''}`} />
@@ -38,6 +52,7 @@ function PermissionToggle({ label, checked, onChange }) {
 }
 
 export function AdminUsersPage() {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const [users, setUsers] = useState([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -145,7 +160,7 @@ export function AdminUsersPage() {
   }
 
   async function remove(emailToDelete) {
-    if (!window.confirm(`Supprimer ${emailToDelete} ?`)) return
+    if (!await confirm({ title: 'Supprimer cet utilisateur ?', message: `Le compte ${emailToDelete} perdra immédiatement son accès.`, confirmLabel: 'Supprimer' })) return
     try {
       await deleteAdminUser(emailToDelete)
       await refresh()
@@ -157,7 +172,7 @@ export function AdminUsersPage() {
   return (
     <PageStack>
       <section className="panel panel-large reports-v2-hero">
-        <SectionHeader title="Administration des utilisateurs" description="Créer des comptes, définir un rôle et attribuer un mot de passe." />
+        <div className="ui-section-header"><div><h1>Administration des utilisateurs</h1><p>Créer des comptes, définir un rôle et attribuer les accès utiles.</p></div></div>
         <StatGrid className="reports-v2-kpis">
           <StatCard label="Total" value={roleStats.total} helper="comptes configurés" />
           <StatCard label="Admins" value={roleStats.admins} helper="accès complet" />
@@ -175,7 +190,7 @@ export function AdminUsersPage() {
           </label>
           <label className="field-stack">
             <span>Mot de passe</span>
-            <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="text" required />
+            <input aria-label="Mot de passe utilisateur" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe" type="password" autoComplete="new-password" required />
           </label>
           <label className="field-stack">
             <span>Rôle</span>
@@ -187,11 +202,9 @@ export function AdminUsersPage() {
               {ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
-          <button className="primary-btn" type="submit">Créer</button>
-        </form>
-
-        {role !== 'admin' && (
-          <div className="delivery-form delivery-form-premium data-card-form ui-permissions-grid">
+          {role !== 'admin' && (
+          <fieldset className="delivery-form delivery-form-premium data-card-form ui-permissions-grid">
+            <legend>Accès et actions autorisés</legend>
             {PAGE_PERMISSIONS.map((item) => {
               const checked = selectedPermissions.includes(item.permission)
               return (
@@ -203,8 +216,10 @@ export function AdminUsersPage() {
                 />
               )
             })}
-          </div>
-        )}
+          </fieldset>
+          )}
+          <button className="primary-btn" type="submit">Créer l’utilisateur</button>
+        </form>
 
         <ErrorBanner message={error} />
       </section>
@@ -225,7 +240,8 @@ export function AdminUsersPage() {
 
         <div className="reports-table-wrap">
           <table className="reports-table">
-            <thead><tr><th>Email</th><th>Rôle</th><th>Permissions</th><th>Actions</th></tr></thead>
+            <caption className="sr-only">Utilisateurs et permissions configurés</caption>
+            <thead><tr><th scope="col">Email</th><th scope="col">Rôle</th><th scope="col">Permissions</th><th scope="col">Actions</th></tr></thead>
             <tbody>
               {filteredUsers.map((user) => {
                 const badge = roleBadge(user.role)
@@ -266,7 +282,7 @@ export function AdminUsersPage() {
             </label>
             <label className="field-stack">
               <span>Nouveau mot de passe</span>
-              <input aria-label="Nouveau mot de passe" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="text" />
+              <input aria-label="Nouveau mot de passe" value={editingPassword} onChange={(e) => setEditingPassword(e.target.value)} placeholder="Nouveau mot de passe (optionnel)" type="password" autoComplete="new-password" />
             </label>
             <button type="button" className="primary-btn" onClick={saveEdit}>Enregistrer</button>
             <button type="button" className="ghost-btn" onClick={() => { setEditingEmail(''); setEditingPassword('') }}>Annuler</button>
@@ -289,6 +305,7 @@ export function AdminUsersPage() {
           )}
         </section>
       )}
+      {confirmationDialog}
     </PageStack>
   )
 }

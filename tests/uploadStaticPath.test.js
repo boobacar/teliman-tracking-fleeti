@@ -4,10 +4,12 @@ import fs from 'node:fs'
 
 const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8')
 
-test('delivery proof uploads are served from the configured runtime uploads directory', () => {
+test('delivery proof uploads are authenticated and served from the configured runtime directory', () => {
   assert.match(
     serverSource,
-    /app\.use\('\/uploads',\s*express\.static\(UPLOADS_BASE_DIR\)\)/,
-    'Express must serve /uploads from TELIMAN_UPLOADS_DIR/UPLOADS_BASE_DIR, not from the repo-local uploads directory',
+    /app\.use\('\/uploads',[\s\S]+getSessionUser\(req\)[\s\S]+express\.static\(UPLOADS_BASE_DIR/,
+    'Express must authenticate /uploads and serve TELIMAN_UPLOADS_DIR/UPLOADS_BASE_DIR',
   )
+  assert.match(serverSource, /Cache-Control', 'no-store'/)
+  assert.match(serverSource, /X-Content-Type-Options', 'nosniff'/)
 })

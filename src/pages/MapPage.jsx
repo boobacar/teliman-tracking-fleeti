@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { LocateFixed, Maximize2, Minimize2, Search, X } from 'lucide-react'
 import { loadLivePositions, loadTracksBatch } from '../lib/fleeti'
+
+const LIVE_POLL_DELAY_MS = 3000
+const LIVE_STALE_AFTER_MS = 15000
+const TRACK_CACHE_TTL_MS = 5 * 60 * 1000
 
 function getPinState(tracker) {
   const connection = tracker.state?.connection_status
@@ -52,8 +58,8 @@ function createTrackerIcon(tracker, hasMission = false, isActive = false, bearin
   return L.divIcon({
     className: 'custom-tracker-pin-wrapper',
     html: `<div class="custom-tracker-pin-shell ${isActive ? 'active' : ''}">${movingArrow}<div class="custom-tracker-pin" style="background:${state.color}">${state.label}</div>${hasMission ? '<span class="mission-dot"></span>' : ''}</div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
     popupAnchor: [0, -12],
   })
 }
@@ -119,19 +125,34 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   const [baseMap, setBaseMap] = useState('hybrid')
   const [trackMap, setTrackMap] = useState({})
   const [prefetchReady, setPrefetchReady] = useState(false)
+  const [trackError, setTrackError] = useState('')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [trackerSearch, setTrackerSearch] = useState('')
+  const [fitRequest, setFitRequest] = useState(0)
+  const [tileLoadState, setTileLoadState] = useState('loading')
   const trackCacheRef = useRef(new Map())
   const inflightCacheRef = useRef(new Map())
   const mapShellRef = useRef(null)
 
-  // ── Positions live (polling toutes les 3s) ──
+  // ── Positions live (polling récursif sans chevauchement) ──
   const [livePositions, setLivePositions] = useState({})
-  const livePollRef = useRef(null)
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState(null)
+  const [liveError, setLiveError] = useState('')
 
   useEffect(() => {
     let cancelled = false
+    let timerId = null
+    let inFlight = false
 
     async function poll() {
+      if (timerId) window.clearTimeout(timerId)
+      timerId = null
+      if (cancelled || inFlight) return
+      if (document.hidden) {
+        timerId = window.setTimeout(poll, LIVE_POLL_DELAY_MS)
+        return
+      }
+      inFlight = true
       try {
         const data = await loadLivePositions()
         if (cancelled) return
@@ -140,17 +161,24 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           map[String(pos.trackerId)] = pos
         }
         setLivePositions(map)
-      } catch {
-        // silencieux — on garde les anciennes positions
+        setLiveUpdatedAt(Date.now())
+        setLiveError('')
+      } catch (error) {
+        if (!cancelled) setLiveError(error?.message || 'Impossible d’actualiser les positions.')
+      } finally {
+        inFlight = false
+        if (!cancelled) timerId = window.setTimeout(poll, LIVE_POLL_DELAY_MS)
       }
     }
 
-    poll() // premier appel immédiat
-    livePollRef.current = setInterval(poll, 3000)
+    void poll()
+    const handleVisibility = () => { if (!document.hidden) void poll() }
+    document.addEventListener('visibilitychange', handleVisibility)
 
     return () => {
       cancelled = true
-      if (livePollRef.current) clearInterval(livePollRef.current)
+      if (timerId) window.clearTimeout(timerId)
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])
 
@@ -199,9 +227,14 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     () => allVisibleTrackers.filter((tracker) => selectedTrackIds.includes(String(tracker.id))),
     [allVisibleTrackers, selectedTrackIds],
   )
+  const selectableTrackers = useMemo(() => {
+    const query = trackerSearch.trim().toLocaleLowerCase('fr-FR')
+    if (!query) return allVisibleTrackers
+    return allVisibleTrackers.filter((tracker) => `${tracker.label || ''} ${tracker.employeeName || ''}`.toLocaleLowerCase('fr-FR').includes(query))
+  }, [allVisibleTrackers, trackerSearch])
 
   const displayedTrackers = selectedTrackIds.length > 0 ? selectedTrackers : allVisibleTrackers
-  const mapFitKey = `${mapFilter}|${selectedTrackIds.join(',')}`
+  const mapFitKey = `${mapFilter}|${selectedTrackIds.join(',')}|${fitRequest}`
 
   const center = displayedTrackers[0]?.state?.gps?.location
     ? [displayedTrackers[0].state.gps.location.lat, displayedTrackers[0].state.gps.location.lng]
@@ -226,12 +259,14 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
 
   function fetchTracksForSelection(trackerIds, periodValue) {
     const key = `${trackerIds.sort().join(',')}_${periodValue}`
-    if (trackCacheRef.current.has(key)) return Promise.resolve(trackCacheRef.current.get(key))
+    const cached = trackCacheRef.current.get(key)
+    if (cached && Date.now() - cached.cachedAt < TRACK_CACHE_TTL_MS) return Promise.resolve(cached.data)
+    if (cached) trackCacheRef.current.delete(key)
     if (inflightCacheRef.current.has(key)) return inflightCacheRef.current.get(key)
     const request = loadTracksBatch({ trackerIds, period: periodValue })
       .then((payload) => {
         const next = Object.fromEntries((payload.items || []).map((item) => [String(item.trackerId), item]))
-        trackCacheRef.current.set(key, next)
+        trackCacheRef.current.set(key, { data: next, cachedAt: Date.now() })
         inflightCacheRef.current.delete(key)
         return next
       })
@@ -249,6 +284,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     async function warmup() {
       if (selectedTrackIds.length === 0) {
         setTrackMap({})
+        setTrackError('')
         setPrefetchReady(true)
         return
       }
@@ -256,11 +292,12 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
         const data = await fetchTracksForSelection([...selectedTrackIds], period)
         if (!cancelled) {
           setTrackMap(data)
+          setTrackError('')
           setPrefetchReady(true)
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
-          setTrackMap({})
+          setTrackError(error?.message || 'Impossible de charger les tracés.')
           setPrefetchReady(true)
         }
       }
@@ -290,6 +327,12 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   })).filter((event) => Number.isFinite(event.lat) && Number.isFinite(event.lng))
   const dominantAlert = alertMarkers[0]?.event || 'Aucune'
   const criticalAlerts = alertMarkers.filter((event) => getAlertPriority(event.event) === 'Critique').length
+  const liveIsStale = !liveUpdatedAt || Date.now() - liveUpdatedAt > LIVE_STALE_AFTER_MS
+  const tileEventHandlers = useMemo(() => ({
+    loading: () => setTileLoadState('loading'),
+    load: () => setTileLoadState('ready'),
+    tileerror: () => setTileLoadState('error'),
+  }), [])
 
   const bearingByTrackerId = new Map()
   displayedTrackers.forEach((tracker) => {
@@ -304,39 +347,52 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
 
   return (
     <section className="panel panel-large map-panel">
-      <div className="panel-header"><div><h3>Live Map</h3></div></div>
-      <div className="map-kpi-row">
-        <div className="mini-kpi"><span>Visible</span><strong>{displayedTrackers.length}</strong></div>
-        <div className="mini-kpi"><span>Sélectionnés</span><strong>{selectedTrackIds.length}</strong></div>
-        <div className="mini-kpi"><span>Alertes tracé</span><strong>{alertMarkers.length}</strong></div>
-        <div className="mini-kpi"><span>Distance tracée</span><strong>{totalDistanceKm.toFixed(1)} km</strong></div>
-        <div className="mini-kpi"><span>Vitesse max</span><strong>{Math.round(maxSpeed)} km/h</strong></div>
-        <div className="mini-kpi"><span>Vitesse moy.</span><strong>{avgSpeed} km/h</strong></div>
-      </div>
+      <div className="panel-header"><div><h1>Carte temps réel</h1><p role="status">{liveIsStale ? 'Données anciennes' : 'Données à jour'}{liveUpdatedAt ? ` · actualisées à ${new Date(liveUpdatedAt).toLocaleTimeString('fr-FR')}` : ''}</p></div></div>
+      {liveError && <div className="error-banner" role="alert">Positions : {liveError}</div>}
+      <details className="map-insights-panel">
+        <summary>Analyse de la sélection <span>{selectedTrackIds.length > 0 ? `${selectedTrackIds.length} camion(s)` : 'vue flotte'}</span></summary>
+        <div className="map-kpi-row">
+          <div className="mini-kpi"><span>Visible</span><strong>{displayedTrackers.length}</strong></div>
+          <div className="mini-kpi"><span>Sélectionnés</span><strong>{selectedTrackIds.length}</strong></div>
+          <div className="mini-kpi"><span>Alertes tracé</span><strong>{alertMarkers.length}</strong></div>
+          <div className="mini-kpi"><span>Distance tracée</span><strong>{totalDistanceKm.toFixed(1)} km</strong></div>
+          <div className="mini-kpi"><span>Vitesse max</span><strong>{Math.round(maxSpeed)} km/h</strong></div>
+          <div className="mini-kpi"><span>Vitesse moy.</span><strong>{avgSpeed} km/h</strong></div>
+        </div>
 
-      {selectedTrackIds.length > 0 && <div className="map-focus-banner"><div><strong>{selectedTrackIds.length} camion(s)</strong><span>suivi multi-sélection</span></div><div><strong>{Math.max((totalDistanceKm / 45), 0).toFixed(1)} h</strong><span>Heures de conduite</span></div><div><strong>{criticalAlerts}</strong><span>alertes critiques</span></div></div>}
+        {selectedTrackIds.length > 0 && <div className="map-focus-banner"><div><strong>{selectedTrackIds.length} camion(s)</strong><span>suivi multi-sélection</span></div><div><strong>{Math.max((totalDistanceKm / 45), 0).toFixed(1)} h</strong><span>Heures de conduite</span></div><div><strong>{criticalAlerts}</strong><span>alertes critiques</span></div></div>}
 
-      <div className="map-v3-summary"><div className="map-v3-card"><strong>{tripCount}</strong><span>déplacements détectés</span></div><div className="map-v3-card"><strong>{dominantAlert}</strong><span>alerte dominante</span></div><div className="map-v3-card"><strong>{displayedTrackers.length}</strong><span>camions affichés</span></div></div>
+        <div className="map-v3-summary"><div className="map-v3-card"><strong>{tripCount}</strong><span>déplacements détectés</span></div><div className="map-v3-card"><strong>{dominantAlert}</strong><span>alerte dominante</span></div><div className="map-v3-card"><strong>{displayedTrackers.length}</strong><span>camions affichés</span></div></div>
+      </details>
 
       {!prefetchReady && selectedTrackIds.length > 0 && <div className="empty-banner">Préchargement rapide des tracés en cours…</div>}
-      {prefetchReady && selectedTrackIds.length > 0 && alertMarkers.length === 0 && <div className="empty-banner">Aucune alerte géolocalisée sur la période sélectionnée.</div>}
+      {trackError && selectedTrackIds.length > 0 && <div className="error-banner" role="alert">Impossible de charger les tracés : {trackError} <button type="button" className="ghost-btn small-btn" onClick={() => { trackCacheRef.current.clear(); setSelectedTrackIds((ids) => [...ids]) }}>Réessayer</button></div>}
+      {!trackError && prefetchReady && selectedTrackIds.length > 0 && alertMarkers.length === 0 && <div className="empty-banner">Aucune alerte géolocalisée sur la période sélectionnée.</div>}
 
       <div className="map-filter-stack">
-        <div className="filters filter-row"><button type="button" className={`chip ${mapFilter === 'all' ? 'selected' : ''}`} onClick={() => setMapFilter('all')}>Toutes</button><button type="button" className={`chip ${mapFilter === 'moving' ? 'selected' : ''}`} onClick={() => setMapFilter('moving')}>En mouvement</button><button type="button" className={`chip ${mapFilter === 'offline' ? 'selected' : ''}`} onClick={() => setMapFilter('offline')}>Offline</button><button type="button" className={`chip ${mapFilter === 'risk' ? 'selected' : ''}`} onClick={() => setMapFilter('risk')}>Avec alertes</button></div>
-        <div className="filters filter-row">{allVisibleTrackers.slice(0, 12).map((tracker) => <button type="button" key={tracker.id} className={`chip ${selectedTrackIds.includes(String(tracker.id)) ? 'selected' : ''}`} onClick={() => toggleTrackerSelection(tracker.id)}>{tracker.label}</button>)}</div>
-        <div className="filters filter-row">{[{ value: 'today', label: "Aujourd'hui" }, { value: '12h', label: '12h' }, { value: '24h', label: '24h' }, { value: '48h', label: '48h' }].map((item) => <button type="button" key={item.value} className={`chip ${period === item.value ? 'selected' : ''}`} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div>
+        <div className="filters filter-row map-status-row"><button type="button" aria-pressed={mapFilter === 'all'} className={`chip ${mapFilter === 'all' ? 'selected' : ''}`} onClick={() => setMapFilter('all')}>Toutes</button><button type="button" aria-pressed={mapFilter === 'moving'} className={`chip ${mapFilter === 'moving' ? 'selected' : ''}`} onClick={() => setMapFilter('moving')}>En mouvement</button><button type="button" aria-pressed={mapFilter === 'offline'} className={`chip ${mapFilter === 'offline' ? 'selected' : ''}`} onClick={() => setMapFilter('offline')}>Offline</button><button type="button" aria-pressed={mapFilter === 'risk'} className={`chip ${mapFilter === 'risk' ? 'selected' : ''}`} onClick={() => setMapFilter('risk')}>Avec alertes</button></div>
+        <div className="map-tracker-toolbar">
+          <label className="map-search-field"><Search size={18} aria-hidden="true" /><input value={trackerSearch} onChange={(event) => setTrackerSearch(event.target.value)} aria-label="Rechercher un camion sur la carte" placeholder="Camion ou chauffeur" />{trackerSearch && <button type="button" className="map-search-clear" onClick={() => setTrackerSearch('')} aria-label="Effacer la recherche"><X size={18} /></button>}</label>
+          <button type="button" className="ghost-btn map-show-all" onClick={() => { setSelectedTrackIds([]); setFitRequest((value) => value + 1) }} disabled={selectedTrackIds.length === 0}>Tout afficher</button>
+        </div>
+        <div className="filters filter-row map-tracker-strip" aria-label="Sélection rapide des camions">{selectableTrackers.slice(0, 20).map((tracker) => <button type="button" key={tracker.id} aria-pressed={selectedTrackIds.includes(String(tracker.id))} className={`chip ${selectedTrackIds.includes(String(tracker.id)) ? 'selected' : ''}`} onClick={() => toggleTrackerSelection(tracker.id)}>{tracker.label}<small>{tracker.employeeName || 'Non assigné'}</small></button>)}{selectableTrackers.length === 0 && <span className="map-no-result">Aucun camion trouvé</span>}</div>
+        {selectedTrackIds.length > 0 && <div className="filters filter-row map-period-row" aria-label="Période du tracé">{[{ value: 'today', label: "Aujourd'hui" }, { value: '12h', label: '12h' }, { value: '24h', label: '24h' }, { value: '48h', label: '48h' }].map((item) => <button type="button" key={item.value} aria-pressed={period === item.value} className={`chip ${period === item.value ? 'selected' : ''}`} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div>}
       </div>
 
       <div className="map-legend-row"><span><i className="legend-dot" style={{ background: '#22c55e' }}></i> Moving</span><span><i className="legend-dot" style={{ background: '#f59e0b' }}></i> Parking / Idle</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Offline</span><span><i className="legend-dot mission-legend-dot"></i> Mission active</span><span><i className="legend-line"></i> Tracé trajet</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Critique</span><span><i className="legend-dot" style={{ background: '#38bdf8' }}></i> Surveillance</span></div>
 
       <div ref={mapShellRef} className={`leaflet-wrap large-map map-shell ${isFullscreen ? 'map-shell-fullscreen' : ''}`}>
-        <div className="map-overlay-controls"><div className="map-overlay-group"><div className="map-overlay-buttons"><button type="button" className={`chip ${baseMap === 'plan' ? 'selected' : ''}`} onClick={() => setBaseMap('plan')}>Plan</button><button type="button" className={`chip ${baseMap === 'satellite' ? 'selected' : ''}`} onClick={() => setBaseMap('satellite')}>Satellite</button><button type="button" className={`chip ${baseMap === 'hybrid' ? 'selected' : ''}`} onClick={() => setBaseMap('hybrid')}>Hybride</button></div></div><button type="button" className="ghost-btn small-btn map-fullscreen-btn" onClick={toggleFullscreen}>{isFullscreen ? 'Quitter plein écran' : 'Plein écran'}</button></div>
+        <div className="map-overlay-controls">
+          <div className="map-overlay-group"><div className="map-overlay-buttons"><button type="button" className={`chip ${baseMap === 'plan' ? 'selected' : ''}`} onClick={() => { setTileLoadState('loading'); setBaseMap('plan') }}>Plan</button><button type="button" className={`chip ${baseMap === 'satellite' ? 'selected' : ''}`} onClick={() => { setTileLoadState('loading'); setBaseMap('satellite') }}>Satellite</button><button type="button" className={`chip ${baseMap === 'hybrid' ? 'selected' : ''}`} onClick={() => { setTileLoadState('loading'); setBaseMap('hybrid') }}>Hybride</button></div></div>
+          <div className="map-overlay-actions"><button type="button" className="ghost-btn map-overlay-action" onClick={() => setFitRequest((value) => value + 1)}><LocateFixed size={18} />Recentrer</button><button type="button" className="ghost-btn map-overlay-action" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}{isFullscreen ? 'Quitter' : 'Plein écran'}</button></div>
+          <span className={`map-tile-state is-${tileLoadState}`} role="status">{tileLoadState === 'loading' ? 'Chargement du fond…' : tileLoadState === 'error' ? 'Fond cartographique incomplet' : 'Fond chargé'}</span>
+        </div>
         <MapContainer center={center} zoom={7} scrollWheelZoom className="leaflet-map">
           <MapInteractionGuard />
           <FleetBounds trackers={displayedTrackers} fitKey={mapFitKey} />
-          {baseMap === 'plan' && <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
-          {baseMap === 'satellite' && <TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
-          {baseMap === 'hybrid' && <><TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" /><TileLayer attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" opacity={1} /></>}
+          {baseMap === 'plan' && <TileLayer key="plan" eventHandlers={tileEventHandlers} attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
+          {baseMap === 'satellite' && <TileLayer key="satellite" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
+          {baseMap === 'hybrid' && <><TileLayer key="hybrid-imagery" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" /><TileLayer key="hybrid-labels" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" opacity={1} /></>}
 
           {selectedTrackIds.length > 0 && selectedTrackIds.map((trackerId) => {
             const track = trackMap[String(trackerId)]
@@ -356,6 +412,14 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           })}
         </MapContainer>
       </div>
+      <details className="panel map-accessible-list" aria-label="Liste accessible des véhicules affichés">
+        <summary>Véhicules affichés ({allVisibleTrackers.length})</summary>
+        {allVisibleTrackers.length ? <ul>{allVisibleTrackers.map((tracker) => {
+          const state = getPinState(tracker)
+          const selected = selectedTrackIds.includes(String(tracker.id))
+          return <li key={`accessible-${tracker.id}`}><button type="button" className={`ghost-btn ${selected ? 'selected' : ''}`} aria-pressed={selected} onClick={() => toggleTrackerSelection(tracker.id)}>{tracker.label} — {tracker.employeeName || 'Chauffeur non assigné'} — {state.text} — {tracker.state?.gps?.speed ?? 0} km/h</button></li>
+        })}</ul> : <div className="empty-banner">Aucun véhicule géolocalisé pour ce filtre.</div>}
+      </details>
     </section>
   )
 }

@@ -14,13 +14,17 @@ test('le mode suspension expose un statut public et bloque les API de donnees', 
   assert.match(SERVER_SOURCE, /app\.use\(blockSuspendedDataAccess\)/)
 })
 
-test('le frontend affiche le message centre uniquement quand le service est suspendu', () => {
+test('le frontend distingue suspension, panne réseau, timeout et session expirée', () => {
   assert.match(FLEETI_SOURCE, /export const loadServiceStatus = \(\) => getJson\('\/api\/service-status'\)/)
   assert.match(FLEETI_SOURCE, /SERVICE_SUSPENSION_EVENT = 'teliman:service-suspended'/)
   assert.match(FLEETI_SOURCE, /window\.dispatchEvent\(new CustomEvent\(SERVICE_SUSPENSION_EVENT/)
   assert.doesNotMatch(APP_SOURCE, /FORCE_GLOBAL_SERVER_MESSAGE/)
-  assert.match(APP_SOURCE, /const showGlobalServerMessage = serviceSuspended/)
-  assert.match(APP_SOURCE, /if \(showGlobalServerMessage\) \{\s*return <GlobalServerMessageBanner loading=\{serviceStatusLoading \|\| authLoading\} \/>\s*\}/)
-  assert.match(APP_SOURCE, /placeItems: 'center'/)
-  assert.match(APP_SOURCE, /<strong>impossible de joindre le serveur<\/strong>/)
+  assert.match(APP_SOURCE, /const \[serviceIssue, setServiceIssue\]/)
+  assert.match(APP_SOURCE, /suspended: \['Service temporairement suspendu'/)
+  assert.match(APP_SOURCE, /offline: \['Connexion indisponible'/)
+  assert.match(APP_SOURCE, /timeout: \['Le serveur tarde à répondre'/)
+  assert.match(APP_SOURCE, /sessionExpired: \['Session expirée'/)
+  assert.match(APP_SOURCE, /<GlobalServerMessageBanner kind=\{serviceIssue\}/)
+  assert.match(APP_SOURCE, />Réessayer<\/button>/)
+  assert.match(APP_SOURCE, />Déconnexion<\/button>/)
 })

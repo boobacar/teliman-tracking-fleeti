@@ -231,21 +231,6 @@ function parseReportTime(value) {
   return Number.isFinite(ts) ? new Date(ts) : null
 }
 
-function sameTripDate(row = {}, from, to) {
-  const start = parseReportTime(row.start || row.started_at || row.from)
-  if (start) return isWithinRange(start.toISOString(), from, to)
-  const date = String(row.date || '').slice(0, 10)
-  if (!date) return false
-  return isWithinRange(`${date}T12:00:00Z`, from, to)
-}
-
-function sameTracker(row = {}, trackerId, trackerLabel = '') {
-  const rowTrackerId = Number(row.trackerId ?? row.tracker_id)
-  if (Number.isFinite(rowTrackerId) && Number.isFinite(Number(trackerId)) && rowTrackerId === Number(trackerId)) return true
-  const rowLabel = String(row.trackerLabel || row.truckLabel || row.label || '').trim().toLowerCase()
-  const wantedLabel = String(trackerLabel || '').trim().toLowerCase()
-  return Boolean(rowLabel && wantedLabel && rowLabel === wantedLabel)
-}
 
 export function buildFleetiProviderTrackBundle({ trackerId, from, to, trackRows = [], pointRowsByTrackId = {}, fallbackPoints = [] } = {}) {
   const normalizedTrackerId = Number(trackerId)

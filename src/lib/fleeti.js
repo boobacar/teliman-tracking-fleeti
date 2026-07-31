@@ -20,9 +20,8 @@ function isBrowser() {
 
 function getSessionHeaders() {
   if (!isBrowser()) return {}
-  const email = localStorage.getItem('teliman_user_email') || ''
   const sessionToken = localStorage.getItem('teliman_session_token') || ''
-  return email && sessionToken ? { 'x-user-email': email, 'x-session-token': sessionToken } : {}
+  return sessionToken ? { 'x-session-token': sessionToken } : {}
 }
 
 function createTimeoutSignal(timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -34,31 +33,46 @@ function createTimeoutSignal(timeoutMs = REQUEST_TIMEOUT_MS) {
   return controller.signal
 }
 
-async function fetchJson(path, options = {}) {
+export async function fetchJson(path, options = {}) {
   try {
+    const { responseType = 'json', headers = {}, ...requestOptions } = options
     const response = await fetch(`${BACKEND_URL}${path}`, {
       signal: createTimeoutSignal(),
-      ...options,
+      ...requestOptions,
       headers: {
-        ...(options.headers || {}),
+        ...headers,
       },
     })
-    const data = await response.json().catch(() => ({}))
+    const data = responseType === 'blob'
+      ? await response.blob()
+      : await response.json().catch(() => ({}))
     if (!response.ok) {
       if (data?.suspended) {
         emitServiceSuspended(data?.error || 'impossible de joindre le serveur')
         const error = new Error(data?.error || 'impossible de joindre le serveur')
         error.serviceSuspended = true
+        error.kind = 'suspended'
         throw error
       }
-      throw new Error(data?.error || 'Erreur serveur')
+      const error = new Error(data?.error || (response.status >= 500 ? 'Erreur interne du serveur.' : 'Requête refusée.'))
+      error.status = response.status
+      if (response.status === 401) error.kind = 'sessionExpired'
+      else if (response.status >= 500) error.kind = 'serverError'
+      else error.kind = 'requestError'
+      throw error
     }
     return data
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error('Le serveur ne répond pas. Vérifiez l’URL backend ou son exposition publique.')
+      const timeoutError = new Error('Le serveur met trop de temps à répondre.')
+      timeoutError.kind = 'timeout'
+      throw timeoutError
     }
-    if (error instanceof TypeError) throw new Error('Impossible de joindre le serveur. Vérifiez la connexion ou la configuration CORS.')
+    if (error instanceof TypeError) {
+      const offlineError = new Error('Impossible de joindre le serveur. Vérifiez votre connexion.')
+      offlineError.kind = 'offline'
+      throw offlineError
+    }
     throw error
   }
 }
@@ -69,6 +83,17 @@ export function resolveMediaUrl(path) {
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) return value
   if (value.startsWith('/')) return `${BACKEND_URL}${value}`
   return value
+}
+
+export async function loadProtectedMediaObjectUrl(mediaPath) {
+  const value = String(mediaPath || '').trim()
+  if (!value) return ''
+  if (!value.startsWith('/uploads/')) return resolveMediaUrl(value)
+  const blob = await fetchJson(value, {
+    responseType: 'blob',
+    headers: { ...getSessionHeaders(), Accept: 'image/*' },
+  })
+  return URL.createObjectURL(blob)
 }
 
 async function getJson(path) {
@@ -99,7 +124,6 @@ export async function login(email, password) {
       body: JSON.stringify({ email, password }),
     })
     if (isBrowser()) {
-      localStorage.setItem('teliman_user_email', data.user.email)
       localStorage.setItem('teliman_session_token', data.sessionToken)
       localStorage.setItem('teliman_user_role', data.user.role || '')
       localStorage.setItem('teliman_user_permissions', JSON.stringify(data.user.permissions || []))
@@ -113,40 +137,45 @@ export async function login(email, password) {
   }
 }
 
-export function logout() {
+export async function logout() {
   if (!isBrowser()) return
-  localStorage.removeItem('teliman_user_email')
-  localStorage.removeItem('teliman_session_token')
-  localStorage.removeItem('teliman_user_role')
-  localStorage.removeItem('teliman_user_permissions')
+  try {
+    await fetchJson('/api/auth/logout', { method: 'POST', headers: { ...getSessionHeaders() } })
+  } catch (error) {
+    if (!['sessionExpired', 'offline', 'timeout'].includes(error?.kind)) throw error
+  } finally {
+    localStorage.removeItem('teliman_session_token')
+    localStorage.removeItem('teliman_user_role')
+    localStorage.removeItem('teliman_user_permissions')
+  }
 }
 
 export async function getCurrentUser() {
-  const data = await getJson('/api/auth/me')
-  return data.user
+  if (isBrowser() && !localStorage.getItem('teliman_session_token')) return null
+  try {
+    const data = await getJson('/api/auth/me')
+    return data.user
+  } catch (error) {
+    if (isBrowser() && error?.kind === 'sessionExpired') {
+      localStorage.removeItem('teliman_session_token')
+      localStorage.removeItem('teliman_user_role')
+      localStorage.removeItem('teliman_user_permissions')
+    }
+    throw error
+  }
 }
 
 export const loadAdminUsers = () => getJson('/api/admin/users')
 export const createAdminUser = (payload) => postJson('/api/admin/users', payload)
-export const updateAdminUser = async (email, payload) => {
-  const response = await fetch(`${BACKEND_URL}/api/admin/users/${encodeURIComponent(email)}`, {
+export const updateAdminUser = (email, payload) => fetchJson(`/api/admin/users/${encodeURIComponent(email)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Erreur de mise à jour')
-  return data
-}
-export const deleteAdminUser = async (email) => {
-  const response = await fetch(`${BACKEND_URL}/api/admin/users/${encodeURIComponent(email)}`, {
+export const deleteAdminUser = (email) => fetchJson(`/api/admin/users/${encodeURIComponent(email)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Erreur de suppression')
-  return data
-}
 
 export const loadServiceStatus = () => getJson('/api/service-status')
 export const loadFleetData = () => getJson('/api/dashboard')
@@ -192,28 +221,15 @@ export const deleteMasterDataItem = async (listName, value, extra = {}) => {
   Object.entries(extra || {}).forEach(([key, entry]) => {
     if (entry !== undefined && entry !== null && String(entry).trim()) params.set(key, String(entry))
   })
-  const response = await fetch(`${BACKEND_URL}/api/master-data/${listName}?${params.toString()}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
+  return fetchJson(`/api/master-data/${listName}?${params.toString()}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 }
 export const createDeliveryOrder = (payload) => postJson('/api/delivery-orders', payload)
-export const updateDeliveryOrder = async (id, payload) => {
-  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, {
+export const updateDeliveryOrder = (id, payload) => fetchJson(`/api/delivery-orders/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
-export const deleteDeliveryOrder = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/delivery-orders/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
+export const deleteDeliveryOrder = (id) => fetchJson(`/api/delivery-orders/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 export const loadDeliveryOrder = async (id) => {
   const data = await getJson(`/api/delivery-order/${id}`)
   return data?.item || null
@@ -233,65 +249,35 @@ export const loadFuelVoucher = async (id) => {
 export const loadLiveFuelLevels = () => getJson('/api/fuel-live')
 export const loadCameras = () => getJson('/api/cameras')
 export const createFuelVoucher = (payload) => postJson('/api/fuel-vouchers', payload)
-export const updateFuelVoucher = async (id, payload) => {
-  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, {
+export const updateFuelVoucher = (id, payload) => fetchJson(`/api/fuel-vouchers/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
-export const deleteFuelVoucher = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
+export const deleteFuelVoucher = (id) => fetchJson(`/api/fuel-vouchers/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 export const loadLiveOdometer = () => getJson('/api/live-odometer')
 export const loadLivePositions = () => getJson('/api/positions-live')
 export const loadDriverAssignments = () => getJson('/api/driver-assignments')
 export const saveDriverAssignments = (assignments) => putJson('/api/driver-assignments', { assignments })
 export const loadDriverOverrides = () => getJson('/api/driver-overrides')
 export const saveDriverOverrides = (overrides) => putJson('/api/driver-overrides', { overrides })
-export const patchDriverOverride = async (id, data) => {
-  const response = await fetch(`${BACKEND_URL}/api/driver-overrides/${encodeURIComponent(id)}`, {
+export const patchDriverOverride = (id, data) => fetchJson(`/api/driver-overrides/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(data),
   })
-  const payload = await response.json()
-  if (!response.ok) throw new Error(payload?.error || 'Erreur')
-  return payload
-}
-export const deleteDriverOverride = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/driver-overrides/${encodeURIComponent(id)}`, {
+export const deleteDriverOverride = (id) => fetchJson(`/api/driver-overrides/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
   })
-  const payload = await response.json()
-  if (!response.ok) throw new Error(payload?.error || 'Erreur')
-  return payload
-}
 export const loadOilChanges = () => getJson('/api/oil-changes')
 export const createOilChange = (payload) => postJson('/api/oil-changes', payload)
-export const updateOilChange = async (id, payload) => {
-  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, {
+export const updateOilChange = (id, payload) => fetchJson(`/api/oil-changes/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
     body: JSON.stringify(payload),
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
-export const deleteOilChange = async (id) => {
-  const response = await fetch(`${BACKEND_URL}/api/oil-changes/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Backend error')
-  return data
-}
+export const deleteOilChange = (id) => fetchJson(`/api/oil-changes/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 export const loadTracks = ({ trackerId, from, to }) => getJson(`/api/tracks?trackerId=${trackerId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
 export const loadTracksBatch = (payload) => postJson('/api/tracks/batch', payload)
 export const loadVehicles = () => getJson('/api/vehicles')

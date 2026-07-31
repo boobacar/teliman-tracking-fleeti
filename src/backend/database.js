@@ -2,10 +2,12 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import crypto from 'crypto'
 
 let db = null
 
 export function initDatabase(dbPath) {
+  if (db) db.close()
   const dir = path.dirname(dbPath)
   fs.mkdirSync(dir, { recursive: true })
   
@@ -16,6 +18,11 @@ export function initDatabase(dbPath) {
   
   createTables()
   return db
+}
+
+export function closeDatabase() {
+  if (db) db.close()
+  db = null
 }
 
 export function getDatabase() {
@@ -82,6 +89,16 @@ function createTables() {
       salt TEXT NOT NULL,
       passwordHash TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_email TEXT NOT NULL REFERENCES auth_users(email) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_email);
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
     
     CREATE TABLE IF NOT EXISTS master_data (
       key TEXT PRIMARY KEY,
@@ -118,10 +135,6 @@ export function readDeliveryOrderById(id) {
   }
 }
 
-export function writeDeliveryOrders(rows) {
-  // Replaced by individual CRUD operations in server.js
-  // This function signature is kept for compatibility but not used for writes
-}
 
 export function insertDeliveryOrder(item) {
   const db = getDatabase()
@@ -154,12 +167,31 @@ export function updateDeliveryOrder(id, updates) {
     }
   }
   
-  if (sets.length === 0) return
-  db.prepare(`UPDATE delivery_orders SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (sets.length === 0) throw new Error('Aucune modification fournie')
+  const result = db.prepare(`UPDATE delivery_orders SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Bon de livraison introuvable')
 }
 
 export function deleteDeliveryOrder(id) {
-  getDatabase().prepare('DELETE FROM delivery_orders WHERE id = ?').run(id)
+  const result = getDatabase().prepare('DELETE FROM delivery_orders WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Bon de livraison introuvable')
+}
+
+export function insertDeliveryOrderAtomic(item) {
+  return getDatabase().transaction((payload) => {
+    if (payload.active) setDeliveryOrderActiveOnTracker(payload.trackerId)
+    insertDeliveryOrder(payload)
+    return readDeliveryOrderById(payload.id)
+  }).immediate(item)
+}
+
+export function updateDeliveryOrderAtomic(id, updates) {
+  return getDatabase().transaction((targetId, payload) => {
+    if (!readDeliveryOrderById(targetId)) throw new Error('Bon de livraison introuvable')
+    if (payload.active) setDeliveryOrderActiveOnTracker(payload.trackerId, targetId)
+    updateDeliveryOrder(targetId, payload)
+    return readDeliveryOrderById(targetId)
+  }).immediate(id, updates)
 }
 
 export function setDeliveryOrderActiveOnTracker(trackerId, exceptId = null) {
@@ -209,47 +241,108 @@ export function updateFuelVoucher(id, updates) {
     }
   }
   
-  if (sets.length === 0) return
-  db.prepare(`UPDATE fuel_vouchers SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (sets.length === 0) throw new Error('Aucune modification fournie')
+  const result = db.prepare(`UPDATE fuel_vouchers SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Bon carburant introuvable')
 }
 
 export function deleteFuelVoucher(id) {
-  getDatabase().prepare('DELETE FROM fuel_vouchers WHERE id = ?').run(id)
+  const result = getDatabase().prepare('DELETE FROM fuel_vouchers WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Bon carburant introuvable')
 }
 
-// ── Auth Users ──
+// ── Auth Users / Sessions ──
+
+function parseStringArray(value) {
+  const parsed = JSON.parse(value)
+  if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== 'string')) throw new Error('Permissions utilisateur corrompues')
+  return parsed
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
 
 export function readAuthUsers() {
-  const db = getDatabase()
-  const rows = db.prepare('SELECT * FROM auth_users').all()
-  return rows.map(row => ({
-    ...row,
-    permissions: JSON.parse(row.permissions || '[]'),
-  }))
+  const rows = getDatabase().prepare('SELECT * FROM auth_users ORDER BY email').all()
+  return rows.map((row) => ({ ...row, permissions: parseStringArray(row.permissions) }))
+}
+
+export function createAuthUser(email, data) {
+  const normalized = normalizeEmail(email)
+  if (!normalized || !data?.salt || !data?.passwordHash) throw new Error('Compte utilisateur invalide')
+  getDatabase().prepare('INSERT INTO auth_users (email, role, permissions, salt, passwordHash) VALUES (?, ?, ?, ?, ?)')
+    .run(normalized, data.role || 'user', JSON.stringify(data.permissions || []), data.salt, data.passwordHash)
 }
 
 export function upsertAuthUser(email, data) {
-  const db = getDatabase()
-  const stmt = db.prepare(`
+  const normalized = normalizeEmail(email)
+  if (!normalized || !data?.salt || !data?.passwordHash) throw new Error('Compte utilisateur invalide')
+  getDatabase().prepare(`
     INSERT INTO auth_users (email, role, permissions, salt, passwordHash)
     VALUES (@email, @role, @permissions, @salt, @passwordHash)
-    ON CONFLICT(email) DO UPDATE SET
-      role = @role,
-      permissions = @permissions,
-      salt = @salt,
-      passwordHash = @passwordHash
-  `)
-  stmt.run({
-    email,
-    role: data.role || 'admin',
-    permissions: JSON.stringify(data.permissions || []),
-    salt: data.salt || '',
-    passwordHash: data.passwordHash || '',
-  })
+    ON CONFLICT(email) DO UPDATE SET role=@role, permissions=@permissions, salt=@salt, passwordHash=@passwordHash
+  `).run({ email: normalized, role: data.role || 'user', permissions: JSON.stringify(data.permissions || []), salt: data.salt, passwordHash: data.passwordHash })
 }
 
 export function deleteAuthUser(email) {
-  getDatabase().prepare('DELETE FROM auth_users WHERE email = ?').run(email)
+  const result = getDatabase().prepare('DELETE FROM auth_users WHERE email = ?').run(normalizeEmail(email))
+  if (result.changes !== 1) throw new Error('Utilisateur introuvable')
+}
+
+function hashSessionToken(token) {
+  return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex')
+}
+
+export function createAuthSession(token, email, expiresAt) {
+  if (String(token || '').length < 32 || !Number.isFinite(Date.parse(expiresAt))) throw new Error('Session invalide')
+  getDatabase().prepare('INSERT INTO auth_sessions (token_hash, user_email, expires_at, created_at) VALUES (?, ?, ?, ?)')
+    .run(hashSessionToken(token), normalizeEmail(email), expiresAt, new Date().toISOString())
+}
+
+export function resolveAuthSession(token, now = new Date(), idleTtlMs = 0, refreshThresholdMs = 0) {
+  if (!token) return null
+  const db = getDatabase()
+  const nowIso = now.toISOString()
+  const tokenHash = hashSessionToken(token)
+  const row = db.prepare(`SELECT u.email, u.role, u.permissions, s.expires_at FROM auth_sessions s JOIN auth_users u ON u.email=s.user_email WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at > ?`)
+    .get(tokenHash, nowIso)
+  if (row && Number.isFinite(idleTtlMs) && idleTtlMs > 0) {
+    const nextExpiry = new Date(now.getTime() + idleTtlMs)
+    const threshold = Math.max(0, Number(refreshThresholdMs) || 0)
+    if (nextExpiry.getTime() - Date.parse(row.expires_at) >= threshold) {
+      db.prepare('UPDATE auth_sessions SET expires_at=? WHERE token_hash=? AND revoked_at IS NULL AND expires_at > ?')
+        .run(nextExpiry.toISOString(), tokenHash, nowIso)
+    }
+  }
+  return row ? { email: row.email, role: row.role, permissions: parseStringArray(row.permissions) } : null
+}
+
+export function revokeAuthSession(token) {
+  if (!token) return false
+  return getDatabase().prepare('UPDATE auth_sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL')
+    .run(new Date().toISOString(), hashSessionToken(token)).changes === 1
+}
+
+export function revokeUserSessions(email) {
+  return getDatabase().prepare('UPDATE auth_sessions SET revoked_at=? WHERE user_email=? AND revoked_at IS NULL')
+    .run(new Date().toISOString(), normalizeEmail(email)).changes
+}
+
+export function purgeExpiredAuthSessions(now = new Date()) {
+  return getDatabase().prepare('DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL')
+    .run(now.toISOString()).changes
+}
+
+export function deleteAuthUserAndSessions(email) {
+  return getDatabase().transaction((targetEmail) => {
+    revokeUserSessions(targetEmail)
+    deleteAuthUser(targetEmail)
+  }).immediate(normalizeEmail(email))
+}
+
+export function purgeExpiredSessions(now = new Date()) {
+  return getDatabase().prepare('DELETE FROM auth_sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL').run(now.toISOString()).changes
 }
 
 // ── Master Data ──
@@ -282,7 +375,7 @@ export function readDriverOverrides() {
   const db = getDatabase()
   const rows = db.prepare('SELECT id, data FROM driver_overrides').all()
   return rows.map(row => {
-    try { return { trackerId: row.id, ...JSON.parse(row.data) } } catch { return { trackerId: row.id } }
+    try { return { id: row.id, ...JSON.parse(row.data) } } catch { return { id: row.id } }
   })
 }
 
@@ -292,7 +385,44 @@ export function upsertDriverOverride(trackerId, data) {
 }
 
 export function deleteDriverOverride(trackerId) {
-  getDatabase().prepare('DELETE FROM driver_overrides WHERE id = ?').run(String(trackerId))
+  const result = getDatabase().prepare('DELETE FROM driver_overrides WHERE id = ?').run(String(trackerId))
+  if (result.changes !== 1) throw new Error('Override introuvable')
+}
+
+export function replaceDriverOverridesAtomic(overrides) {
+  return getDatabase().transaction((items) => {
+    getDatabase().prepare('DELETE FROM driver_overrides').run()
+    const insert = getDatabase().prepare('INSERT INTO driver_overrides (id, data) VALUES (?, ?)')
+    for (const [id, value] of Object.entries(items || {})) {
+      if (!id.trim() || !value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Override invalide')
+      insert.run(id.trim(), JSON.stringify(value))
+    }
+  }).immediate(overrides)
+}
+
+export function checkDatabaseHealth() {
+  const database = getDatabase()
+  if (database.prepare('SELECT 1 AS ok').get()?.ok !== 1 || database.pragma('quick_check', { simple: true }) !== 'ok') {
+    throw new Error('Base SQLite indisponible')
+  }
+  return true
+}
+
+export function checkDatabaseHealthFresh(dbPath) {
+  const database = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    if (database.prepare('SELECT 1 AS ok').get()?.ok !== 1 || database.pragma('quick_check', { simple: true }) !== 'ok') {
+      throw new Error('Base SQLite indisponible')
+    }
+    return true
+  } finally {
+    database.close()
+  }
+}
+
+export function runInTransaction(callback) {
+  if (typeof callback !== 'function') throw new Error('Transaction invalide')
+  return getDatabase().transaction(callback).immediate()
 }
 
 // ── Import / Export (migration) ──

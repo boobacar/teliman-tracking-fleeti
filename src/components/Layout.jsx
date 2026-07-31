@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, MessageCircle, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
 
@@ -21,12 +21,35 @@ export const APP_VIEWS = [
 
 export function Layout({ children, loading, refreshData, currentUser, onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const menuButtonRef = useRef(null)
+  const closeButtonRef = useRef(null)
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
   const canAccess = (permission) => !permission || permissions.includes('*') || permissions.includes(permission)
 
+  useEffect(() => {
+    if (!mobileNavOpen) return undefined
+    closeButtonRef.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setMobileNavOpen(false)
+        menuButtonRef.current?.focus()
+      }
+      if (event.key === 'Tab') {
+        const focusable = document.querySelectorAll('#mobile-navigation a, #mobile-navigation button')
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [mobileNavOpen])
+
   return (
     <div className="app-shell premium-shell">
-      <button type="button" className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)}>
+      <a className="skip-link" href="#main-content">Aller au contenu principal</a>
+      <button ref={menuButtonRef} type="button" className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)} aria-expanded={mobileNavOpen} aria-controls="mobile-navigation">
         <span className="mobile-nav-toggle__icon"><Menu size={18} /></span>
         <span className="mobile-nav-toggle__content">
           <strong>Navigation</strong>
@@ -35,11 +58,11 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
         <ChevronRight size={16} className="mobile-nav-toggle__chevron" />
       </button>
 
-      <aside className={`sidebar premium-sidebar ${mobileNavOpen ? 'mobile-open' : ''}`}>
+      <aside id="mobile-navigation" className={`sidebar premium-sidebar ${mobileNavOpen ? 'mobile-open' : ''}`} aria-label="Navigation principale">
         <div className="sidebar-brand-block">
           <div className="mobile-sidebar-header">
             <img src="/teliman-logistique-logo.jpg" alt="Teliman Logistique" className="sidebar-brand__logo" />
-            <button type="button" className="mobile-close-btn" onClick={() => setMobileNavOpen(false)}>
+            <button ref={closeButtonRef} type="button" className="mobile-close-btn" onClick={() => { setMobileNavOpen(false); menuButtonRef.current?.focus() }} aria-label="Fermer le menu">
               <X size={18} />
             </button>
           </div>
@@ -80,7 +103,7 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
         </button>
       </aside>
 
-      <main className="main-content premium-main">
+      <main id="main-content" tabIndex={-1} className="main-content premium-main">
         {children}
       </main>
     </div>

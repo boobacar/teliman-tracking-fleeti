@@ -5,6 +5,7 @@ import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { loadOilChanges, createOilChange, deleteOilChange, loadLiveOdometer, loadVehicles } from '../lib/fleeti'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 
 const OIL_TYPES = ['15W40', '20W50', '10W40', '5W30', '5W40', '0W20', 'Autre']
 const STATUS_FILTERS = [
@@ -29,6 +30,7 @@ const initialForm = {
 }
 
 export function OilChangesPage({ enrichedTrackers = [] }) {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [items, setItems] = useState([])
@@ -86,7 +88,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
 
     // Auto-refresh odometer + oil changes every 60 seconds
     const refreshInterval = setInterval(() => {
-      if (cancelled) return
+      if (cancelled || document.hidden) return
       reloadOdometer({ silent: true })
       // Recharger les vidanges pour mettre à jour les échéances
       loadOilChanges().then((payload) => {
@@ -230,6 +232,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
   }
 
   const remove = async (item) => {
+    if (!await confirm({ title: 'Supprimer cette vidange ?', message: `La vidange de ${item.truckLabel || 'ce camion'} sera supprimée.`, confirmLabel: 'Supprimer' })) return
     await deleteOilChange(item.id)
     await reload()
   }
@@ -242,14 +245,10 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
   const okCount = fleetRows.filter((row) => row.status === 'ok').length
   const trucksWithOdometer = fleetRows.filter((row) => row.liveOdo != null).length
 
-  // Trouver le tracker label par id
-  const getTruckLabel = (trackerId) => {
-    const tracker = truckOptions.find((t) => String(t.id) === String(trackerId))
-    return tracker?.label || `Tracker ${trackerId}`
-  }
 
   return (
     <PageStack className="ops-page-stack">
+      <h1 className="visually-hidden">Suivi des vidanges</h1>
       {/* KPIs */}
       <section className="panel panel-large delivery-hero-panel">
         <SectionHeader title="Suivi vidange" right={<div className="mission-hero-badge"><Wrench size={14} /> Maintenance</div>} />
@@ -319,15 +318,16 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
 
         <div className="reports-table-wrap">
           <table className="reports-table">
+            <caption>Kilométrage et échéances de vidange</caption>
             <thead>
               <tr>
-                <th>Camion</th>
-                <th>Kilométrage total</th>
-                <th>Prochaine vidange</th>
-                <th>Km restants</th>
-                <th>Statut</th>
-                <th>Dernière vidange</th>
-                <th>Nb. vidanges</th>
+                <th scope="col">Camion</th>
+                <th scope="col">Kilométrage total</th>
+                <th scope="col">Prochaine vidange</th>
+                <th scope="col">Km restants</th>
+                <th scope="col">Statut</th>
+                <th scope="col">Dernière vidange</th>
+                <th scope="col">Nb. vidanges</th>
               </tr>
             </thead>
             <tbody>
@@ -372,6 +372,23 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="mobile-oil-fleet-list" aria-label="État des vidanges par camion">
+          {filteredFleet.map((row) => {
+            const statusLabel = row.status === 'urgent' ? 'Vidange urgente' : row.status === 'warning' ? 'À prévoir' : row.status === 'ok' ? 'À jour' : 'Inconnu'
+            return (
+              <article className={`mobile-data-card status-${row.status}`} key={`mobile-odo-${row.tracker.id}`}>
+                <header><strong>{row.tracker.label}</strong><span>{statusLabel}</span></header>
+                <dl>
+                  <div><dt>Kilométrage</dt><dd>{row.liveOdo != null ? `${Number(row.liveOdo).toLocaleString('fr-FR')} km` : 'N/A'}</dd></div>
+                  <div><dt>Prochaine vidange</dt><dd>{row.nextChangeKm ? `${Number(row.nextChangeKm).toLocaleString('fr-FR')} km` : '-'}</dd></div>
+                  <div><dt>Km restants</dt><dd>{row.remainingKm != null ? `${Math.max(Number(row.remainingKm), 0).toLocaleString('fr-FR')} km` : '-'}</dd></div>
+                  <div><dt>Dernière vidange</dt><dd>{row.lastChange?.date ? new Date(row.lastChange.date).toLocaleDateString('fr-FR') : 'Aucune'}</dd></div>
+                </dl>
+              </article>
+            )
+          })}
+          {filteredFleet.length === 0 && <p className="empty-banner">Aucun véhicule ne correspond aux filtres.</p>}
         </div>
       </section>
 
@@ -530,9 +547,9 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
               aria-label="Filtre à huile changé"
               onClick={() => setForm((c) => ({ ...c, filterChanged: !c.filterChanged }))}
               style={{
-                width: 44,
-                height: 24,
-                borderRadius: 12,
+                width: 52,
+                height: 44,
+                borderRadius: 22,
                 border: 'none',
                 cursor: 'pointer',
                 background: form.filterChanged ? '#22c55e' : '#334155',
@@ -543,8 +560,8 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             >
               <span style={{
                 position: 'absolute',
-                top: 2,
-                left: form.filterChanged ? 22 : 2,
+                top: 12,
+                left: form.filterChanged ? 28 : 4,
                 width: 20,
                 height: 20,
                 borderRadius: '50%',
@@ -607,20 +624,22 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
           }
         />
         {loading ? <SkeletonTable rows={4} cols={8} /> : (
-          <div className="reports-table-wrap">
-            <table className="reports-table">
+          <>
+            <div className="reports-table-wrap">
+              <table className="reports-table">
+              <caption>Historique des vidanges</caption>
               <thead>
                 <tr>
-                  <th>Camion</th>
-                  <th>Date</th>
-                  <th>Kilométrage</th>
-                  <th>Huile</th>
-                  <th>Qté</th>
-                  <th>Filtre</th>
-                  <th>Récépissé</th>
-                  <th>Prochaine échéance</th>
-                  <th>Notes</th>
-                  <th></th>
+                  <th scope="col">Camion</th>
+                  <th scope="col">Date</th>
+                  <th scope="col">Kilométrage</th>
+                  <th scope="col">Huile</th>
+                  <th scope="col">Qté</th>
+                  <th scope="col">Filtre</th>
+                  <th scope="col">Récépissé</th>
+                  <th scope="col">Prochaine échéance</th>
+                  <th scope="col">Notes</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -653,10 +672,27 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
                   <tr><td colSpan={9} className="table-empty-cell">Aucune vidange enregistrée.</td></tr>
                 )}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+            <div className="mobile-oil-history-list" aria-label="Historique des vidanges">
+              {historyFiltered.map((item) => (
+                <article className="mobile-data-card" key={`mobile-history-${item.id}`}>
+                  <header><strong>{item.truckLabel || '-'}</strong><span>{item.date ? new Date(`${item.date}T00:00:00`).toLocaleDateString('fr-FR') : '-'}</span></header>
+                  <dl>
+                    <div><dt>Kilométrage</dt><dd>{item.odometerKm ? `${Number(item.odometerKm).toLocaleString('fr-FR')} km` : '-'}</dd></div>
+                    <div><dt>Huile</dt><dd>{item.oilType || '-'}{item.oilQuantityL ? ` · ${item.oilQuantityL} L` : ''}</dd></div>
+                    <div><dt>Filtre changé</dt><dd>{item.filterChanged ? 'Oui' : 'Non'}</dd></div>
+                    <div><dt>Notes</dt><dd>{item.notes || '-'}</dd></div>
+                  </dl>
+                  <button type="button" className="ghost-btn danger-btn" onClick={() => remove(item)} aria-label={`Supprimer la vidange de ${item.truckLabel || 'ce camion'}`}><Trash2 size={14} /> Supprimer</button>
+                </article>
+              ))}
+              {historyFiltered.length === 0 && <p className="empty-banner">Aucune vidange enregistrée.</p>}
+            </div>
+          </>
         )}
       </section>
+      {confirmationDialog}
     </PageStack>
   )
 }

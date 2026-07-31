@@ -1,10 +1,10 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-export function Pagination({ page, totalPages, total, onPageChange }) {
+export function Pagination({ page, totalPages, total = 0, onPageChange }) {
   if (totalPages <= 1) return null
 
   const pages = []
-  const maxVisible = 5
+  const maxVisible = 3
   let start = Math.max(1, page - Math.floor(maxVisible / 2))
   let end = Math.min(totalPages, start + maxVisible - 1)
   if (end - start + 1 < maxVisible) {
@@ -16,7 +16,7 @@ export function Pagination({ page, totalPages, total, onPageChange }) {
   }
 
   return (
-    <div className="pagination-bar">
+    <nav className="pagination-bar" aria-label="Pagination">
       <span className="pagination-info">
         {total.toLocaleString('fr-FR')} résultat{total !== 1 ? 's' : ''}
       </span>
@@ -42,6 +42,8 @@ export function Pagination({ page, totalPages, total, onPageChange }) {
             type="button"
             className={`pagination-btn ${p === page ? 'pagination-btn-active' : ''}`}
             onClick={() => onPageChange(p)}
+            aria-label={`Page ${p}`}
+            aria-current={p === page ? 'page' : undefined}
           >
             {p}
           </button>
@@ -62,6 +64,6 @@ export function Pagination({ page, totalPages, total, onPageChange }) {
           <ChevronRight size={16} />
         </button>
       </div>
-    </div>
+    </nav>
   )
 }

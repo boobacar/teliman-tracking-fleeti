@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Printer, Trash2 } from 'lucide-react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { useNavigate, useParams } from 'react-router-dom'
-import { deleteDeliveryOrder, loadDeliveryOrder, resolveMediaUrl, updateDeliveryOrder } from '../lib/fleeti'
+import { deleteDeliveryOrder, loadDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
+import { ProtectedImage } from '../components/ProtectedImage.jsx'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
+import { ImageDialog } from '../components/ImageDialog.jsx'
 
 export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const { id } = useParams()
   const navigate = useNavigate()
   const listOrder = useMemo(() => deliveryOrders.find((item) => String(item.id) === String(id)), [deliveryOrders, id])
@@ -125,6 +129,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   }
 
   const remove = async () => {
+    if (!await confirm({ title: 'Supprimer le bon de livraison ?', message: `Le bon ${order.reference || order.id} et ses preuves seront supprimés.`, confirmLabel: 'Supprimer' })) return
     setSaving(true)
     try {
       await deleteDeliveryOrder(order.id)
@@ -136,6 +141,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   }
 
   const removePhotoAt = async (index) => {
+    if (!await confirm({ title: 'Supprimer cette preuve ?', message: 'La photo sera définitivement retirée du bon.', confirmLabel: 'Supprimer' })) return
     setSaving(true)
     try {
       const nextPhotos = proofPhotos.filter((_, i) => i !== index)
@@ -155,7 +161,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
 
   return <div style={{ display: 'grid', gap: 20 }}>
     <section className="panel panel-large mission-hero-card">
-      <div className="panel-header"><div><h3>Détail du bon {order.reference}</h3><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button type="button" className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button type="button" className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
+      <div className="panel-header"><div><h1>Détail du bon {order.reference}</h1><p>{order.truckLabel} — {order.driver}</p></div><div className="table-actions"><button type="button" className="ghost-btn small-btn" onClick={() => printDeliveryOrder(order)}><Printer size={16} /> Imprimer</button><button type="button" className="ghost-btn small-btn" onClick={() => navigate('/delivery-orders')}><ArrowLeft size={16} /> Retour</button></div></div>
       <div className="mission-highlight-grid compact-mission-grid"><div className="mission-highlight-card"><span>Client</span><strong>{order.client}</strong><small>{order.reference}</small></div><div className="mission-highlight-card"><span>Destination</span><strong>{order.destination}</strong><small>{order.goods || '-'}</small></div><div className="mission-highlight-card"><span>Statut</span><strong>{form?.active ? 'Actif' : (form?.status || order.status)}</strong><small>{formatDeliveryQuantity(order.quantity)}</small></div></div>
     </section>
 
@@ -166,8 +172,8 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
           {proofPhotos.map((photo, index) => (
             <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
               <button type="button" className="ghost-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={22} /></button>
-              <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
-                <img src={resolveMediaUrl(photo)} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
+              <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(photo)}>
+                <ProtectedImage source={photo} alt={`Preuve ${order.reference} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
               </button>
             </div>
           ))}
@@ -299,10 +305,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
       </div>
     </section>
 
-    {lightboxOpen && (
-      <div className="photo-lightbox" onClick={() => setLightboxOpen('')}>
-        <img src={lightboxOpen} alt={`Photo ${order.reference}`} className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />
-      </div>
-    )}
+    <ImageDialog open={Boolean(lightboxOpen)} source={lightboxOpen} alt={`Photo ${order.reference}`} title={`Preuve du bon ${order.reference}`} onClose={() => setLightboxOpen('')} />
+    {confirmationDialog}
   </div>
 }

@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Camera, Save, Trash2 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { StableDatePicker } from '../components/StableDatePicker'
-import { deleteFuelVoucher, loadFuelVoucher, loadMasterData, resolveMediaUrl, updateFuelVoucher } from '../lib/fleeti'
+import { deleteFuelVoucher, loadFuelVoucher, loadMasterData, updateFuelVoucher } from '../lib/fleeti'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
+import { ProtectedImage } from '../components/ProtectedImage.jsx'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
+import { ImageDialog } from '../components/ImageDialog.jsx'
 
 function toNumber(value) {
   const parsed = Number(String(value ?? '').replace(',', '.'))
@@ -20,6 +23,7 @@ function fileToDataUrl(file) {
 }
 
 export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const { id } = useParams()
   const navigate = useNavigate()
   const [item, setItem] = useState(null)
@@ -148,6 +152,7 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
 
   const removePhotoAt = async (index) => {
     if (!item) return
+    if (!await confirm({ title: 'Supprimer cette preuve ?', message: 'La photo sera définitivement retirée du bon carburant.', confirmLabel: 'Supprimer' })) return
     setSaving(true)
     try {
       const nextPhotos = proofPhotos.filter((_, i) => i !== index)
@@ -164,6 +169,7 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
 
   const removeVoucher = async () => {
     if (!item) return
+    if (!await confirm({ title: 'Supprimer le bon carburant ?', message: `Le bon ${item.voucherNumber || item.id} et ses preuves seront supprimés.`, confirmLabel: 'Supprimer' })) return
     setSaving(true)
     try {
       await deleteFuelVoucher(item.id)
@@ -186,7 +192,7 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
       <section className="panel panel-large mission-hero-card">
         <div className="panel-header">
           <div>
-            <h3>Détail bon carburant {item.voucherNumber || ''}</h3>
+            <h1>Détail bon carburant {item.voucherNumber || ''}</h1>
             <p>{item.truckLabel || '-'} — {item.driver || '-'}</p>
           </div>
           <div className="table-actions">
@@ -215,8 +221,8 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
             {proofPhotos.map((photo, index) => (
               <div key={`${photo.slice(0, 32)}-${index}`} className="proof-photo-card">
                 <button type="button" className="ghost-btn small-btn danger-btn icon-btn proof-photo-delete-btn" onClick={() => removePhotoAt(index)} disabled={saving} aria-label="Supprimer photo"><Trash2 size={15} /></button>
-                <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(resolveMediaUrl(photo))}>
-                  <img src={resolveMediaUrl(photo)} alt={`Photo bon carburant ${item.voucherNumber} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
+                <button type="button" className="ghost-btn" style={{ width: 'fit-content', padding: 0, border: 'none', background: 'transparent' }} onClick={() => setLightboxOpen(photo)}>
+                  <ProtectedImage source={photo} alt={`Photo bon carburant ${item.voucherNumber} ${index + 1}`} style={{ width: 220, maxWidth: '100%', borderRadius: 14, border: '1px solid rgba(148,163,184,.35)', objectFit: 'cover' }} />
                 </button>
               </div>
             ))}
@@ -272,11 +278,8 @@ export function FuelVoucherDetailPage({ enrichedTrackers = [] }) {
         </div>
       </section>
 
-      {lightboxOpen && (
-        <div className="photo-lightbox" onClick={() => setLightboxOpen('')}>
-          <img src={lightboxOpen} alt={`Photo ${item.voucherNumber}`} className="photo-lightbox-image" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      <ImageDialog open={Boolean(lightboxOpen)} source={lightboxOpen} alt={`Photo ${item.voucherNumber}`} title={`Preuve du bon carburant ${item.voucherNumber}`} onClose={() => setLightboxOpen('')} />
+      {confirmationDialog}
     </div>
   )
 }

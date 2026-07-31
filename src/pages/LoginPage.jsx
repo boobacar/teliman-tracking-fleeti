@@ -26,8 +26,8 @@ export function LoginPage({ onLoggedIn }) {
       <form onSubmit={submit} style={{ width: 'min(420px, 92vw)', background: '#fff', padding: 28, borderRadius: 20, display: 'grid', gap: 14, boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
         <div>
           <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: 1 }}>TELIMAN LOGISTIQUE</div>
-          <h2 style={{ margin: '6px 0 0 0' }}>Connexion administrateur</h2>
-          <p style={{ margin: '8px 0 0 0', color: '#64748b' }}>Accès réservé aux administrateurs autorisés.</p>
+          <h2 style={{ margin: '6px 0 0 0', color: '#0f172a' }}>Connexion</h2>
+          <p style={{ margin: '8px 0 0 0', color: '#475569' }}>Accès réservé aux utilisateurs autorisés.</p>
         </div>
         <label className="field-stack" style={{ gap: 6 }}>
           <span style={{ color: '#475569', fontWeight: 600 }}>Adresse email</span>

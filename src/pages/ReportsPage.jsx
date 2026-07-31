@@ -3,6 +3,7 @@ import { StableDatePicker } from '../components/StableDatePicker'
 import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { Pagination } from '../components/Pagination'
 import {
   loadDeliveryOrders,
   loadFuelVouchers,
@@ -321,18 +322,21 @@ function buildGenericColumns(rows = [], opts = {}) {
 }
 
 function Table({ title, subtitle, columns, rows, footerRows = [] }) {
+  const [page, setPage] = useState(1)
+  const pageSize = 25
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+  useEffect(() => setPage(1), [title, rows.length])
   return (
     <section className="panel panel-large">
       <div className="panel-header"><div><h3>{title}</h3><p>{subtitle}</p></div></div>
       <div className="reports-table-wrap">
         <table className="reports-table">
-          <thead><tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
+          <caption>{title}</caption>
+          <thead><tr>{columns.map((c) => <th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={`${row.reference || row.voucherNumber || 'row'}-${i}`}>
-                {columns.map((c) => <td key={c.key}>{c.render ? c.render(row[c.key], row) : (row[c.key] ?? '-')}</td>)}
-              </tr>
-            ))}
+            {visibleRows.map((row, idx) => <tr key={`${safePage}-${idx}`}>{columns.map((c) => <td key={c.key} className={c.className || ''}>{c.render ? c.render(row[c.key], row) : (row[c.key] ?? '-')}</td>)}</tr>)}
             {rows.length === 0 && <tr><td colSpan={columns.length} style={{ textAlign: 'center', color: '#94a3b8' }}>Aucune donnée sur la période.</td></tr>}
             {footerRows.map((line, idx) => (
               <tr key={`footer-${idx}`} className="report-footer-row">
@@ -342,6 +346,7 @@ function Table({ title, subtitle, columns, rows, footerRows = [] }) {
           </tbody>
         </table>
       </div>
+      <Pagination page={safePage} totalPages={totalPages} total={rows.length} onPageChange={setPage} />
     </section>
   )
 }
@@ -358,10 +363,13 @@ export function ReportsPage() {
   const [includePurchaseOrder, setIncludePurchaseOrder] = useState(false)
   const [goodsFilter, setGoodsFilter] = useState('')
   const [operationalPayload, setOperationalPayload] = useState(null)
+  const [operationalPayloadKey, setOperationalPayloadKey] = useState('')
   const [operationalLoading, setOperationalLoading] = useState(false)
   const [operationalError, setOperationalError] = useState('')
   const [fleetVehicles, setFleetVehicles] = useState([])
   const [employees, setEmployees] = useState([])
+  const [fleetLoading, setFleetLoading] = useState(true)
+  const [fleetError, setFleetError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -389,17 +397,21 @@ export function ReportsPage() {
   useEffect(() => {
     let cancelled = false
     async function loadFleetData() {
+      setFleetLoading(true)
+      setFleetError('')
       try {
         const [vehiclesData, employeesData] = await Promise.all([
           loadVehicles(),
           loadEmployeesDetail(),
         ])
         if (!cancelled) {
-          setFleetVehicles(vehiclesData?.vehicles || vehiclesData?.items || [])
+          setFleetVehicles(Array.isArray(vehiclesData) ? vehiclesData : vehiclesData?.vehicles || vehiclesData?.items || [])
           setEmployees(employeesData?.employees || employeesData?.items || [])
         }
-      } catch {
-        // silent
+      } catch (e) {
+        if (!cancelled) setFleetError(e.message || 'Données de conformité indisponibles')
+      } finally {
+        if (!cancelled) setFleetLoading(false)
       }
     }
     loadFleetData()
@@ -449,17 +461,24 @@ export function ReportsPage() {
   useEffect(() => {
     if (!selectedOperationalReport) {
       setOperationalPayload(null)
+      setOperationalPayloadKey('')
       setOperationalError('')
       setOperationalLoading(false)
       return undefined
     }
     let cancelled = false
+    const requestKey = `${type}|${from}|${to}`
     async function run() {
       setOperationalLoading(true)
       setOperationalError('')
+      setOperationalPayload(null)
+      setOperationalPayloadKey('')
       try {
         const payload = await selectedOperationalReport.loader(buildOperationalQuery(from, to))
-        if (!cancelled) setOperationalPayload(payload || {})
+        if (!cancelled) {
+          setOperationalPayload(payload || {})
+          setOperationalPayloadKey(requestKey)
+        }
       } catch (e) {
         if (!cancelled) {
           setOperationalPayload(null)
@@ -471,7 +490,7 @@ export function ReportsPage() {
     }
     run()
     return () => { cancelled = true }
-  }, [selectedOperationalReport, from, to])
+  }, [selectedOperationalReport, from, to, type])
 
   const operationalRows = useMemo(() => extractRows(operationalPayload || {}), [operationalPayload])
   const operationalSummary = useMemo(() => extractSummaries(operationalPayload || {}), [operationalPayload])
@@ -533,7 +552,7 @@ export function ReportsPage() {
       const libreInsurance = v.insurance_libre || v.assurance_libre
       const driverLicense = emp.driver_license_validity || emp.permis_validite || emp.license_validity
       // Statut assurance
-      let insuranceStatus = 'ok'
+      let insuranceStatus = 'unknown'
       if (insuranceExpiry) {
         const expiry = ymdToDate(insuranceExpiry)
         if (expiry) {
@@ -541,13 +560,14 @@ export function ReportsPage() {
           const daysUntilExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24))
           if (daysUntilExpiry < 0) insuranceStatus = 'expired'
           else if (daysUntilExpiry <= 30) insuranceStatus = 'expiring'
+          else insuranceStatus = 'ok'
         }
       }
       return {
         vid,
         label: v.label || v.name || `Véhicule ${vid}`,
         model: v.model || v.model_name || '-',
-        garage: v.garage || v.garage_name || '-',
+        garage: v.garage_organization_name || v.garage || v.garage_name || '-',
         insuranceDate: insuranceDate || '-',
         insuranceExpiry: insuranceExpiry || '-',
         insuranceStatus,
@@ -572,6 +592,18 @@ export function ReportsPage() {
   const currentClientPurchaseOrder = selectedClientGroup ? (masterData.purchaseOrders?.[selectedClientGroup.clientName] || masterData.purchaseOrders?.[selectedClientGroup.clientKey] || '') : ''
 
   const getCurrentReportForExport = () => {
+    if (type === 'fleet-compliance') {
+      return {
+        title: 'FLOTTE & CONFORMITÉ',
+        clientName: '',
+        sections: [{
+          title: 'Détail par véhicule',
+          headers: ['CAMION', 'MODÈLE', 'GARAGE', 'ASSURANCE RC', 'STATUT RC', 'ASSURANCE LIBRE', 'PERMIS CHAUFFEUR'],
+          rows: fleetComplianceRows.map((row) => [row.label, row.model, row.garage, row.insuranceExpiry, row.insuranceStatus, row.libreInsurance, row.driverLicense]),
+          footerRows: [],
+        }],
+      }
+    }
     if (selectedOperationalReport) {
       const title = selectedOperationalReport.label
       return {
@@ -793,12 +825,18 @@ export function ReportsPage() {
     downloadCsv(`${report.title.toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'rapport'}.csv`, rows, from, to)
   }
 
+  const currentOperationalKey = `${type}|${from}|${to}`
+  const exportDisabled = loading || fleetLoading || operationalLoading
+    || Boolean(error || fleetError || operationalError)
+    || Boolean(selectedOperationalReport && operationalPayloadKey !== currentOperationalKey)
+
   return (
     <PageStack className="reports-excel">
       <section className="panel panel-large reports-v2-hero reports-excel">
         <SectionHeader
           title="RAPPORTS TLM"
-          right={<div className="table-actions"><button type="button" className="ghost-btn" onClick={exportCurrentPdf}>Exporter PDF</button><button type="button" className="primary-btn" onClick={exportCurrent}>Télécharger CSV</button></div>}
+          headingLevel="h1"
+          right={<div className="table-actions"><button type="button" className="ghost-btn" disabled={exportDisabled} onClick={exportCurrentPdf}>Exporter PDF</button><button type="button" className="primary-btn" disabled={exportDisabled} onClick={exportCurrent}>Télécharger CSV</button></div>}
         />
         <div className="filters filter-row">{reportTypes.map((item) => <button type="button" key={item.value} className={`chip ${type === item.value ? 'selected' : ''}`} onClick={() => setType(item.value)}>{item.label}</button>)}</div>
         <div className="reports-filter-grid reports-filter-grid-spaced">
@@ -835,7 +873,7 @@ export function ReportsPage() {
         </div>
         {loading && <SkeletonTable rows={4} cols={7} />}
         {operationalLoading && <SkeletonTable rows={4} cols={6} />}
-        <ErrorBanner message={error || operationalError} />
+        <ErrorBanner message={error || operationalError || (type === 'fleet-compliance' ? fleetError : '')} />
       </section>
 
       {selectedOperationalReport && (
@@ -1008,13 +1046,16 @@ export function ReportsPage() {
                 </thead>
                 <tbody>
                   {fleetComplianceRows.map((row) => {
-                    const statusColor = row.insuranceStatus === 'expired' ? '#ef4444'
+                    const statusColor = row.insuranceStatus === 'unknown' ? '#64748b'
+                      : row.insuranceStatus === 'expired' ? '#ef4444'
                       : row.insuranceStatus === 'expiring' ? '#f59e0b'
                       : '#22c55e'
-                    const statusLabel = row.insuranceStatus === 'expired' ? 'Expirée'
+                    const statusLabel = row.insuranceStatus === 'unknown' ? 'Inconnue'
+                      : row.insuranceStatus === 'expired' ? 'Expirée'
                       : row.insuranceStatus === 'expiring' ? 'Expire bientôt'
                       : 'OK'
-                    const StatusIcon = row.insuranceStatus === 'expired' ? AlertTriangle
+                    const StatusIcon = row.insuranceStatus === 'unknown' ? AlertTriangle
+                      : row.insuranceStatus === 'expired' ? AlertTriangle
                       : row.insuranceStatus === 'expiring' ? AlertTriangle
                       : CheckCircle
                     const formatDate = (val) => {
@@ -1040,7 +1081,7 @@ export function ReportsPage() {
                     )
                   })}
                   {fleetComplianceRows.length === 0 && (
-                    <tr><td colSpan={7} className="table-empty-cell">Chargement des données flotte…</td></tr>
+                    <tr><td colSpan={7} className="table-empty-cell">{fleetLoading ? 'Chargement des données flotte…' : fleetError ? 'Données indisponibles.' : 'Aucun véhicule.'}</td></tr>
                   )}
                 </tbody>
               </table>

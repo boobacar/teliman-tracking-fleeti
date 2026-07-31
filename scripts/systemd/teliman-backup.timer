@@ -1,0 +1,11 @@
+[Unit]
+Description=Planification quotidienne de la sauvegarde Teliman
+
+[Timer]
+OnCalendar=*-*-* 02:20:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=teliman-backup.service
+
+[Install]
+WantedBy=timers.target

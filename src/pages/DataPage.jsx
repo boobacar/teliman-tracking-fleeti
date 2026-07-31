@@ -4,6 +4,21 @@ import { ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader, StatCard, StatGrid } from '../components/UIPrimitives'
 import { addMasterDataItem, deleteMasterDataItem, loadMasterData } from '../lib/fleeti'
+import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
+
+function SwitchControl({ label, checked, onChange }) {
+  return (
+    <label className="toggle-row">
+      <span>{label}</span>
+      <span className="ui-toggle-control">
+        <input className="ui-toggle-input" type="checkbox" role="switch" aria-checked={checked} aria-label={label} checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        <span className={`ui-toggle-track ${checked ? 'is-checked' : ''}`} aria-hidden="true">
+          <span className={`ui-toggle-knob ${checked ? 'is-checked' : ''}`} />
+        </span>
+      </span>
+    </label>
+  )
+}
 
 function DataCard({
   title,
@@ -62,11 +77,11 @@ function DataCard({
               <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
               <button
                 type="button"
-                className="ghost-btn small-btn danger-btn icon-btn"
+                className="ghost-btn danger-btn icon-btn"
                 onClick={() => onRemove(listName, item)}
                 aria-label="Supprimer"
               >
-                <Trash2 size={16} />
+                <Trash2 size={22} />
               </button>
             </div>
           </article>
@@ -77,6 +92,7 @@ function DataCard({
 }
 
 export function DataPage() {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
   const [data, setData] = useState({
     clients: [],
     goods: [],
@@ -101,6 +117,7 @@ export function DataPage() {
   const [purchaseOrderValue, setPurchaseOrderValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   async function refresh() {
     setLoading(true)
@@ -138,29 +155,40 @@ export function DataPage() {
 
   async function addItem(listName, value, reset) {
     if (!value.trim()) return
-    await addMasterDataItem(listName, value.trim())
-    reset('')
-    await refresh()
+    if (await runMutation(() => addMasterDataItem(listName, value.trim()), 'Donnée ajoutée.')) reset('')
   }
 
   async function removeItem(listName, value) {
-    await deleteMasterDataItem(listName, value)
-    await refresh()
+    if (!await confirm({ title: 'Supprimer cette donnée ?', message: `« ${value} » sera retiré des formulaires qui utilisent ce référentiel.`, confirmLabel: 'Supprimer' })) return
+    await runMutation(() => deleteMasterDataItem(listName, value), 'Donnée supprimée.')
   }
 
   async function removeClientPhone(client, phone) {
-    await deleteMasterDataItem('clientPhones', client, { client, phone })
-    await refresh()
+    if (!await confirm({ title: 'Supprimer ce numéro ?', message: `${phone} ne sera plus associé à ${client}.`, confirmLabel: 'Supprimer' })) return
+    await runMutation(() => deleteMasterDataItem('clientPhones', client, { client, phone }), 'Numéro supprimé.')
+  }
+
+  async function runMutation(action, successMessage) {
+    setError('')
+    setNotice('')
+    try {
+      await action()
+      setNotice(successMessage)
+      await refresh()
+      return true
+    } catch (err) {
+      setError(err.message || 'La modification n’a pas pu être enregistrée.')
+      return false
+    }
   }
 
   async function addAlertRecipient() {
     const phone = alertRecipientPhone.trim()
     if (!phone || alertRecipientTypes.length === 0) return
-    for (const eventType of alertRecipientTypes) {
-      await addMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone })
-    }
-    setAlertRecipientPhone('')
-    await refresh()
+    const saved = await runMutation(async () => {
+      for (const eventType of alertRecipientTypes) await addMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone })
+    }, 'Destinataire WhatsApp enregistré.')
+    if (saved) setAlertRecipientPhone('')
   }
 
   function toggleAlertRecipientType(eventType) {
@@ -171,23 +199,23 @@ export function DataPage() {
   }
 
   async function removeAlertRecipient(eventType, phone) {
-    await deleteMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone })
-    await refresh()
+    if (!await confirm({ title: 'Supprimer ce destinataire ?', message: `${phone} ne recevra plus cette catégorie d’alerte.`, confirmLabel: 'Supprimer' })) return
+    await runMutation(() => deleteMasterDataItem('alertWhatsAppRecipients', phone, { eventType, phone }), 'Destinataire supprimé.')
   }
 
   async function addManualTracker() {
     const label = manualTruckLabel.trim()
     const driver = manualDriverName.trim()
     if (!label || !driver) return
-    await addMasterDataItem('manualTrackers', label, { label, driver })
-    setManualTruckLabel('')
-    setManualDriverName('')
-    await refresh()
+    if (await runMutation(() => addMasterDataItem('manualTrackers', label, { label, driver }), 'Camion manuel ajouté.')) {
+      setManualTruckLabel('')
+      setManualDriverName('')
+    }
   }
 
   async function removeManualTracker(id) {
-    await deleteMasterDataItem('manualTrackers', String(id))
-    await refresh()
+    if (!await confirm({ title: 'Supprimer ce camion manuel ?', message: 'Le camion et son affectation chauffeur seront retirés.', confirmLabel: 'Supprimer' })) return
+    await runMutation(() => deleteMasterDataItem('manualTrackers', String(id)), 'Camion manuel supprimé.')
   }
 
   const summaryCards = useMemo(
@@ -225,13 +253,10 @@ export function DataPage() {
     <PageStack className="data-page-stack">
       {loading && <SkeletonTable rows={4} cols={6} />}
       <ErrorBanner message={error} />
+      {notice && <div className="ui-toast" role="status" aria-live="polite">{notice}</div>}
 
       <section className="panel panel-large reports-v2-hero data-hero-panel">
-        <SectionHeader
-          title="Centre de données de référence"
-          description="Clients, destinations, marchandises et référentiels opérationnels."
-          right={<span className="data-phase-chip">Phase 3 UI</span>}
-        />
+        <div className="ui-section-header"><div><h1>Centre de données de référence</h1><p>Clients, destinations, marchandises et référentiels opérationnels.</p></div></div>
 
         <StatGrid className="data-kpis-grid">
           {summaryCards.map((card) => (
@@ -338,11 +363,11 @@ export function DataPage() {
                   <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
                   <button
                     type="button"
-                    className="ghost-btn small-btn danger-btn icon-btn"
+                    className="ghost-btn danger-btn icon-btn"
                     onClick={() => removeManualTracker(item.id)}
                     aria-label="Supprimer"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={22} />
                   </button>
                 </div>
               </article>
@@ -386,13 +411,11 @@ export function DataPage() {
               className="primary-btn"
               onClick={async () => {
                 if (!clientPhoneClient.trim() || !clientPhoneValue.trim()) return
-                await addMasterDataItem('clientPhones', clientPhoneValue.trim(), {
+                const saved = await runMutation(() => addMasterDataItem('clientPhones', clientPhoneValue.trim(), {
                   client: clientPhoneClient.trim(),
                   phone: clientPhoneValue.trim(),
-                })
-                setClientPhoneClient('')
-                setClientPhoneValue('')
-                await refresh()
+                }), 'Numéro client enregistré.')
+                if (saved) { setClientPhoneClient(''); setClientPhoneValue('') }
               }}
             >
               Enregistrer
@@ -411,11 +434,11 @@ export function DataPage() {
                   <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
                   <button
                     type="button"
-                    className="ghost-btn small-btn danger-btn icon-btn"
+                    className="ghost-btn danger-btn icon-btn"
                     onClick={() => removeClientPhone(client, phone)}
                     aria-label="Supprimer"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={22} />
                   </button>
                 </div>
               </article>
@@ -433,25 +456,9 @@ export function DataPage() {
           <div className="delivery-form delivery-form-premium data-card-form data-card-form-wide">
             <div className="field-stack">
               <span>Alertes à recevoir</span>
-              <label className="toggle-row">
-                <input
-                  aria-label="Recevoir les alertes excès de vitesse"
-                  type="checkbox"
-                  checked={alertRecipientTypes.includes('speedup')}
-                  onChange={() => toggleAlertRecipientType('speedup')}
-                />
-                <span>Excès de vitesse</span>
-              </label>
-              <label className="toggle-row">
-                <input
-                  aria-label="Recevoir les alertes stationnement prolongé"
-                  type="checkbox"
-                  checked={alertRecipientTypes.includes('excessive_parking')}
-                  onChange={() => toggleAlertRecipientType('excessive_parking')}
-                />
-                <span>Stationnement prolongé</span>
-              </label>
-              <small className="form-hint">Cochez une seule alerte ou les deux pour le même numéro.</small>
+              <SwitchControl label="Excès de vitesse" checked={alertRecipientTypes.includes('speedup')} onChange={() => toggleAlertRecipientType('speedup')} />
+              <SwitchControl label="Stationnement prolongé" checked={alertRecipientTypes.includes('excessive_parking')} onChange={() => toggleAlertRecipientType('excessive_parking')} />
+              <small className="form-hint">Activez une seule alerte ou les deux pour le même numéro.</small>
             </div>
             <label className="field-stack">
               <span>Numéro WhatsApp destinataire</span>
@@ -479,11 +486,11 @@ export function DataPage() {
                   <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
                   <button
                     type="button"
-                    className="ghost-btn small-btn danger-btn icon-btn"
+                    className="ghost-btn danger-btn icon-btn"
                     onClick={() => removeAlertRecipient(eventType, phone)}
                     aria-label="Supprimer destinataire alerte WhatsApp"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={22} />
                   </button>
                 </div>
               </article>
@@ -526,13 +533,11 @@ export function DataPage() {
               className="primary-btn"
               onClick={async () => {
                 if (!purchaseOrderClient.trim() || !purchaseOrderValue.trim()) return
-                await addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), {
+                const saved = await runMutation(() => addMasterDataItem('purchaseOrders', purchaseOrderValue.trim(), {
                   client: purchaseOrderClient.trim(),
                   purchaseOrderNumber: purchaseOrderValue.trim(),
-                })
-                setPurchaseOrderClient('')
-                setPurchaseOrderValue('')
-                await refresh()
+                }), 'Numéro de bon de commande enregistré.')
+                if (saved) { setPurchaseOrderClient(''); setPurchaseOrderValue('') }
               }}
             >
               Enregistrer
@@ -551,11 +556,11 @@ export function DataPage() {
                   <span className="data-item-index">{String(index + 1).padStart(2, '0')}</span>
                   <button
                     type="button"
-                    className="ghost-btn small-btn danger-btn icon-btn"
+                    className="ghost-btn danger-btn icon-btn"
                     onClick={() => removeItem('purchaseOrders', client)}
                     aria-label="Supprimer"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={22} />
                   </button>
                 </div>
               </article>
@@ -563,6 +568,7 @@ export function DataPage() {
           </div>
         </section>
       </section>
+      {confirmationDialog}
     </PageStack>
   )
 }

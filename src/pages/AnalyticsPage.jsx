@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 
+function ChartFigure({ label, data, summary, children }) {
+  return (
+    <figure aria-label={label}>
+      {data.length ? children : <p className="chart-data-summary">Aucune donnée disponible.</p>}
+      <figcaption className="chart-data-summary">{data.length ? summary : 'Aucune donnée à représenter.'}</figcaption>
+    </figure>
+  )
+}
+
 export function AnalyticsPage({ filteredTrackers, importantEvents }) {
   const mileageData = filteredTrackers.map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage }))
   const alertCountData = filteredTrackers.map((tracker) => ({ name: tracker.label, alerts: tracker.events.length }))
@@ -26,6 +35,7 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
 
   return (
     <PageStack className="ops-page-stack">
+      <h1 className="visually-hidden">Analyse de la flotte</h1>
       <SectionHeader title="Analyse de la flotte" description="Indicateurs clés et performances" />
 
       <section className="panel panel-large delivery-hero-panel">
@@ -37,42 +47,48 @@ export function AnalyticsPage({ filteredTrackers, importantEvents }) {
       <section className="dashboard-grid premium-grid phase2-grid">
         <div className="panel panel-large">
           <SectionHeader title="Analyse kilométrique" description="Répartition des unités par activité" />
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={mileageData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
-              <XAxis dataKey="name" stroke="#8da2c0" />
-              <YAxis stroke="#8da2c0" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-              <Bar dataKey="mileage" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <ChartFigure label="Kilométrage par unité" data={mileageData} summary={`${mileageData.length} unités comparées par kilométrage.`}>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={mileageData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
+                <XAxis dataKey="name" stroke="#8da2c0" />
+                <YAxis stroke="#8da2c0" />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
+                <Bar dataKey="mileage" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartFigure>
         </div>
 
         <div className="panel panel-large">
           <SectionHeader title="Analyse alertes" description="Nombre d'événements par tracker" />
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={alertCountData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
-              <XAxis dataKey="name" stroke="#8da2c0" />
-              <YAxis stroke="#8da2c0" />
-              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-              <Bar dataKey="alerts" fill="#f59e0b" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <ChartFigure label="Alertes par tracker" data={alertCountData} summary={`${alertCountData.length} trackers comparés par alertes.`}>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={alertCountData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
+                <XAxis dataKey="name" stroke="#8da2c0" />
+                <YAxis stroke="#8da2c0" />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
+                <Bar dataKey="alerts" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartFigure>
         </div>
       </section>
 
       <section className="panel panel-large delivery-table-panel">
         <SectionHeader title="Analyse vitesse" description="Snapshot live des unités en circulation" />
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={speedData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
-            <XAxis dataKey="name" stroke="#8da2c0" />
-            <YAxis stroke="#8da2c0" />
-            <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
-            <Bar dataKey="speed" fill="#22c55e" radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <ChartFigure label="Vitesse instantanée par unité" data={speedData} summary={`${speedData.length} unités comparées par vitesse.`}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={speedData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#243042" />
+              <XAxis dataKey="name" stroke="#8da2c0" />
+              <YAxis stroke="#8da2c0" />
+              <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #243042', borderRadius: 12 }} />
+              <Bar dataKey="speed" fill="#22c55e" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartFigure>
       </section>
 
       <section className="dashboard-grid premium-grid phase2-grid">

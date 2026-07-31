@@ -3,8 +3,9 @@ import {
   AlertTriangle, BadgeCheck, CheckCircle, Clock, Edit3, IdCard,
   Mail, Phone, Plus, Save, Trash2, Truck, UserPlus, X,
 } from 'lucide-react'
-import { EmptyBanner } from '../components/FeedbackBanners'
+import { EmptyBanner, ErrorBanner } from '../components/FeedbackBanners'
 import { SectionHeader } from '../components/UIPrimitives'
+import { useAccessibleConfirm } from '../components/ConfirmDialog'
 import { loadDriverOverrides, loadEmployeesDetail, patchDriverOverride, deleteDriverOverride } from '../lib/fleeti'
 
 function driverId(emp) {
@@ -12,6 +13,8 @@ function driverId(emp) {
 }
 
 export function DriversPage({ filteredTrackers }) {
+  const { confirm, confirmationDialog } = useAccessibleConfirm()
+  const [error, setError] = useState('')
   const [employees, setEmployees] = useState([])
   const [overrides, setOverrides] = useState({})
   const [editing, setEditing] = useState(null) // driver id
@@ -91,11 +94,11 @@ export function DriversPage({ filteredTrackers }) {
     setSaving(true)
     try {
       const result = await patchDriverOverride(editing, {
-        trackerId: editData.trackerId || undefined,
-        firstName: editData.firstName || undefined,
-        lastName: editData.lastName || undefined,
-        phone: editData.phone || undefined,
-        email: editData.email || undefined,
+        trackerId: editData.trackerId || null,
+        firstName: editData.firstName || null,
+        lastName: editData.lastName || null,
+        phone: editData.phone || null,
+        email: editData.email || null,
       })
       // Mettre à jour localement
       const next = { ...overrides }
@@ -107,7 +110,7 @@ export function DriversPage({ filteredTrackers }) {
       setOverrides(next)
       setEditing(null)
     } catch (err) {
-      alert('Erreur lors de la sauvegarde : ' + (err?.message || 'inconnue'))
+      setError('Erreur lors de la sauvegarde : ' + (err?.message || 'inconnue'))
     } finally {
       setSaving(false)
     }
@@ -115,7 +118,7 @@ export function DriversPage({ filteredTrackers }) {
 
   async function handleDelete(emp) {
     const id = driverId(emp)
-    if (!confirm(`Supprimer l'override pour ${getEffectiveField(emp, 'firstName')} ${getEffectiveField(emp, 'lastName')} ?`)) return
+    if (!await confirm({ title: 'Supprimer les ajustements', message: `Supprimer les ajustements pour ${getEffectiveField(emp, 'firstName')} ${getEffectiveField(emp, 'lastName')} ?`, confirmLabel: 'Supprimer', tone: 'danger' })) return
     try {
       await deleteDriverOverride(id)
       const next = { ...overrides }
@@ -123,14 +126,14 @@ export function DriversPage({ filteredTrackers }) {
       setOverrides(next)
       if (editing === id) setEditing(null)
     } catch (err) {
-      alert('Erreur : ' + (err?.message || 'inconnue'))
+      setError('Erreur : ' + (err?.message || 'inconnue'))
     }
   }
 
   async function handleAdd() {
     const first = (newDriver.firstName || '').trim()
     const last = (newDriver.lastName || '').trim()
-    if (!first && !last) return alert('Le nom est requis.')
+    if (!first && !last) { setError('Le nom est requis.'); return }
     setSaving(true)
     try {
       const customId = 'custom-' + Date.now()
@@ -157,7 +160,7 @@ export function DriversPage({ filteredTrackers }) {
       setAdding(false)
       setNewDriver({ firstName: '', lastName: '', trackerId: '', phone: '', email: '' })
     } catch (err) {
-      alert('Erreur : ' + (err?.message || 'inconnue'))
+      setError('Erreur : ' + (err?.message || 'inconnue'))
     } finally {
       setSaving(false)
     }
@@ -259,8 +262,8 @@ export function DriversPage({ filteredTrackers }) {
       <>
         <td>
           <strong>{fullName}</strong>
-          {isCustom && <span style={{ fontSize: '0.7em', color: '#38bdf8', marginLeft: 6 }}>➕</span>}
-          {hasOverride && !isCustom && <span style={{ fontSize: '0.7em', color: '#f59e0b', marginLeft: 4 }} title="Override local">⚡</span>}
+          {isCustom && <span aria-label="Chauffeur ajouté localement" title="Chauffeur ajouté localement"><UserPlus size={14} /></span>}
+          {hasOverride && !isCustom && <span aria-label="Informations ajustées localement" title="Informations ajustées localement"><Edit3 size={14} /></span>}
         </td>
         <td>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={12} /> {phone}</div>
@@ -301,7 +304,9 @@ export function DriversPage({ filteredTrackers }) {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div className="drivers-page" style={{ display: 'grid', gap: 20 }}>
+      <h1 className="visually-hidden">Chauffeurs</h1>
+      <ErrorBanner message={error} />
       <section className="panel panel-large">
         <SectionHeader
           title="Chauffeurs"
@@ -327,7 +332,7 @@ export function DriversPage({ filteredTrackers }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
                 <label style={labelStyle}>Prénom</label>
-                <input value={newDriver.firstName} onChange={(e) => setNewDriver({ ...newDriver, firstName: e.target.value })} style={inputStyle} placeholder="Prénom" />
+                <input aria-label="Prénom du chauffeur" value={newDriver.firstName} onChange={(e) => setNewDriver({ ...newDriver, firstName: e.target.value })} style={inputStyle} placeholder="Prénom" />
               </div>
               <div>
                 <label style={labelStyle}>Nom</label>
@@ -335,7 +340,7 @@ export function DriversPage({ filteredTrackers }) {
               </div>
               <div>
                 <label style={labelStyle}>Camion</label>
-                <select value={newDriver.trackerId} onChange={(e) => setNewDriver({ ...newDriver, trackerId: e.target.value })} style={selectStyle}>
+                <select aria-label="Camion assigné" value={newDriver.trackerId} onChange={(e) => setNewDriver({ ...newDriver, trackerId: e.target.value })} style={selectStyle}>
                   <option value="">-- Aucun --</option>
                   {(filteredTrackers || []).map((t) => <option key={t.id} value={String(t.id)}>{t.label || `Tracker #${t.id}`}</option>)}
                 </select>
@@ -360,16 +365,17 @@ export function DriversPage({ filteredTrackers }) {
 
         <div className="reports-table-wrap">
           <table className="reports-table">
+            <caption>Liste des chauffeurs</caption>
             <thead>
               <tr>
-                <th>Nom complet</th>
-                <th>Contact</th>
-                <th>Permis N°</th>
-                <th>Catégories</th>
-                <th>Validité permis</th>
-                <th>Badge / Matricule</th>
-                <th>Camion assigné</th>
-                {isAdmin && <th style={{ width: 60 }}></th>}
+                <th scope="col">Nom complet</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Permis N°</th>
+                <th scope="col">Catégories</th>
+                <th scope="col">Validité permis</th>
+                <th scope="col">Badge / Matricule</th>
+                <th scope="col">Camion assigné</th>
+                {isAdmin && <th scope="col" style={{ width: 60 }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -388,7 +394,7 @@ export function DriversPage({ filteredTrackers }) {
       </section>
 
       {/* Mobile cards */}
-      <div className="mobile-cards-grid" style={{ display: 'none' }}>
+      <div className="mobile-cards-grid">
         {allEmployees.map((emp) => {
           const fullName = [getEffectiveField(emp, 'firstName'), getEffectiveField(emp, 'lastName')].filter(Boolean).join(' ') || 'Non renseigné'
           const phone = getEffectiveField(emp, 'phone') || '-'
@@ -411,6 +417,7 @@ export function DriversPage({ filteredTrackers }) {
           )
         })}
       </div>
+      {confirmationDialog}
     </div>
   )
 }

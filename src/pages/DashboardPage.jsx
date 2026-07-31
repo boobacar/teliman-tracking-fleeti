@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, Radio, Search, ShieldAlert, Signal, Wifi, WifiOff } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, Radio, ShieldAlert, Signal, Wifi, WifiOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { useAutoRefresh } from '../hooks'
 import { loadLiveOdometer, loadVehicles } from '../lib/fleeti'
 
 function StatCard({ icon, label, value, helper }) {
@@ -26,16 +27,6 @@ function StatCard({ icon, label, value, helper }) {
         <strong>{value}</strong>
         <small>{helper}</small>
       </div>
-    </article>
-  )
-}
-
-function ExecutiveCard({ title, value, helper }) {
-  return (
-    <article className="executive-card executive-card--dashboard">
-      <span>{title}</span>
-      <strong>{value}</strong>
-      <small>{helper}</small>
     </article>
   )
 }
@@ -71,59 +62,60 @@ function formatLastRefresh(date) {
 
 export function DashboardPage({
   filteredTrackers,
-  stats,
+  stats: _stats,
   connectionChart,
   priorityTrackers,
   topDrivers,
-  executiveCards,
+  executiveCards: _executiveCards,
   offlineTrackers,
   anomalyTrackers,
   filter,
   setFilter,
   searchQuery,
-  setSearchQuery,
-  loading,
-  onRefresh,
+  setSearchQuery: _setSearchQuery,
+  loading: _loading,
+  onRefresh: _onRefresh,
   lastRefreshAt,
 }) {
   const [vehicles, setVehicles] = useState([])
   const [liveOdo, setLiveOdo] = useState([])
+  const [liveDataLoading, setLiveDataLoading] = useState(true)
+  const [liveDataError, setLiveDataError] = useState({ vehicles: '', odometer: '' })
+  const [liveDataUpdatedAt, setLiveDataUpdatedAt] = useState(null)
+  const liveLoadInFlight = useRef(false)
 
-  useEffect(() => {
-    let cancelled = false
-    loadVehicles()
-      .then((data) => {
-        if (!cancelled) {
-          const raw = Array.isArray(data) ? data : data?.vehicles || data?.items || []
-          const normalized = raw.map((v) => ({
-            ...v,
-            id: v.id || v.tracker_id,
-            name: v.label || v.name,
-            garage: v.garage_organization_name || v.garage || v.affiliated_garage,
-          }))
-          setVehicles(normalized)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
+  const loadDashboardLiveData = useCallback(async () => {
+    if (liveLoadInFlight.current) return
+    liveLoadInFlight.current = true
+    setLiveDataLoading(true)
+    const [vehicleResult, odometerResult] = await Promise.allSettled([loadVehicles(), loadLiveOdometer()])
+
+    if (vehicleResult.status === 'fulfilled') {
+      const data = vehicleResult.value
+      const raw = Array.isArray(data) ? data : data?.vehicles || data?.items || []
+      setVehicles(raw.map((v) => ({
+        ...v,
+        id: v.id || v.tracker_id,
+        name: v.label || v.name,
+        garage: v.garage_organization_name || v.garage || v.garage_name || v.affiliated_garage,
+      })))
     }
+    if (odometerResult.status === 'fulfilled') {
+      const data = odometerResult.value
+      setLiveOdo(Array.isArray(data) ? data : data?.items || data?.data || [])
+    }
+
+    setLiveDataError({
+      vehicles: vehicleResult.status === 'rejected' ? (vehicleResult.reason?.message || 'Impossible de charger les véhicules.') : '',
+      odometer: odometerResult.status === 'rejected' ? (odometerResult.reason?.message || 'Impossible de charger les odomètres.') : '',
+    })
+    if (vehicleResult.status === 'fulfilled' || odometerResult.status === 'fulfilled') setLiveDataUpdatedAt(Date.now())
+    setLiveDataLoading(false)
+    liveLoadInFlight.current = false
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    loadLiveOdometer()
-      .then((data) => {
-        if (!cancelled) {
-          const raw = Array.isArray(data) ? data : data?.items || data?.data || []
-          setLiveOdo(raw)
-        }
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  useEffect(() => { void loadDashboardLiveData() }, [loadDashboardLiveData, lastRefreshAt])
+  useAutoRefresh(loadDashboardLiveData, 60000)
 
   const mileageData = useMemo(
     () => filteredTrackers.slice(0, 12).map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage })),
@@ -144,6 +136,23 @@ export function DashboardPage({
       (entry.truckLabel || entry.label || '').toLowerCase().includes(q)
     )
   }, [liveOdo, searchQuery])
+  const visibleTrackerIds = useMemo(() => new Set(filteredTrackers.map((tracker) => String(tracker.id))), [filteredTrackers])
+  const dashboardPriorityTrackers = useMemo(() => priorityTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [priorityTrackers, visibleTrackerIds])
+  const dashboardOfflineTrackers = useMemo(() => offlineTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [offlineTrackers, visibleTrackerIds])
+  const dashboardAnomalyTrackers = useMemo(() => anomalyTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [anomalyTrackers, visibleTrackerIds])
+  const visibleLabels = useMemo(() => new Set(filteredTrackers.map((tracker) => tracker.label)), [filteredTrackers])
+  const dashboardTopDrivers = useMemo(() => topDrivers.filter((driver) => visibleLabels.has(driver.tracker)), [topDrivers, visibleLabels])
+  const dashboardStats = useMemo(() => ({
+    total: filteredTrackers.length,
+    active: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'active').length,
+    offline: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'offline').length,
+    moving: filteredTrackers.filter((tracker) => tracker.state?.movement_status === 'moving').length,
+    avgSpeed: filteredTrackers.length ? Math.round(filteredTrackers.reduce((sum, tracker) => sum + Number(tracker.state?.gps?.speed || 0), 0) / filteredTrackers.length) : 0,
+  }), [filteredTrackers])
+  const dashboardConnectionChart = useMemo(() => connectionChart.map((entry) => ({
+    ...entry,
+    value: entry.name === 'Actifs' ? dashboardStats.active : entry.name === 'Offline' ? dashboardStats.offline : Math.max(0, dashboardStats.total - dashboardStats.active - dashboardStats.offline),
+  })), [connectionChart, dashboardStats])
 
   return (
     <PageStack className="dashboard-page">
@@ -164,45 +173,23 @@ export function DashboardPage({
           </div>
           <div className="dashboard-toolbar__summary">
             <span>{filteredTrackers.length} trackers visibles</span>
-            <span>{stats.active} actifs</span>
-            <span>{stats.offline} offline</span>
-            <span>{lastRefreshAt ? `⚠ ${formatLastRefresh(lastRefreshAt)}` : '—'}</span>
+            <span>{dashboardStats.active} actifs</span>
+            <span>{dashboardStats.offline} offline</span>
+            <span>{liveDataUpdatedAt ? `Données live : ${formatLastRefresh(liveDataUpdatedAt)}` : 'Données live en attente'}</span>
           </div>
         </div>
       </section>
 
-      <section className="stats-grid dashboard-stats-grid">
-        <StatCard icon={<Car size={18} />} label="Trackers" value={stats.total} helper="base flotte" />
-        <StatCard icon={<Wifi size={18} />} label="Actifs" value={stats.active} helper="connectés live" />
-        <StatCard icon={<Activity size={18} />} label="En mouvement" value={stats.moving} helper="terrain roulant" />
-        <StatCard icon={<Gauge size={18} />} label="Vitesse moyenne" value={`${stats.avgSpeed} km/h`} helper="instantané" />
-      </section>
+      {liveDataLoading && <div className="info-banner" role="status">Actualisation des véhicules et odomètres…</div>}
+      {liveDataError.vehicles && <div className="error-banner" role="alert">Véhicules : {liveDataError.vehicles}</div>}
+      {liveDataError.odometer && <div className="error-banner" role="alert">Odomètres : {liveDataError.odometer}</div>}
+      {!liveDataLoading && !liveDataError.vehicles && !liveDataError.odometer && vehicles.length === 0 && liveOdo.length === 0 && <EmptyBanner message="Aucune donnée véhicule ou odomètre disponible." />}
 
-      <section className="dashboard-health-grid">
-        <article className="dashboard-health-card">
-          <div className="dashboard-health-card__icon"><Gauge size={16} /></div>
-          <span>Kilométrage</span>
-          <strong>{stats.totalMileage.toLocaleString('fr-FR')} km</strong>
-          <small>activité du jour</small>
-        </article>
-        <article className="dashboard-health-card">
-          <div className="dashboard-health-card__icon"><ShieldAlert size={16} /></div>
-          <span>À surveiller</span>
-          <strong>{priorityTrackers.length}</strong>
-          <small>camions prioritaires</small>
-        </article>
-        <article className="dashboard-health-card">
-          <div className="dashboard-health-card__icon"><Activity size={16} /></div>
-          <span>Anomalies</span>
-          <strong>{anomalyTrackers.length}</strong>
-          <small>signaux détectés</small>
-        </article>
-        <article className="dashboard-health-card">
-          <div className="dashboard-health-card__icon"><WifiOff size={16} /></div>
-          <span>Offline</span>
-          <strong>{stats.offline}</strong>
-          <small>unités à vérifier</small>
-        </article>
+      <section className="stats-grid dashboard-stats-grid">
+        <StatCard icon={<Car size={18} />} label="Trackers" value={dashboardStats.total} helper="base flotte" />
+        <StatCard icon={<Wifi size={18} />} label="Actifs" value={dashboardStats.active} helper="connectés live" />
+        <StatCard icon={<Activity size={18} />} label="En mouvement" value={dashboardStats.moving} helper="terrain roulant" />
+        <StatCard icon={<Gauge size={18} />} label="Vitesse moyenne" value={`${dashboardStats.avgSpeed} km/h`} helper="instantané" />
       </section>
 
       <section className="dashboard-grid dashboard-grid--primary">
@@ -235,8 +222,8 @@ export function DashboardPage({
           <SectionHeader title="Répartition flotte" description="Connectivité live" />
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
-              <Pie data={connectionChart} dataKey="value" innerRadius={72} outerRadius={102} paddingAngle={4}>
-                {connectionChart.map((entry) => (
+              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={72} outerRadius={102} paddingAngle={4}>
+                {dashboardConnectionChart.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
@@ -251,9 +238,9 @@ export function DashboardPage({
             </PieChart>
           </ResponsiveContainer>
           <div className="dashboard-inline-stats">
-            <span><CheckCircle size={14} /> {stats.active} actifs</span>
-            <span><WifiOff size={14} /> {stats.offline} offline</span>
-            <span><Signal size={14} /> {stats.total - stats.active - stats.offline} autres</span>
+            <span><CheckCircle size={14} /> {dashboardStats.active} actifs</span>
+            <span><WifiOff size={14} /> {dashboardStats.offline} offline</span>
+            <span><Signal size={14} /> {dashboardStats.total - dashboardStats.active - dashboardStats.offline} autres</span>
           </div>
         </div>
       </section>
@@ -265,7 +252,7 @@ export function DashboardPage({
             description="Classement par nombre d’alertes détectées"
           />
           <WatchList
-            items={priorityTrackers.slice(0, 5)}
+            items={dashboardPriorityTrackers.slice(0, 5)}
             icon={<ShieldAlert size={16} />}
             emptyMessage="Aucun camion prioritaire pour le moment."
             renderMeta={(tracker) => `${tracker.events.length} événements · ${tracker.eventCounts.speedup || 0} excès de vitesse`}
@@ -275,7 +262,7 @@ export function DashboardPage({
         <div className="panel">
           <SectionHeader title="Chauffeurs les plus actifs" description="Classement par kilométrage du jour" />
           <div className="driver-ranking">
-            {topDrivers.map((driver, index) => (
+            {dashboardTopDrivers.map((driver, index) => (
               <div key={`${driver.name}-${index}`} className="driver-rank-row driver-rank-row--dashboard">
                 <strong>#{index + 1}</strong>
                 <div>
@@ -288,7 +275,7 @@ export function DashboardPage({
                 </div>
               </div>
             ))}
-            {!topDrivers.length && <EmptyBanner message="Aucune donnée chauffeur disponible." />}
+            {!dashboardTopDrivers.length && <EmptyBanner message="Aucune donnée chauffeur disponible." />}
           </div>
         </div>
       </section>
@@ -301,7 +288,7 @@ export function DashboardPage({
             right={<Link className="ghost-btn" to="/trackers">Voir les trackers</Link>}
           />
           <WatchList
-            items={offlineTrackers.slice(0, 5)}
+            items={dashboardOfflineTrackers.slice(0, 5)}
             icon={<AlertTriangle size={16} />}
             emptyMessage="Aucun tracker offline actuellement."
             renderMeta={(tracker) => `Batterie ${tracker.state?.battery_level ?? '-'}% · ${tracker.state?.last_update ? new Date(tracker.state.last_update).toLocaleString('fr-FR') : 'MàJ inconnue'}`}
@@ -315,7 +302,7 @@ export function DashboardPage({
             right={<Link className="ghost-btn" to="/analytics">Voir analytics</Link>}
           />
           <WatchList
-            items={anomalyTrackers.slice(0, 5)}
+            items={dashboardAnomalyTrackers.slice(0, 5)}
             icon={<Activity size={16} />}
             emptyMessage="Aucune anomalie terrain détectée."
             renderMeta={(tracker) => `${tracker.events.length} événements détectés`}

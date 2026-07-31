@@ -11,7 +11,8 @@ test('les destinataires alertes WhatsApp utilisent des checkbox pour choisir une
   )
 
   assert.ok(alertSection.includes('Alertes à recevoir'))
-  assert.ok(alertSection.includes('type="checkbox"'))
+  assert.ok(DATA_PAGE_SOURCE.includes('type="checkbox" role="switch"'))
+  assert.ok(alertSection.includes('<SwitchControl'))
   assert.ok(alertSection.includes('checked={alertRecipientTypes.includes(\'speedup\')}'))
   assert.ok(alertSection.includes('checked={alertRecipientTypes.includes(\'excessive_parking\')}'))
   assert.ok(!alertSection.includes('<select'))

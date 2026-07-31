@@ -9,19 +9,19 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
-import { buildMasterDataPayload, emptyMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
-import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, adminUserSchema, adminUserUpdateSchema } from './src/backend/validation.js'
+import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
+import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
-import { dedupeDeliveryOrders, normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
+import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import {
-  initDatabase,
-  readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrder, updateDeliveryOrder, deleteDeliveryOrder, setDeliveryOrderActiveOnTracker,
+  initDatabase, closeDatabase,
+  readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrderAtomic, updateDeliveryOrderAtomic, deleteDeliveryOrder,
   readFuelVouchers, insertFuelVoucher, updateFuelVoucher, deleteFuelVoucher,
-  readAuthUsers, upsertAuthUser, deleteAuthUser,
-  readMasterData, readMasterDataKey, writeMasterDataKey,
-  readDriverOverrides, upsertDriverOverride, deleteDriverOverride,
+  readAuthUsers, createAuthUser, upsertAuthUser, deleteAuthUserAndSessions, createAuthSession, resolveAuthSession, revokeAuthSession, revokeUserSessions, purgeExpiredAuthSessions, checkDatabaseHealthFresh,
+  readMasterData, writeMasterDataKey,
+  readDriverOverrides, replaceDriverOverridesAtomic,
 } from './src/backend/database.js'
 
 dotenv.config()
@@ -35,27 +35,30 @@ fs.mkdirSync(DATA_DIR, { recursive: true })
 const DB_PATH = path.join(DATA_DIR, 'teliman.db')
 initDatabase(DB_PATH)
 console.log('[db] SQLite initialisee:', DB_PATH)
+purgeExpiredAuthSessions()
+const sessionPurgeTimer = setInterval(() => {
+  try { purgeExpiredAuthSessions() } catch (error) { console.warn('[auth] purge sessions impossible:', error?.message || error) }
+}, 60 * 60 * 1000)
+sessionPurgeTimer.unref()
 
 // ── Écriture atomique pour les fichiers non-critiques (whatsapp, telemetry cache) ──
-function writeJSON(filePath, data) {
-  const tmp = filePath + '.tmp.' + Date.now()
-  return fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
-    .then(() => fs.promises.rename(tmp, filePath))
-    .catch((err) => {
-      console.error(`[writeJSON] Échec ${filePath}:`, err.message)
-      fs.promises.unlink(tmp).catch(() => {})
-    })
+const jsonWriteQueues = new Map()
+async function writeJSON(filePath, data) {
+  const previous = jsonWriteQueues.get(filePath) || Promise.resolve()
+  const operation = previous.catch(() => {}).then(async () => {
+    const tmp = `${filePath}.tmp.${process.pid}.${crypto.randomBytes(8).toString('hex')}`
+    try {
+      await fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+      await fs.promises.rename(tmp, filePath)
+    } catch (error) {
+      await fs.promises.unlink(tmp).catch(() => {})
+      throw error
+    }
+  })
+  jsonWriteQueues.set(filePath, operation)
+  try { await operation } finally { if (jsonWriteQueues.get(filePath) === operation) jsonWriteQueues.delete(filePath) }
 }
 
-function writeBuffer(filePath, buffer) {
-  const tmp = filePath + '.tmp.' + Date.now()
-  fs.promises.writeFile(tmp, buffer)
-    .then(() => fs.promises.rename(tmp, filePath))
-    .catch((err) => {
-      console.error(`[writeBuffer] Échec ${filePath}:`, err.message)
-      fs.promises.unlink(tmp).catch(() => {})
-    })
-}
 // ── Fichiers non-critiques (whatsapp, telemetry) ──
 const UPLOADS_BASE_DIR = process.env.TELIMAN_UPLOADS_DIR || path.join(DATA_DIR, 'uploads')
 const UPLOADS_DIR = path.join(UPLOADS_BASE_DIR, 'delivery-proofs')
@@ -71,7 +74,8 @@ const SERVICE_SUSPENSION_FILE = process.env.TELIMAN_SERVICE_SUSPENSION_FILE || p
 const SERVICE_SUSPENSION_MESSAGE = 'impossible de joindre le serveur'
 
 const PORT = Number(process.env.PORT || 8787)
-const APP_SESSION_TOKEN = process.env.APP_SESSION_TOKEN
+const AUTH_SESSION_TTL_MS = Math.max(60_000, Number(process.env.AUTH_SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000))
+const AUTH_SESSION_REFRESH_INTERVAL_MS = Math.max(0, Number(process.env.AUTH_SESSION_REFRESH_INTERVAL_MS || 24 * 60 * 60 * 1000))
 
 // ── Sanitization HTML : strip toute balise HTML/script des entrées texte ──
 function sanitizeHtml(value) {
@@ -84,16 +88,13 @@ function sanitizeHtml(value) {
     .replace(/javascript\s*:/gi, '')
     .trim()
 }
-if (!APP_SESSION_TOKEN) {
-  console.error('[security] APP_SESSION_TOKEN manquant dans .env — le serveur refuse de démarrer')
-  process.exit(1)
-}
+
 const AUTH_PBKDF2_ITERATIONS = Number(process.env.AUTH_PBKDF2_ITERATIONS || 120000)
-const AUTH_USERS_FILE = path.join(DATA_DIR, 'auth-users.json')
 const AUTH_USERS = loadAuthUsers()
 const API_BASE = process.env.FLEETI_API_BASE
 const PUBLIC_API_BASE = process.env.FLEETI_PUBLIC_API_BASE || 'https://api.fleeti.co/v1'
 const PUBLIC_API_KEY = process.env.FLEETI_PUBLIC_API_KEY || ''
+const FLEETI_REQUEST_TIMEOUT_MS = Math.max(1000, Number(process.env.FLEETI_REQUEST_TIMEOUT_MS || 12000))
 const LOGIN = process.env.FLEETI_LOGIN
 const PASSWORD = process.env.FLEETI_PASSWORD
 const DEALER_ID = Number(process.env.FLEETI_DEALER_ID || 0)
@@ -137,8 +138,14 @@ app.set('trust proxy', 1)
 app.use(compression())
 app.use(cors(buildCorsOptions()))
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://server.arcgisonline.com', 'https://unpkg.com'],
+      connectSrc: ["'self'", 'https://api.fleeti.co'], fontSrc: ["'self'", 'data:'], objectSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'self'"],
+    },
+  },
 }))
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -158,15 +165,25 @@ app.use((req, res, next) => {
   }
   // Vérifier l'origine pour les requêtes non-GET
   const origin = req.get('origin') || ''
-  if (origin && !origin.includes('100.65.78.40') && !origin.includes('localhost') && !origin.includes('127.0.0.1') && !origin.includes('teliman')) {
-    console.warn(`[CSRF] Origine suspecte bloquée: ${origin}`)
-    return res.status(403).json({ ok: false, error: 'Origine non autorisée' })
+  if (origin && !isAllowedOrigin(origin)) {
+    console.warn('[CSRF] Origine non autorisée bloquée')
+    return res.status(403).json({ ok: false, error: 'Requête refusée' })
   }
   next()
 })
 
 app.use(express.json({ limit: '10mb' }))
-app.use('/uploads', express.static(UPLOADS_BASE_DIR))
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  const user = getSessionUser(req)
+  if (!user) return res.status(401).json({ ok: false, error: 'Session invalide' })
+  if (!hasPermission(user, 'read_proofs') && !hasPermission(user, 'manage_delivery_orders') && !hasPermission(user, 'manage_fuel_vouchers')) {
+    return res.status(403).json({ ok: false, error: 'Accès refusé' })
+  }
+  req.authUser = user
+  next()
+}, express.static(UPLOADS_BASE_DIR, { fallthrough: false, etag: false, lastModified: false }))
 
 // ── Frontend build (production) ──
 const DIST_DIR = path.join(__dirname, 'dist')
@@ -191,7 +208,9 @@ function preloadAssets() {
           : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg'
           : 'application/octet-stream'
         assetCache.set(`/assets/${file}`, { content, mime, size: content.length })
-      } catch {} // skip unreadable files
+      } catch {
+        // Ignorer les assets illisibles et continuer le préchargement.
+      }
     }
   }
   console.log(`[cache] ${assetCache.size} assets préchargés en mémoire (${Math.round([...assetCache.values()].reduce((s, a) => s + a.size, 0) / 1024 / 1024)} MB)`)
@@ -254,47 +273,29 @@ function validateRequiredEnv() {
   }
 }
 
-function buildCorsOptions() {
-  const fallbackOrigins = [
+function isAllowedOrigin(origin) {
+  const trustedOrigins = [
     'https://teliman-tracking-fleeti.vercel.app',
     'https://www.telimanlogistique.com',
     'https://telimanlogistique.com',
+    'https://home-server-1.tail660cfd.ts.net',
   ]
-  const allowedOrigins = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : fallbackOrigins
+  return new Set([...trustedOrigins, ...ALLOWED_ORIGINS]).has(String(origin || ''))
+}
 
-  function isAllowedOrigin(origin) {
-    if (allowedOrigins.includes(origin)) return true
-    try {
-      const url = new URL(origin)
-      const host = url.hostname.toLowerCase()
-      // Domaines de production
-      if (host === 'teliman-tracking-fleeti.vercel.app') return true
-      if (host.endsWith('.vercel.app') && host.includes('teliman-tracking-fleeti')) return true
-      if (host === 'telimanlogistique.com' || host === 'www.telimanlogistique.com') return true
-      if (host.endsWith('.ts.net')) return true
-      // Origines locales / réseau privé (dev + prod locale)
-      if (host === 'localhost' || host === '127.0.0.1') return true
-      if (host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) return true
-      if (host.startsWith('100.') && host.includes('.')) return true
-      return false
-    } catch {
-      return false
-    }
-  }
-
+function buildCorsOptions() {
   return {
     origin(origin, callback) {
-      if (!origin) return callback(null, true)
-      if (isAllowedOrigin(origin)) return callback(null, true)
-      return callback(new Error(`Origin not allowed by CORS: ${origin}`))
+      if (!origin || isAllowedOrigin(origin)) return callback(null, true)
+      return callback(new Error('Origin not allowed by CORS'))
     },
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-API-Key', 'x-user-email', 'x-session-token'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-API-Key', 'x-session-token'],
   }
 }
 
 function requestLogger(req, _res, next) {
-  console.log(`[route] ${req.method} ${req.url}`)
+  console.log(`[route] ${req.method} ${req.path}`)
   next()
 }
 
@@ -308,59 +309,25 @@ function secureCompare(a, b) {
 function protectApi(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
   if (!REQUIRE_API_TOKEN) return next()
-  const providedToken = req.get('x-api-key') || req.query.api_key || ''
+  const providedToken = req.get('x-api-key') || ''
   if (INTERNAL_API_TOKEN && secureCompare(providedToken, INTERNAL_API_TOKEN)) return next()
   return res.status(401).json({ ok: false, error: 'Unauthorized' })
 }
 
-function parseAuthUsers(raw) {
-  const fallbackHash = 'ac8412f2775cc339fe63c96e8a876611d35cd941d5325ba962b336b78f131734'
-  const fallbackSalt = 'e36f6f8132d2389d746a4f6e052c7fc0'
-  const fallbackUsers = [
-    'finances@telimanlogistique.com',
-    'coordination@telimanlogistique.com',
-    'marie@telimanlogistique.com',
-    'boubsfal@gmail.com',
-  ].map((email) => ({ email, role: 'admin', permissions: ['*'], salt: fallbackSalt, passwordHash: fallbackHash }))
-  if (!String(raw || '').trim()) return fallbackUsers
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return fallbackUsers
-    return parsed
-      .map((item) => ({
-        email: String(item?.email || '').trim().toLowerCase(),
-        role: String(item?.role || 'user').trim().toLowerCase(),
-        permissions: Array.isArray(item?.permissions) ? item.permissions.map((entry) => String(entry || '').trim()).filter(Boolean) : [],
-        salt: String(item?.salt || '').trim(),
-        passwordHash: String(item?.passwordHash || '').trim(),
-      }))
-      .filter((item) => item.email && item.salt && item.passwordHash)
-  } catch {
-    return fallbackUsers
-  }
-}
-
 function loadAuthUsers() {
-  try {
-    const fromDb = readAuthUsers()
-    if (fromDb.length) return fromDb
-    return parseAuthUsers('')
-  } catch {
-    const fallback = parseAuthUsers('')
-    return fallback
+  const users = readAuthUsers()
+  if (!users.length) {
+    throw new Error('Aucun compte actif: utilisez la primitive createAuthUser dans un bootstrap administratif hors ligne')
   }
+  return users
 }
 
-function saveAuthUsers(users) {
-  const normalized = parseAuthUsers(JSON.stringify(users))
-  // Mettre a jour le tableau en memoire
+function refreshAuthUsers() {
+  const users = readAuthUsers()
   AUTH_USERS.length = 0
-  AUTH_USERS.push(...normalized)
-  // Persister dans SQLite
-  for (const user of normalized) {
-    upsertAuthUser(user.email, user)
-  }
+  AUTH_USERS.push(...users)
 }
+
 
 function hashPassword(password, salt) {
   return crypto.pbkdf2Sync(String(password || ''), String(salt || ''), AUTH_PBKDF2_ITERATIONS, 32, 'sha256').toString('hex')
@@ -371,12 +338,14 @@ function findAuthUser(email) {
   return AUTH_USERS.find((item) => item.email === normalized) || null
 }
 
+function getSessionToken(req) {
+  const authorization = String(req.get('authorization') || '')
+  if (authorization.toLowerCase().startsWith('bearer ')) return authorization.slice(7).trim()
+  return String(req.get('x-session-token') || '').trim()
+}
+
 function getSessionUser(req) {
-  const email = String(req.get('x-user-email') || req.get('x-user_email') || '').trim().toLowerCase()
-  const sessionToken = String(req.get('x-session-token') || '').trim()
-  const user = findAuthUser(email)
-  if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) return null
-  return user
+  return resolveAuthSession(getSessionToken(req), new Date(), AUTH_SESSION_TTL_MS, AUTH_SESSION_REFRESH_INTERVAL_MS)
 }
 
 function hasPermission(user, permission) {
@@ -387,11 +356,8 @@ function hasPermission(user, permission) {
 }
 
 function normalizeUserPermissions(role, permissions = []) {
-  const basePages = ['page_dashboard', 'page_map', 'page_fleet', 'page_whatsapp', 'page_alerts', 'page_analytics', 'page_reports']
   if (role === 'admin') return ['*']
-  const normalized = Array.from(new Set((permissions || []).map((entry) => String(entry || '').trim()).filter(Boolean)))
-  const withBase = Array.from(new Set([...basePages, ...normalized]))
-  return withBase
+  return Array.from(new Set((permissions || []).map((entry) => String(entry || '').trim()).filter(Boolean)))
 }
 
 function sanitizeUserOutput(user) {
@@ -410,7 +376,32 @@ function isSuspensionBypassPath(pathname) {
   return pathname === '/api/auth/login'
     || pathname === '/api/auth/me'
     || pathname === '/api/health'
+    || pathname === '/api/health/live'
+    || pathname === '/api/health/ready'
     || pathname === '/api/service-status'
+}
+
+function requiredRoutePermissions(req) {
+  const pathName = req.path
+  const mutation = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)
+  if (pathName.startsWith('/api/admin/users')) return ['manage_users']
+  if (pathName.startsWith('/api/whatsapp/')) return [mutation ? 'manage_whatsapp' : 'page_whatsapp']
+  if (pathName.startsWith('/api/driver-overrides') || pathName.startsWith('/api/driver-assignments')) return [mutation ? 'manage_drivers' : 'page_fleet']
+  if (pathName.startsWith('/api/delivery-order') || pathName.startsWith('/api/oil-changes')) return ['manage_delivery_orders']
+  if (pathName.startsWith('/api/fuel-voucher') || pathName.startsWith('/api/fuel-live')) return ['manage_fuel_vouchers']
+  if (pathName.startsWith('/api/master-data') || pathName.startsWith('/api/lists/')) {
+    return mutation
+      ? ['manage_data']
+      : ['manage_data', 'manage_delivery_orders', 'manage_fuel_vouchers', 'page_fleet']
+  }
+  if (pathName.startsWith('/api/reports')) return ['page_reports']
+  if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
+  if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) return ['page_alerts']
+  if (pathName.startsWith('/api/live-odometer')) return ['manage_delivery_orders', 'page_fleet']
+  if (pathName.startsWith('/api/sensors-live')) return ['page_fleet', 'page_analytics']
+  if (pathName.startsWith('/api/trackers') || pathName.startsWith('/api/drivers') || pathName.startsWith('/api/employees-detail') || pathName.startsWith('/api/vehicles') || pathName.startsWith('/api/vehicle') || pathName.startsWith('/api/cameras')) return ['page_fleet', 'manage_delivery_orders']
+  if (pathName.startsWith('/api/dashboard') || pathName.startsWith('/api/fleeti/')) return ['page_dashboard', 'page_fleet', 'page_map', 'page_analytics', 'manage_delivery_orders', 'manage_fuel_vouchers']
+  return []
 }
 
 function protectAppSession(req, res, next) {
@@ -419,6 +410,10 @@ function protectAppSession(req, res, next) {
   const user = getSessionUser(req)
   if (user) {
     req.authUser = user
+    const permissions = requiredRoutePermissions(req)
+    if (permissions.length && !permissions.some((permission) => hasPermission(user, permission))) {
+      return res.status(403).json({ ok: false, error: 'Accès refusé' })
+    }
     return next()
   }
   return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
@@ -521,8 +516,8 @@ function readOilChanges() {
   }
 }
 
-function writeOilChanges(rows) {
-  writeJSON(OIL_CHANGES_FILE, rows)
+async function writeOilChanges(rows) {
+  await writeJSON(OIL_CHANGES_FILE, rows)
 }
 
 function sanitizeOilChangePayload(body = {}, current = null) {
@@ -561,9 +556,9 @@ function readWhatsAppTemplates() {
   }
 }
 
-function writeWhatsAppTemplates(payload) {
+async function writeWhatsAppTemplates(payload) {
   const normalized = normalizeWhatsAppTemplates(payload)
-  writeJSON(WHATSAPP_TEMPLATES_FILE, normalized)
+  await writeJSON(WHATSAPP_TEMPLATES_FILE, normalized)
   return normalized
 }
 
@@ -583,13 +578,13 @@ function readWhatsAppHistory() {
   }
 }
 
-function writeWhatsAppHistory(entries) {
+async function writeWhatsAppHistory(entries) {
   const normalized = Array.isArray(entries) ? entries.slice(0, WHATSAPP_HISTORY_LIMIT) : []
-  writeJSON(WHATSAPP_HISTORY_FILE, normalized)
+  await writeJSON(WHATSAPP_HISTORY_FILE, normalized)
   return normalized
 }
 
-function appendWhatsAppHistory(entries) {
+async function appendWhatsAppHistory(entries) {
   const newEntries = Array.isArray(entries) ? entries.filter(Boolean) : [entries].filter(Boolean)
   if (!newEntries.length) return readWhatsAppHistory()
   return writeWhatsAppHistory([...newEntries, ...readWhatsAppHistory()])
@@ -605,7 +600,7 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
     templates: readWhatsAppTemplates(),
   })
   for (const result of results) {
-    appendWhatsAppHistory(createWhatsAppHistoryEntry({
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
       result,
       order,
       message: result.message,
@@ -629,7 +624,7 @@ async function notifyFleetAlertWhatsApp(event) {
     baileysClient: baileysWhatsAppClient,
   })
   for (const result of results) {
-    appendWhatsAppHistory(createWhatsAppHistoryEntry({
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
       result,
       order: {
         id: event?.tracker_id || event?.trackerId || '',
@@ -654,99 +649,116 @@ function ensureValidTrackerId(value) {
   return Number.isInteger(trackerId) && trackerId > 0 ? trackerId : null
 }
 
-function ensureUploadsDir() {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length)
+  let nextIndex = 0
+  async function run() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      results[index] = await worker(items[index], index)
+    }
+  }
+  const workers = Math.min(Math.max(1, limit), items.length)
+  if (workers > 0) await Promise.all(Array.from({ length: workers }, run))
+  return results
 }
 
-function persistDeliveryProofPhoto(value) {
+const MAX_PROOF_IMAGE_BYTES = Math.max(1024, Number(process.env.PROOF_IMAGE_MAX_BYTES || 5 * 1024 * 1024))
+
+function detectImageExtension(buffer) {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) return 'png'
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg'
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'webp'
+  return ''
+}
+
+async function persistProofPhoto(value, { directory, urlPrefix, filePrefix }) {
   const raw = String(value || '').trim()
   if (!raw) return ''
-  if (raw.startsWith('/uploads/')) return raw
-  const match = raw.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i)
-  if (!match) return raw
-
-  ensureUploadsDir()
-  const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()
-  const base64Payload = match[2]
-  const fileName = `proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
-  const filePath = path.join(UPLOADS_DIR, fileName)
-  fs.promises.writeFile(filePath, Buffer.from(base64Payload, "base64")).catch(function(err) { console.error("[photo] write failed:", err.message) })
-  return `/uploads/delivery-proofs/${fileName}`
+  const escapedPrefix = urlPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (new RegExp(`^${escapedPrefix}[A-Za-z0-9._-]+$`).test(raw)) return raw
+  const match = raw.match(/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/]+={0,2})$/i)
+  if (!match) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
+  const buffer = Buffer.from(match[2], 'base64')
+  if (!buffer.length || buffer.length > MAX_PROOF_IMAGE_BYTES) throw new Error('Photo trop volumineuse ou vide (max 5MB)')
+  const extension = detectImageExtension(buffer)
+  if (!extension) throw new Error('Contenu image invalide')
+  fs.mkdirSync(directory, { recursive: true })
+  const fileName = `${filePrefix}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${extension}`
+  await fs.promises.writeFile(path.join(directory, fileName), buffer, { flag: 'wx', mode: 0o600 })
+  return `${urlPrefix}${fileName}`
 }
 
-function preprocessDeliveryProofPhotos(body = {}, current = null) {
+const persistDeliveryProofPhoto = (value) => persistProofPhoto(value, {
+  directory: UPLOADS_DIR,
+  urlPrefix: '/uploads/delivery-proofs/',
+  filePrefix: 'proof',
+})
+
+async function preprocessDeliveryProofPhotos(body = {}, current = null) {
   const normalized = { ...(body || {}) }
+  const incomingList = Array.isArray(normalized.proofPhotoDataUrls) ? [...normalized.proofPhotoDataUrls] : null
   const currentList = Array.isArray(current?.proofPhotoDataUrls)
     ? current.proofPhotoDataUrls
     : (current?.proofPhotoDataUrl ? [current.proofPhotoDataUrl] : [])
-
-  if (Array.isArray(normalized.proofPhotoDataUrls)) {
-    normalized.proofPhotoDataUrls = normalized.proofPhotoDataUrls.map((item) => persistDeliveryProofPhoto(item)).filter(Boolean)
-  } else if (currentList.length) {
-    normalized.proofPhotoDataUrls = currentList
+  const createdUrls = new Set()
+  const persistTracked = async (value) => {
+    const result = await persistDeliveryProofPhoto(value)
+    if (result && result !== String(value || '').trim()) createdUrls.add(result)
+    return result
   }
 
-  if (typeof normalized.proofPhotoDataUrl === 'string' && normalized.proofPhotoDataUrl.trim()) {
-    normalized.proofPhotoDataUrl = persistDeliveryProofPhoto(normalized.proofPhotoDataUrl)
-  } else if (normalized.proofPhotoDataUrls?.length) {
-    normalized.proofPhotoDataUrl = normalized.proofPhotoDataUrls[0]
-  } else if (current?.proofPhotoDataUrl) {
-    normalized.proofPhotoDataUrl = current.proofPhotoDataUrl
+  try {
+    if (Array.isArray(normalized.proofPhotoDataUrls)) {
+      if (normalized.proofPhotoDataUrls.length > 10) throw new Error('Maximum 10 photos')
+      const persisted = []
+      for (const photo of normalized.proofPhotoDataUrls) persisted.push(await persistTracked(photo))
+      normalized.proofPhotoDataUrls = persisted.filter(Boolean)
+    } else if (currentList.length) {
+      normalized.proofPhotoDataUrls = currentList
+    }
+
+    if (typeof normalized.proofPhotoDataUrl === 'string' && normalized.proofPhotoDataUrl.trim()) {
+      const matchingIndex = incomingList?.indexOf(normalized.proofPhotoDataUrl) ?? -1
+      normalized.proofPhotoDataUrl = matchingIndex >= 0
+        ? normalized.proofPhotoDataUrls[matchingIndex]
+        : await persistTracked(normalized.proofPhotoDataUrl)
+    } else if (normalized.proofPhotoDataUrls?.length) {
+      normalized.proofPhotoDataUrl = normalized.proofPhotoDataUrls[0]
+    } else if (current?.proofPhotoDataUrl) {
+      normalized.proofPhotoDataUrl = current.proofPhotoDataUrl
+    }
+
+    return normalized
+  } catch (error) {
+    await removeManagedProofUrls(createdUrls)
+    throw error
   }
-
-  return normalized
 }
 
-function ensureFuelProofsDir() {
-  fs.mkdirSync(FUEL_PROOFS_DIR, { recursive: true })
-}
+const persistFuelProofPhoto = (value) => persistProofPhoto(
+  String(value || '').startsWith('fuel-proofs/') ? `/uploads/${value}` : value,
+  { directory: FUEL_PROOFS_DIR, urlPrefix: '/uploads/fuel-proofs/', filePrefix: 'fuel-proof' },
+)
 
-function persistFuelProofPhoto(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  if (raw.startsWith('/uploads/fuel-proofs/')) return raw
-  // Accepter aussi les chemins relatifs post-migration
-  if (raw.startsWith('fuel-proofs/')) return `/uploads/${raw}`
-  const match = raw.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i)
-  if (!match) return raw
-
-  ensureFuelProofsDir()
-  const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()
-  const base64Payload = match[2]
-  if (base64Payload.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
-  const fileName = `fuel-proof-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
-  const filePath = path.join(FUEL_PROOFS_DIR, fileName)
-  fs.promises.writeFile(filePath, Buffer.from(base64Payload, "base64")).catch(function(err) { console.error("[photo] write failed:", err.message) })
-  return `/uploads/fuel-proofs/${fileName}`
-}
-
-function sanitizeFuelPhotoDataUrl(value, fallback = '') {
+async function sanitizeFuelPhotoDataUrl(value, fallback = '', createdUrls = null) {
   const raw = String(value ?? fallback ?? '').trim()
   if (!raw) return ''
   // Déjà un chemin servi (après migration ou upload)
-  if (raw.startsWith('/uploads/') || raw.startsWith('fuel-proofs/')) return raw
-  const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
-  if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
-  if (raw.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
-  // Persister sur disque au lieu de stocker du base64
-  return persistFuelProofPhoto(raw)
+  const result = await persistFuelProofPhoto(raw)
+  if (createdUrls && result && result !== raw) createdUrls.add(result)
+  return result
 }
 
-function sanitizeFuelPhotoList(value, fallback = []) {
+async function sanitizeFuelPhotoList(value, fallback = [], createdUrls = null) {
   const input = Array.isArray(value) ? value : (Array.isArray(fallback) ? fallback : [])
-  return input
-    .map((item) => {
-      try {
-        return sanitizeFuelPhotoDataUrl(item, '')
-      } catch {
-        return ''
-      }
-    })
-    .filter(Boolean)
-    .slice(0, 10)
+  if (input.length > 10) throw new Error('Maximum 10 photos')
+  const persisted = []
+  for (const item of input) persisted.push(await sanitizeFuelPhotoDataUrl(item, '', createdUrls))
+  return persisted.filter(Boolean)
 }
 
-function sanitizeFuelVoucherPayload(body = {}, current = null) {
+async function sanitizeFuelVoucherPayload(body = {}, current = null) {
   const trackerId = ensureValidTrackerId(body.trackerId ?? current?.trackerId)
   if (!trackerId) throw new Error('trackerId invalide')
 
@@ -756,37 +768,43 @@ function sanitizeFuelVoucherPayload(body = {}, current = null) {
   if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('Prix unitaire invalide')
 
   const amount = Number((quantityLiters * unitPrice).toFixed(2))
-  const proofPhotoDataUrls = sanitizeFuelPhotoList(body.proofPhotoDataUrls, current?.proofPhotoDataUrls)
-  const proofPhotoDataUrl = sanitizeFuelPhotoDataUrl(body.proofPhotoDataUrl, current?.proofPhotoDataUrl)
+  const createdUrls = new Set()
+  try {
+    const sourcePhotos = Array.isArray(body.proofPhotoDataUrls) ? body.proofPhotoDataUrls : (current?.proofPhotoDataUrls || [])
+    const proofPhotoDataUrls = await sanitizeFuelPhotoList(body.proofPhotoDataUrls, current?.proofPhotoDataUrls, createdUrls)
+    const sourcePrimary = body.proofPhotoDataUrl ?? current?.proofPhotoDataUrl
+    const primaryIndex = sourcePhotos.indexOf(sourcePrimary)
+    const proofPhotoDataUrl = primaryIndex >= 0
+      ? proofPhotoDataUrls[primaryIndex]
+      : await sanitizeFuelPhotoDataUrl(sourcePrimary, '', createdUrls)
 
-  return {
-    id: current?.id || Date.now(),
-    trackerId,
-    truckLabel: String(body.truckLabel ?? current?.truckLabel ?? '').trim(),
-    driver: String(body.driver ?? current?.driver ?? '').trim(),
-    client: String(body.client ?? current?.client ?? '').trim(),
-    voucherNumber: String(body.voucherNumber ?? current?.voucherNumber ?? '').trim(),
-    supplier: String(body.supplier ?? current?.supplier ?? '').trim(),
-    dateTime: body.dateTime || current?.dateTime || new Date().toISOString(),
-    quantityLiters,
-    unitPrice,
-    amount,
-    createdAt: current?.createdAt || new Date().toISOString(),
-    proofPhotoDataUrl: proofPhotoDataUrl || proofPhotoDataUrls[0] || '',
-    proofPhotoDataUrls: proofPhotoDataUrls.length ? proofPhotoDataUrls : (proofPhotoDataUrl ? [proofPhotoDataUrl] : []),
+    return {
+      id: current?.id || Date.now(),
+      trackerId,
+      truckLabel: String(body.truckLabel ?? current?.truckLabel ?? '').trim(),
+      driver: String(body.driver ?? current?.driver ?? '').trim(),
+      client: String(body.client ?? current?.client ?? '').trim(),
+      voucherNumber: String(body.voucherNumber ?? current?.voucherNumber ?? '').trim(),
+      supplier: String(body.supplier ?? current?.supplier ?? '').trim(),
+      dateTime: body.dateTime || current?.dateTime || new Date().toISOString(),
+      quantityLiters,
+      unitPrice,
+      amount,
+      createdAt: current?.createdAt || new Date().toISOString(),
+      proofPhotoDataUrl: proofPhotoDataUrl || proofPhotoDataUrls[0] || '',
+      proofPhotoDataUrls: proofPhotoDataUrls.length ? proofPhotoDataUrls : (proofPhotoDataUrl ? [proofPhotoDataUrl] : []),
+    }
+  } catch (error) {
+    await removeManagedProofUrls(createdUrls)
+    throw error
   }
 }
 
 function sanitizeProofPhotoDataUrl(value, fallback = '') {
   const raw = String(value ?? fallback ?? '').trim()
   if (!raw) return ''
-  if (raw.startsWith('/uploads/')) return raw
-  if (/^https?:\/\//i.test(raw)) return raw
-  const isAllowed = /^data:image\/(png|jpe?g|webp);base64,/i.test(raw)
-  if (!isAllowed) throw new Error('Format photo invalide (png, jpg, jpeg, webp)')
-  // ~5MB max encoded payload
-  if (raw.length > 7_000_000) throw new Error('Photo trop volumineuse (max 5MB)')
-  return raw
+  if (/^\/uploads\/delivery-proofs\/[A-Za-z0-9._-]+$/.test(raw)) return raw
+  throw new Error('Chemin photo invalide')
 }
 
 function sanitizeProofPhotoList(value, fallback = []) {
@@ -795,6 +813,43 @@ function sanitizeProofPhotoList(value, fallback = []) {
     .map((item) => sanitizeProofPhotoDataUrl(item, ''))
     .filter(Boolean)
     .slice(0, 10)
+}
+
+function managedProofUrls(record) {
+  return new Set([
+    record?.proofPhotoDataUrl,
+    ...(Array.isArray(record?.proofPhotoDataUrls) ? record.proofPhotoDataUrls : []),
+  ].filter((url) => /^\/uploads\/(delivery-proofs|fuel-proofs)\/[A-Za-z0-9._-]+$/.test(String(url || ''))))
+}
+
+async function removeManagedProofUrls(urls) {
+  await Promise.all([...urls].map(async (url) => {
+    const deliveryPrefix = '/uploads/delivery-proofs/'
+    const fuelPrefix = '/uploads/fuel-proofs/'
+    const directory = url.startsWith(deliveryPrefix) ? UPLOADS_DIR : (url.startsWith(fuelPrefix) ? FUEL_PROOFS_DIR : null)
+    if (!directory) return
+    await fs.promises.unlink(path.join(directory, path.basename(url))).catch((error) => {
+      if (error.code !== 'ENOENT') throw error
+    })
+  }))
+}
+
+async function cleanupNewProofFiles(previous, next) {
+  const previousUrls = managedProofUrls(previous)
+  await removeManagedProofUrls(new Set([...managedProofUrls(next)].filter((url) => !previousUrls.has(url))))
+}
+
+async function cleanupRemovedProofFiles(previous, next) {
+  const nextUrls = managedProofUrls(next)
+  await removeManagedProofUrls(new Set([...managedProofUrls(previous)].filter((url) => !nextUrls.has(url))))
+}
+
+async function cleanupRemovedProofFilesBestEffort(previous, next) {
+  try {
+    await cleanupRemovedProofFiles(previous, next)
+  } catch (error) {
+    console.warn('[uploads] Nettoyage différé requis:', error?.message || 'échec de suppression')
+  }
 }
 
 function sanitizeOptionalDateField(value, fallback = null, { defaultNow = false } = {}) {
@@ -865,6 +920,7 @@ async function apiCall(endpoint, payload = {}) {
   }
   const response = await fetch(`${API_BASE}/${endpoint}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(FLEETI_REQUEST_TIMEOUT_MS),
     headers: { 'Content-Type': 'application/json', 'NVX-ISO-DateTime': 'true' },
     body: JSON.stringify(payload),
   })
@@ -999,6 +1055,7 @@ async function publicApiGet(pathname, query = {}) {
     }
   }
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(FLEETI_REQUEST_TIMEOUT_MS),
     headers: {
       Accept: 'application/json',
       'X-API-Key': PUBLIC_API_KEY,
@@ -1013,6 +1070,7 @@ async function publicApiPost(pathname, body = {}) {
   if (!PUBLIC_API_KEY) throw new Error('Missing FLEETI_PUBLIC_API_KEY')
   const response = await fetch(`${PUBLIC_API_BASE}${pathname}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(FLEETI_REQUEST_TIMEOUT_MS),
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -1025,61 +1083,6 @@ async function publicApiPost(pathname, body = {}) {
   return data
 }
 
-function getFuelSensorPriority(sensor = {}) {
-  const inputName = String(sensor.inputName || '').toLowerCase()
-  if (inputName === 'avl_io_89') return 100
-  if (inputName === 'can_fuel_litres') return 80
-  if (inputName.includes('fuel')) return 50
-  return 0
-}
-
-function collectGatewayFuelSensors(gateway = {}) {
-  const directSensors = gateway?.providerSensors || []
-  const accessorySensors = (gateway?.accessories || []).flatMap((accessory) => accessory?.providerSensors || [])
-  return [...directSensors, ...accessorySensors]
-}
-
-function formatFuelSnapshot(asset = {}) {
-  const gateway = (asset.gateways || []).find((item) => item?.provider?.gatewayId) || asset.gateways?.[0]
-  const gatewaySensors = collectGatewayFuelSensors(gateway)
-  const preferredFuelSensors = gatewaySensors.filter((sensor) => {
-    const inputName = String(sensor.inputName || '').toLowerCase()
-    const units = String(sensor.units || '').toLowerCase()
-    return inputName.includes('fuel') || inputName.includes('lls_level') || inputName === 'avl_io_89' || units === 'l'
-  })
-  const allValueSensors = gatewaySensors.filter((sensor) => Number.isFinite(sensor?.value))
-  const sortedSensors = [...preferredFuelSensors].sort((a, b) => getFuelSensorPriority(b) - getFuelSensorPriority(a))
-  const fallbackSensor = allValueSensors.find((sensor) => {
-    const inputName = String(sensor.inputName || '').toLowerCase()
-    const units = String(sensor.units || '').toLowerCase()
-    return units === 'l' || inputName.includes('litre') || inputName.includes('fuel') || inputName.includes('lls_level') || inputName === 'avl_io_89' || inputName === 'avl_io_90'
-  }) || null
-  const preferredSensor = sortedSensors.find((sensor) => Number.isFinite(sensor?.value)) || sortedSensors[0] || fallbackSensor || null
-  const sensors = preferredFuelSensors.length ? preferredFuelSensors : (fallbackSensor ? [fallbackSensor] : [])
-  return {
-    assetId: asset.id || '',
-    trackerId: gateway?.provider?.gatewayId ? Number(gateway.provider.gatewayId) : null,
-    sourceId: gateway?.provider?.sourceId ? Number(gateway.provider.sourceId) : null,
-    truckLabel: asset.name || gateway?.name || asset.properties?.licensePlate || 'Camion sans nom',
-    imei: gateway?.imei || '',
-    isOnline: Boolean(gateway?.isOnline),
-    movementStatus: gateway?.state?.movementStatus ?? null,
-    connectionStatus: gateway?.state?.connectionStatus ?? null,
-    fuelLevel: Number.isFinite(preferredSensor?.value) ? preferredSensor.value : null,
-    fuelUnits: preferredSensor?.units || 'L',
-    fuelUpdatedAt: preferredSensor?.valueUpdatedAt || null,
-    fuelInputName: preferredSensor?.inputName || null,
-    sensorId: preferredSensor?.id || null,
-    sensors: sensors.map((sensor) => ({
-      id: sensor.id,
-      inputName: sensor.inputName || null,
-      value: Number.isFinite(sensor.value) ? sensor.value : null,
-      valueUpdatedAt: sensor.valueUpdatedAt || null,
-      units: sensor.units || null,
-      isCan: Boolean(sensor.isCan),
-    })),
-  }
-}
 
 async function loadCameraAssets() {
   if (!PRIVATE_API_CONFIGURED) {
@@ -2451,15 +2454,55 @@ async function getDashboardData(forceRefresh = false, dateRange = null) {
   return payload
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({
-    ok: true,
-    service: 'teliman-tracking-fleeti-v3',
-    cacheTtlMs: CACHE_TTL_MS,
-    privateApiConfigured: PRIVATE_API_CONFIGURED,
-    timestamp: new Date().toISOString(),
-  })
+app.get('/api/health/live', (_req, res) => {
+  res.json({ ok: true, service: 'teliman-tracking-fleeti-v3', timestamp: new Date().toISOString() })
 })
+
+app.get('/api/health/ready', async (_req, res) => {
+  const probes = [
+    path.join(DATA_DIR, `.health-${process.pid}-${crypto.randomBytes(4).toString('hex')}`),
+    path.join(UPLOADS_BASE_DIR, `.health-${process.pid}-${crypto.randomBytes(4).toString('hex')}`),
+  ]
+  const checks = {}
+  try {
+    checkDatabaseHealthFresh(DB_PATH)
+    checks.database = 'ok'
+
+    const expectedUuid = process.env.TELIMAN_EXPECTED_STORAGE_UUID || '8966697c-0fb2-467c-8496-acbe858b6a7e'
+    const uuidDevice = await fs.promises.realpath(`/dev/disk/by-uuid/${expectedUuid}`)
+    const [dataStats, deviceStats, fileSystemStats] = await Promise.all([
+      fs.promises.stat(DATA_DIR),
+      fs.promises.stat(uuidDevice),
+      fs.promises.statfs(DATA_DIR),
+    ])
+    if (Number(dataStats.dev) !== Number(deviceStats.rdev)) throw new Error('UUID stockage inattendu')
+    const availableBytes = Number(fileSystemStats.bavail) * Number(fileSystemStats.bsize)
+    const minimumFreeBytes = Number(process.env.TELIMAN_MIN_FREE_BYTES || 100 * 1024 * 1024)
+    if (availableBytes < minimumFreeBytes) throw new Error('Espace stockage insuffisant')
+    await fs.promises.mkdir(UPLOADS_BASE_DIR, { recursive: true })
+    for (const probe of probes) await fs.promises.writeFile(probe, 'ok', { flag: 'wx', mode: 0o600 })
+    checks.storage = 'ok'
+
+    const backupRoot = process.env.TELIMAN_BACKUP_ROOT || '/home/pi/backups/teliman'
+    const maxBackupAgeMs = Number(process.env.TELIMAN_BACKUP_MAX_AGE_HOURS || 36) * 60 * 60 * 1000
+    const backupEntries = await fs.promises.readdir(backupRoot, { withFileTypes: true })
+    const backupStats = await Promise.all(backupEntries.filter((entry) => entry.isDirectory() && entry.name.startsWith('teliman-')).map(async (entry) => fs.promises.stat(path.join(backupRoot, entry.name))))
+    const latestBackupMs = Math.max(0, ...backupStats.map((entry) => entry.mtimeMs))
+    if (!latestBackupMs || Date.now() - latestBackupMs > maxBackupAgeMs) throw new Error('Sauvegarde absente ou périmée')
+    checks.backup = 'ok'
+
+    await getDashboardData()
+    checks.fleeti = 'ok'
+    res.json({ ok: true, checks, timestamp: new Date().toISOString() })
+  } catch (error) {
+    console.error('[health/ready] contrôle critique échoué:', error?.code || error?.name || 'error')
+    res.status(503).json({ ok: false, checks, error: 'Service indisponible' })
+  } finally {
+    await Promise.all(probes.map((probe) => fs.promises.unlink(probe).catch(() => {})))
+  }
+})
+
+app.get('/api/health', (_req, res) => res.redirect(307, '/api/health/live'))
 
 app.get('/api/service-status', (_req, res) => {
   res.json({
@@ -2488,15 +2531,17 @@ app.get('/api/whatsapp/qr', (_req, res) => {
   res.json({ enabled: WHATSAPP_CONFIG.enabled, ...baileysWhatsAppClient.getQr() })
 })
 
-app.post('/api/whatsapp/reconnect', async (req, res) => {
+app.post('/api/whatsapp/reconnect', requirePermission('manage_whatsapp'), async (req, res) => {
   if (!baileysWhatsAppClient) return res.status(400).json({ ok: false, error: 'Baileys non configuré.' })
-  const result = await baileysWhatsAppClient.reconnect({ clearSession: Boolean(req.body?.clearSession) })
+  const validated = validateBody(whatsappReconnectSchema, req.body || {})
+  const result = await baileysWhatsAppClient.reconnect({ clearSession: Boolean(validated.clearSession) })
   res.json({ ok: true, ...result })
 })
 
-app.post('/api/whatsapp/disconnect', async (req, res) => {
+app.post('/api/whatsapp/disconnect', requirePermission('manage_whatsapp'), async (req, res) => {
   if (!baileysWhatsAppClient) return res.status(400).json({ ok: false, error: 'Baileys non configuré.' })
-  const result = await baileysWhatsAppClient.disconnect({ clearSession: req.body?.clearSession !== false })
+  const validated = validateBody(whatsappReconnectSchema, req.body || {})
+  const result = await baileysWhatsAppClient.disconnect({ clearSession: validated.clearSession !== false })
   res.json(result)
 })
 
@@ -2505,17 +2550,18 @@ app.get('/api/whatsapp/history', (req, res) => {
   res.json({ ok: true, history: readWhatsAppHistory().slice(0, limit) })
 })
 
-app.post('/api/whatsapp/test-message', async (req, res) => {
+app.post('/api/whatsapp/test-message', requirePermission('manage_whatsapp'), async (req, res) => {
+  const validated = validateBody(whatsappTestMessageSchema, req.body)
   const result = await sendWhatsAppTextMessage({
-    to: req.body?.to,
-    message: req.body?.message,
+    to: validated.to,
+    message: validated.message,
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
   })
-  appendWhatsAppHistory(createWhatsAppHistoryEntry({
-    result: { ...result, recipient: req.body?.to || '', eventType: 'test' },
+  await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+    result: { ...result, recipient: validated.to, eventType: 'test' },
     order: {},
-    message: req.body?.message || '',
+    message: validated.message,
     source: 'manual_test',
     senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
   }))
@@ -2526,12 +2572,13 @@ app.get('/api/whatsapp/templates', (_req, res) => {
   res.json({ ok: true, templates: readWhatsAppTemplates(), defaults: DEFAULT_WHATSAPP_TEMPLATES })
 })
 
-app.put('/api/whatsapp/templates', (req, res) => {
-  res.json({ ok: true, templates: writeWhatsAppTemplates(req.body?.templates || req.body || {}) })
+app.put('/api/whatsapp/templates', requirePermission('manage_whatsapp'), async (req, res) => {
+  const validated = validateBody(whatsappTemplatesSchema, req.body || {})
+  res.json({ ok: true, templates: await writeWhatsAppTemplates(validated.templates) })
 })
 
-app.post('/api/whatsapp/templates/reset', (_req, res) => {
-  res.json({ ok: true, templates: writeWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES) })
+app.post('/api/whatsapp/templates/reset', requirePermission('manage_whatsapp'), async (_req, res) => {
+  res.json({ ok: true, templates: await writeWhatsAppTemplates(DEFAULT_WHATSAPP_TEMPLATES) })
 })
 
 app.get('/api/dashboard', async (req, res) => {
@@ -2823,35 +2870,33 @@ app.get('/api/fleeti/live', async (_req, res) => {
   }
 })
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true })
-})
+const loginRateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, skipSuccessfulRequests: true })
+const LOGIN_FAILURE = { ok: false, error: 'Identifiants invalides.' }
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginRateLimiter, (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase()
   const password = String(req.body?.password || '')
-  if (!email || !password) {
-    return res.status(400).json({ ok: false, error: 'Email et mot de passe obligatoires.' })
-  }
   const user = findAuthUser(email)
-  if (!user) {
-    return res.status(401).json({ ok: false, error: 'Adresse email non autorisée.' })
+  const dummySalt = '00000000000000000000000000000000'
+  const passwordHash = hashPassword(password, user?.salt || dummySalt)
+  if (!email || !password || !user || !secureCompare(passwordHash, user.passwordHash)) {
+    return res.status(401).json(LOGIN_FAILURE)
   }
-  const passwordHash = hashPassword(password, user.salt)
-  if (!secureCompare(passwordHash, user.passwordHash)) {
-    return res.status(401).json({ ok: false, error: 'Mot de passe incorrect.' })
-  }
-  return res.json({ ok: true, sessionToken: APP_SESSION_TOKEN, user: { email: user.email, role: user.role, permissions: user.permissions || [] } })
+  const sessionToken = crypto.randomBytes(32).toString('base64url')
+  createAuthSession(sessionToken, user.email, new Date(Date.now() + AUTH_SESSION_TTL_MS).toISOString())
+  return res.json({ ok: true, sessionToken, user: sanitizeUserOutput(user), expiresInMs: AUTH_SESSION_TTL_MS })
 })
 
 app.get('/api/auth/me', (req, res) => {
-  const email = String(req.get('x-user-email') || '').trim().toLowerCase()
-  const sessionToken = String(req.get('x-session-token') || '').trim()
-  const user = findAuthUser(email)
-  if (!user || !secureCompare(sessionToken, APP_SESSION_TOKEN)) {
-    return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
-  }
-  return res.json({ ok: true, user: { email: user.email, role: user.role, permissions: user.permissions || [] } })
+  const user = getSessionUser(req)
+  if (!user) return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
+  return res.json({ ok: true, user: sanitizeUserOutput(user) })
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = getSessionToken(req)
+  if (!revokeAuthSession(token)) return res.status(401).json({ ok: false, error: 'Session invalide' })
+  return res.json({ ok: true })
 })
 
 app.get('/api/admin/users', requirePermission('manage_users'), (_req, res) => {
@@ -2868,8 +2913,9 @@ app.post('/api/admin/users', requirePermission('manage_users'), (req, res) => {
     if (findAuthUser(email)) return res.status(409).json({ ok: false, error: 'Cet utilisateur existe déjà.' })
     const salt = crypto.randomBytes(16).toString('hex')
     const passwordHash = hashPassword(password, salt)
-    const nextUsers = [...AUTH_USERS, { email, role, permissions: normalizeUserPermissions(role, permissions), salt, passwordHash }]
-    saveAuthUsers(nextUsers)
+    const nextUser = { email, role, permissions: normalizeUserPermissions(role, permissions), salt, passwordHash }
+    createAuthUser(email, nextUser)
+    refreshAuthUsers()
     return res.status(201).json({ ok: true, user: sanitizeUserOutput(findAuthUser(email)) })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
@@ -2892,17 +2938,15 @@ app.patch('/api/admin/users/:email', requirePermission('manage_users'), (req, re
       return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas retirer vos propres droits administrateur.' })
     }
 
-    const updatedUsers = AUTH_USERS.map((item) => {
-      if (item.email !== targetEmail) return item
-      const next = { ...item, role, permissions: normalizeUserPermissions(role, permissions) }
-      if (password) {
-        const salt = crypto.randomBytes(16).toString('hex')
-        next.salt = salt
-        next.passwordHash = hashPassword(password, salt)
-      }
-      return next
-    })
-    saveAuthUsers(updatedUsers)
+    const next = { ...existing, role, permissions: normalizeUserPermissions(role, permissions) }
+    if (password) {
+      const salt = crypto.randomBytes(16).toString('hex')
+      next.salt = salt
+      next.passwordHash = hashPassword(password, salt)
+    }
+    upsertAuthUser(targetEmail, next)
+    revokeUserSessions(targetEmail)
+    refreshAuthUsers()
     return res.json({ ok: true, user: sanitizeUserOutput(findAuthUser(targetEmail)) })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
@@ -2916,7 +2960,8 @@ app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, r
   if (targetEmail === actor?.email) {
     return res.status(400).json({ ok: false, error: 'Vous ne pouvez pas supprimer votre propre compte.' })
   }
-  saveAuthUsers(AUTH_USERS.filter((item) => item.email !== targetEmail))
+  deleteAuthUserAndSessions(targetEmail)
+  refreshAuthUsers()
   return res.json({ ok: true })
 })
 
@@ -3092,10 +3137,13 @@ app.get('/api/delivery-orders-summary', (_req, res) => {
 app.post('/api/delivery-orders', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const validated = validateBody(deliveryOrderSchema, req.body)
-    const payload = sanitizeDeliveryOrderPayload(preprocessDeliveryProofPhotos(validated))
-    // Désactiver les autres bons actifs sur le même camion
-    if (payload.active) setDeliveryOrderActiveOnTracker(payload.trackerId)
-    insertDeliveryOrder(payload)
+    const payload = sanitizeDeliveryOrderPayload(await preprocessDeliveryProofPhotos(validated))
+    try {
+      insertDeliveryOrderAtomic(payload)
+    } catch (error) {
+      await cleanupNewProofFiles(null, payload)
+      throw error
+    }
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(null, payload)
     res.status(201).json({ ok: true, item: payload, whatsappNotifications })
   } catch (error) {
@@ -3112,13 +3160,16 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
     if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
 
     const validated = validateBody(deliveryOrderUpdateSchema, req.body)
-    const preparedBody = preprocessDeliveryProofPhotos(validated, current)
+    const preparedBody = await preprocessDeliveryProofPhotos(validated, current)
     const updatedItem = sanitizeDeliveryOrderPayload(preparedBody, current)
 
-    // Désactiver les autres bons actifs sur le même camion si celui-ci devient actif
-    if (updatedItem.active) setDeliveryOrderActiveOnTracker(current.trackerId, id)
-
-    updateDeliveryOrder(id, updatedItem)
+    try {
+      updateDeliveryOrderAtomic(id, updatedItem)
+    } catch (error) {
+      await cleanupNewProofFiles(current, updatedItem)
+      throw error
+    }
+    await cleanupRemovedProofFilesBestEffort(current, updatedItem)
     const whatsappNotifications = await notifyDeliveryOrderWhatsApp(current, updatedItem)
     res.json({ ok: true, item: updatedItem, whatsappNotifications })
   } catch (error) {
@@ -3126,10 +3177,13 @@ app.patch('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'
   }
 })
 
-app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+app.delete('/api/delivery-orders/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+  const current = readDeliveryOrderById(id)
+  if (!current) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
   deleteDeliveryOrder(id)
+  await cleanupRemovedProofFilesBestEffort(current, null)
   res.json({ ok: true })
 })
 
@@ -3184,18 +3238,23 @@ app.get('/api/cameras', async (_req, res) => {
   }
 })
 
-app.post('/api/fuel-vouchers', requirePermission('manage_fuel_vouchers'), (req, res) => {
+app.post('/api/fuel-vouchers', requirePermission('manage_fuel_vouchers'), async (req, res) => {
   try {
     const validated = validateBody(fuelVoucherSchema, req.body)
-    const payload = sanitizeFuelVoucherPayload(validated)
-    insertFuelVoucher(payload)
+    const payload = await sanitizeFuelVoucherPayload(validated)
+    try {
+      insertFuelVoucher(payload)
+    } catch (error) {
+      await cleanupNewProofFiles(null, payload)
+      throw error
+    }
     res.status(201).json({ ok: true, item: payload })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (req, res) => {
+app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), async (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
@@ -3205,18 +3264,27 @@ app.patch('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (
     const current = items.find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
 
-    const updated = sanitizeFuelVoucherPayload(validated, current)
-    updateFuelVoucher(id, updated)
+    const updated = await sanitizeFuelVoucherPayload(validated, current)
+    try {
+      updateFuelVoucher(id, updated)
+    } catch (error) {
+      await cleanupNewProofFiles(current, updated)
+      throw error
+    }
+    await cleanupRemovedProofFilesBestEffort(current, updated)
     res.json({ ok: true, item: updated })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), (req, res) => {
+app.delete('/api/fuel-vouchers/:id', requirePermission('manage_fuel_vouchers'), async (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+  const current = readFuelVouchers().find((item) => Number(item.id) === id)
+  if (!current) return res.status(404).json({ ok: false, error: 'Bon carburant introuvable' })
   deleteFuelVoucher(id)
+  await cleanupRemovedProofFilesBestEffort(current, null)
   res.json({ ok: true })
 })
 
@@ -3245,20 +3313,20 @@ app.get('/api/oil-changes', (_req, res) => {
   res.json({ items: readOilChanges() })
 })
 
-app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), (req, res) => {
+app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const validated = validateBody(oilChangeSchema, req.body)
     const items = readOilChanges()
     const payload = sanitizeOilChangePayload(validated)
     items.unshift(payload)
-    writeOilChanges(items)
+    await writeOilChanges(items)
     res.status(201).json({ ok: true, item: payload })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
@@ -3268,19 +3336,20 @@ app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (
     if (!current) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
     const updated = sanitizeOilChangePayload(validated, current)
     const next = items.map((item) => Number(item.id) === id ? updated : item)
-    writeOilChanges(next)
+    await writeOilChanges(next)
     res.json({ ok: true, item: updated })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.delete('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
+app.delete('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
   const items = readOilChanges()
   const filtered = items.filter((item) => Number(item.id) !== id)
-  writeOilChanges(filtered)
+  if (filtered.length === items.length) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
+  await writeOilChanges(filtered)
   res.json({ ok: true })
 })
 
@@ -3350,10 +3419,10 @@ function tripSourceSummary(items = []) {
 
 app.get('/api/tracks', async (req, res) => {
   try {
-    const trackerId = ensureValidTrackerId(req.query.trackerId)
-    if (!trackerId) return res.status(400).json({ ok: false, error: 'Tracker invalide' })
-    const from = req.query.from || getDateRange('1h').from
-    const to = req.query.to || getDateRange('1h').to
+    const query = validateBody(tracksQuerySchema, req.query)
+    const trackerId = query.trackerId
+    const from = query.from || getDateRange('1h').from
+    const to = query.to || getDateRange('1h').to
 
     if (TRACKS_SOURCE === 'public') {
       const bundle = await buildFleetiApiTrackBundle(trackerId, from, to)
@@ -3394,15 +3463,12 @@ app.get('/api/tracks', async (req, res) => {
 
 app.post('/api/tracks/batch', async (req, res) => {
   try {
-    const trackerIds = Array.isArray(req.body.trackerIds)
-      ? Array.from(new Set(req.body.trackerIds.map((value) => ensureValidTrackerId(value)).filter(Boolean))).slice(0, 100)
-      : []
-    if (!trackerIds.length) return res.status(400).json({ ok: false, error: 'Aucun tracker valide fourni' })
-
-    const period = String(req.body.period || '1h')
+    const validated = validateBody(tracksBatchSchema, req.body || {})
+    const trackerIds = Array.from(new Set(validated.trackerIds))
+    const period = validated.period || '1h'
     const range = getDateRange(period)
-    const from = req.body.from || range.from
-    const to = req.body.to || range.to
+    const from = validated.from || range.from
+    const to = validated.to || range.to
     const cacheKey = JSON.stringify({ trackerIds: [...trackerIds].sort((a, b) => a - b), from, to, period })
     const cached = tracksBatchCache.get(cacheKey)
     if (cached && (Date.now() - cached.ts) < TRACKS_BATCH_CACHE_TTL_MS) {
@@ -3411,7 +3477,7 @@ app.post('/api/tracks/batch', async (req, res) => {
 
     if (TRACKS_SOURCE === 'public') {
       const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE })
-      const items = await Promise.all(trackerIds.map((trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, {}, assets)))
+      const items = await mapWithConcurrency(trackerIds, 8, (trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, {}, assets))
       const sourceSummary = tripSourceSummary(items)
       const responsePayload = {
         from,
@@ -3436,7 +3502,7 @@ app.post('/api/tracks/batch', async (req, res) => {
       hash = await authenticate()
     } catch (authError) {
       const assets = await fetchAllPublicAssets({ publicApiGet, take: FLEETI_PAGE_SIZE }).catch(() => null)
-      const items = await Promise.all(trackerIds.map((trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, { authFallback: true }, assets)))
+      const items = await mapWithConcurrency(trackerIds, 8, (trackerId) => buildFleetiApiTrackBundle(trackerId, from, to, { authFallback: true }, assets))
       const responsePayload = {
         from,
         to,
@@ -3841,10 +3907,10 @@ function loadDriverOverrides() {
     const rows = readDriverOverrides()
     const result = {}
     for (const row of rows) {
-      if (row.trackerId) {
+      if (row.id) {
         const data = { ...row }
-        delete data.trackerId // le trackerId est la clé
-        result[row.trackerId] = data
+        delete data.id
+        result[row.id] = data
       }
     }
     return result
@@ -3855,16 +3921,7 @@ function loadDriverOverrides() {
 }
 
 function saveDriverOverrides(overrides) {
-  // Supprimer tous les overrides existants, puis réinsérer
-  const existing = readDriverOverrides()
-  for (const row of existing) {
-    deleteDriverOverride(row.trackerId)
-  }
-  for (const [trackerId, data] of Object.entries(overrides)) {
-    if (data && typeof data === 'object' && Object.keys(data).length) {
-      upsertDriverOverride(trackerId, data)
-    }
-  }
+  replaceDriverOverridesAtomic(overrides)
 }
 
 function loadDriverAssignments() {
@@ -3887,28 +3944,13 @@ app.get('/api/driver-overrides', (_req, res) => {
 })
 
 // PUT /api/driver-overrides — remplace tout (admin)
-app.put('/api/driver-overrides', (req, res) => {
+app.put('/api/driver-overrides', requirePermission('manage_drivers'), (req, res) => {
   try {
     const user = getSessionUser(req)
     if (!user || user.role !== 'admin') {
       return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
     }
-    const { overrides } = req.body || {}
-    if (!overrides || typeof overrides !== 'object') {
-      return res.status(400).json({ ok: false, error: 'Format invalide. Envoyez { overrides: { id: { trackerId, firstName, lastName, ... } } }' })
-    }
-    const sanitized = {}
-    for (const [key, data] of Object.entries(overrides)) {
-      if (!data || typeof data !== 'object') continue
-      const entry = {}
-      if (data.trackerId != null) entry.trackerId = String(data.trackerId).trim()
-      if (data.firstName != null) entry.firstName = String(data.firstName).trim()
-      if (data.lastName != null) entry.lastName = String(data.lastName).trim()
-      if (data.phone != null) entry.phone = String(data.phone).trim()
-      if (data.email != null) entry.email = String(data.email).trim()
-      if (data.isCustom != null) entry.isCustom = Boolean(data.isCustom)
-      if (Object.keys(entry).length) sanitized[String(key).trim()] = entry
-    }
+    const { overrides: sanitized } = validateBody(driverOverridesSchema, req.body || {})
     saveDriverOverrides(sanitized)
     res.json({ ok: true, overrides: sanitized, count: Object.keys(sanitized).length })
   } catch (error) {
@@ -3917,7 +3959,7 @@ app.put('/api/driver-overrides', (req, res) => {
 })
 
 // PATCH /api/driver-overrides/:id — modifie/ajoute un seul chauffeur (admin)
-app.patch('/api/driver-overrides/:id', (req, res) => {
+app.patch('/api/driver-overrides/:id', requirePermission('manage_drivers'), (req, res) => {
   try {
     const user = getSessionUser(req)
     if (!user || user.role !== 'admin') {
@@ -3927,7 +3969,7 @@ app.patch('/api/driver-overrides/:id', (req, res) => {
     if (!id) return res.status(400).json({ ok: false, error: 'ID requis.' })
     const overrides = loadDriverOverrides()
     const current = overrides[id] || {}
-    const data = req.body || {}
+    const data = validateBody(driverOverrideUpdateSchema, req.body || {})
     if (data.trackerId !== undefined) current.trackerId = String(data.trackerId).trim()
     if (data.firstName !== undefined) current.firstName = String(data.firstName).trim()
     if (data.lastName !== undefined) current.lastName = String(data.lastName).trim()
@@ -3951,7 +3993,7 @@ app.patch('/api/driver-overrides/:id', (req, res) => {
 })
 
 // DELETE /api/driver-overrides/:id — supprime un override (admin)
-app.delete('/api/driver-overrides/:id', (req, res) => {
+app.delete('/api/driver-overrides/:id', requirePermission('manage_drivers'), (req, res) => {
   try {
     const user = getSessionUser(req)
     if (!user || user.role !== 'admin') {
@@ -3960,6 +4002,7 @@ app.delete('/api/driver-overrides/:id', (req, res) => {
     const id = String(req.params.id || '').trim()
     if (!id) return res.status(400).json({ ok: false, error: 'ID requis.' })
     const overrides = loadDriverOverrides()
+    if (!overrides[id]) return res.status(404).json({ ok: false, error: 'Override introuvable.' })
     delete overrides[id]
     saveDriverOverrides(overrides)
     res.json({ ok: true, deleted: id })
@@ -3979,16 +4022,13 @@ app.get('/api/driver-assignments', (_req, res) => {
 })
 
 // PUT /api/driver-assignments — rétrocompatibilité (admin)
-app.put('/api/driver-assignments', (req, res) => {
+app.put('/api/driver-assignments', requirePermission('manage_drivers'), (req, res) => {
   try {
     const user = getSessionUser(req)
     if (!user || user.role !== 'admin') {
       return res.status(403).json({ ok: false, error: 'Réservé aux administrateurs.' })
     }
-    const { assignments } = req.body || {}
-    if (!assignments || typeof assignments !== 'object') {
-      return res.status(400).json({ ok: false, error: 'Format invalide.' })
-    }
+    const { assignments } = validateBody(driverAssignmentsSchema, req.body || {})
     const overrides = loadDriverOverrides()
     for (const [employeeId, trackerId] of Object.entries(assignments)) {
       const key = String(employeeId).trim()
@@ -4089,9 +4129,31 @@ app.get('/api/rules-detail', async (_req, res) => {
   }
 })
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Teliman Tracking Fleeti API running on http://localhost:${PORT}`)
   if (baileysWhatsAppClient) {
     baileysWhatsAppClient.start().catch((error) => console.error(`[baileys] démarrage impossible: ${error?.message || error}`))
   }
 })
+
+let shuttingDown = false
+async function shutdown(signal) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(`[shutdown] ${signal}: arrêt contrôlé`)
+  clearInterval(sessionPurgeTimer)
+  const forceTimer = setTimeout(() => process.exit(1), 10_000)
+  forceTimer.unref()
+  httpServer.close(async () => {
+    try {
+      await baileysWhatsAppClient?.disconnect?.({ clearSession: false })
+    } catch (error) {
+      console.warn('[shutdown] arrêt WhatsApp incomplet:', error?.message || error)
+    }
+    closeDatabase()
+    clearTimeout(forceTimer)
+    process.exit(0)
+  })
+}
+process.once('SIGTERM', () => { void shutdown('SIGTERM') })
+process.once('SIGINT', () => { void shutdown('SIGINT') })
