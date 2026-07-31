@@ -431,7 +431,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       <div className="reports-table-wrap delivery-desktop-table">
         <table className="reports-table delivery-operations-table">
           <caption>Bons de livraison filtrés</caption>
-          <thead><tr><th>Bon</th><th>Mission</th><th>Client & destination</th><th>Chargement</th><th>Statut</th><th>Preuve</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Bon</th><th>Mission</th><th>Client & destination</th><th>Chargement</th><th>Date</th><th>Statut</th><th>Preuve</th><th>Actions</th></tr></thead>
           <tbody>
             {paginatedOrders.map((item) => {
               const statusLabel = item.status || (item.active ? 'En cours' : 'Prévu')
@@ -439,16 +439,17 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
               const pickerId = `proof-photo-${item.id}`
               const proofCount = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.length : (item.proofPhotoDataUrl ? 1 : 0)
               return <tr key={item.id} className={item.active ? 'active-order-row' : ''}>
-                <td><Link className="delivery-order-reference" to={`/delivery-order/${item.id}`}>{item.reference || `BL-${item.id}`}</Link><small>{formatMissionDate(item.date, false)}</small></td>
+                <td><Link className="delivery-order-reference" to={`/delivery-order/${item.id}`}>{item.reference || `BL-${item.id}`}</Link></td>
                 <td><Link className="delivery-table-primary" to={`/tracker/${item.trackerId}`}>{item.truckLabel || 'Camion non renseigné'}</Link><small>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'}</small></td>
                 <td><strong>{item.client || '—'}</strong><small>{item.loadingPoint ? `${item.loadingPoint} → ` : ''}{item.destination || '—'}</small></td>
                 <td><strong>{item.goods || '—'}</strong><small>{formatDeliveryQuantity(item.quantity)}</small></td>
+                <td><div className="delivery-date-stack"><span><b>D</b>{formatMissionDate(item.departureDateTime)}</span><span><b>A</b>{formatMissionDate(item.arrivalDateTime)}</span><span><b>DC</b>{formatMissionDate(item.date)}</span></div></td>
                 <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span>{item.active && <small className="delivery-active-label">Mission active</small>}</td>
                 <td><span className={`delivery-proof-state ${proofCount ? 'has-proof' : 'missing-proof'}`}><Camera size={17} /> {proofCount ? `${proofCount} photo${proofCount > 1 ? 's' : ''}` : 'En attente'}</span></td>
                 <td><div className="table-actions"><button type="button" className="ghost-btn icon-btn" title="Marquer livré" aria-label={`Marquer ${item.reference} livré`} disabled={saving || !item.active || item.status === 'Livré'} onClick={() => markDelivered(item)}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.reference}`} onClick={() => document.getElementById(pickerId)?.click()}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div></td>
               </tr>
             })}
-            {!paginatedOrders.length && <tr><td colSpan="7" className="delivery-empty-state"><ClipboardList size={28} /><strong>Aucun bon trouvé</strong><span>Modifiez les filtres ou créez un nouveau bon.</span></td></tr>}
+            {!paginatedOrders.length && <tr><td colSpan="8" className="delivery-empty-state"><ClipboardList size={28} /><strong>Aucun bon trouvé</strong><span>Modifiez les filtres ou créez un nouveau bon.</span></td></tr>}
           </tbody>
         </table>
       </div>

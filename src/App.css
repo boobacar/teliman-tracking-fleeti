@@ -5309,7 +5309,7 @@ a.leaflet-control-zoom-out {
 }
 
 .delivery-operations-table {
-  min-width: 1040px;
+  min-width: 1220px;
 }
 
 .delivery-operations-table th:last-child,
@@ -5344,6 +5344,29 @@ a.leaflet-control-zoom-out {
 }
 
 .delivery-order-reference { color: #e8d5c0; }
+
+.delivery-date-stack {
+  display: grid;
+  gap: 5px;
+  min-width: 156px;
+  color: var(--ops-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.delivery-date-stack span {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.delivery-date-stack b {
+  color: #e8d5c0;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
 
 .delivery-proof-state {
   display: inline-flex;

@@ -24,6 +24,16 @@ test('la page BL est centrée sur le suivi, avec création progressive et vue mo
   assert.match(appCssSource, /@media \(max-width: 900px\)[\s\S]*\.delivery-desktop-table\s*\{\s*display:\s*none/)
 })
 
+test('le tableau BL sépare les trois dates de la colonne Bon', () => {
+  assert.match(deliveryOrdersPageSource, /<th>Bon<\/th>[\s\S]*<th>Date<\/th>/)
+  assert.match(deliveryOrdersPageSource, /className="delivery-date-stack"/)
+  assert.match(deliveryOrdersPageSource, /<span><b>D<\/b>\{formatMissionDate\(item\.departureDateTime\)\}<\/span>/)
+  assert.match(deliveryOrdersPageSource, /<span><b>A<\/b>\{formatMissionDate\(item\.arrivalDateTime\)\}<\/span>/)
+  assert.match(deliveryOrdersPageSource, /<span><b>DC<\/b>\{formatMissionDate\(item\.date\)\}<\/span>/)
+  assert.doesNotMatch(deliveryOrdersPageSource, /delivery-order-reference[^\n]+formatMissionDate\(item\.date, false\)/)
+  assert.match(appCssSource, /\.delivery-date-stack\s*\{[\s\S]*display:\s*grid/)
+})
+
 test('parseDeliveryQuantity accepts values with comma decimals and trailing T', () => {
   assert.equal(parseDeliveryQuantity('52,660T'), 52.66)
   assert.equal(parseDeliveryQuantity('51,540 t'), 51.54)
