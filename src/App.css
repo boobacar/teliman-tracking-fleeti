@@ -5918,3 +5918,105 @@ a.leaflet-control-zoom-out {
     height: 320px;
   }
 }
+
+/* ── Poste de contrôle (panneau latéral / bottom sheet) ── */
+.map-shell { position: relative; }
+.map-control-panel {
+  position: absolute;
+  top: 46px; right: 10px;
+  z-index: 600;
+  width: 320px; max-height: calc(100% - 60px);
+  display: flex; flex-direction: column;
+  background: rgba(12, 15, 20, 0.94);
+  border: 1px solid #23511f;
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.map-control-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #1b3a19;
+  background: rgba(7, 9, 12, 0.6);
+}
+.map-control-head strong { display: block; font-size: 15px; color: #f3f5f7; }
+.map-control-head span { font-size: 12.5px; color: #97a3b6; }
+.map-control-close { border: none; padding: 4px; color: #97a3b6; }
+.map-control-body { padding: 12px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.map-control-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.map-control-kpi {
+  background: #0d1117; border: 1px solid #1b3a19; border-radius: 10px;
+  padding: 8px 10px;
+}
+.map-control-kpi span { display: block; font-size: 11px; color: #97a3b6; margin-bottom: 2px; }
+.map-control-kpi strong { font-size: 14px; color: #f3f5f7; }
+.map-control-kpi.state-offline strong { color: #ef4444; }
+.map-control-kpi.state-moving strong { color: #22c55e; }
+.map-control-block { border-top: 1px solid #16261a; padding-top: 10px; }
+.map-control-block h3 {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #a97c50; margin: 0 0 8px;
+}
+.map-control-count {
+  background: #23511f; color: #cfe6cc; border-radius: 999px;
+  font-size: 10.5px; padding: 1px 7px;
+}
+.map-control-block p { margin: 3px 0; font-size: 12.5px; color: #cdd5df; }
+.map-control-block p strong { color: #f3f5f7; font-weight: 600; margin-right: 6px; }
+.map-control-muted { color: #8a94a5 !important; font-size: 12px; }
+.map-control-stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.map-control-stops li { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #cdd5df; }
+.map-control-stops li svg { color: #f59e0b; flex: none; }
+.map-control-stops li small { color: #8a94a5; margin-left: auto; }
+.map-control-actions { display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid #16261a; padding-top: 10px; }
+.map-control-actions .ghost-btn { font-size: 12px; gap: 5px; }
+.map-control-actions .ghost-btn.selected { border-color: #22c55e; color: #22c55e; }
+.map-playback-bar { display: flex; align-items: center; gap: 8px; }
+.map-playback-bar input[type='range'] { flex: 1; accent-color: #22d3ee; min-width: 0; }
+.map-control-eta p:last-child strong { color: #22d3ee; }
+
+/* Lecteur de trajet : marqueur pulsant */
+.track-playback-wrap { background: none; border: none; }
+.track-playback-dot {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #22d3ee; border: 3px solid #0b1220;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.55), 0 0 18px rgba(34, 211, 238, 0.8);
+  animation: playback-pulse 1.1s ease-in-out infinite;
+}
+@keyframes playback-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.75; }
+}
+
+/* Flèches de sens de circulation */
+.track-direction-arrow-wrap { background: none; border: none; }
+.track-direction-arrow {
+  font-size: 15px; line-height: 1; color: rgba(34, 211, 238, 0.95);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+/* Clustering flotte nombreuse */
+.tracker-cluster-icon-wrap { background: none; border: none; }
+.tracker-cluster-icon {
+  width: 54px; height: 54px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 30% 25%, #23511f, #12231a 70%);
+  border: 2px solid #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5);
+  cursor: zoom-in;
+  color: #eaffea;
+}
+.tracker-cluster-icon strong { font-size: 15px; line-height: 1; }
+.tracker-cluster-icon span { font-size: 9px; color: #9fc39b; }
+
+@media (max-width: 768px) {
+  .map-control-panel {
+    top: auto; right: 0; bottom: 0; left: 0;
+    width: 100%; max-height: 46vh;
+    border-radius: 16px 16px 0 0;
+    border: none; border-top: 2px solid #23511f;
+  }
+  .map-control-body { max-height: calc(46vh - 46px); }
+}
