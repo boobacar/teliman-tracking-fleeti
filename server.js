@@ -283,6 +283,13 @@ function isAllowedOrigin(origin) {
     'https://www.telimanlogistique.com',
     'https://telimanlogistique.com',
     'https://home-server-1.tail660cfd.ts.net',
+    // Accès locaux / Tailscale HTTP : les modules ES (import()) envoient un
+    // en-tête Origin même en same-origin — sans whitelist, tous les assets JS
+    // renvoient 500 et l'application ne se charge pas.
+    'http://127.0.0.1:8787',
+    'http://localhost:8787',
+    'http://home-server-1:8787',
+    'http://100.67.148.58:8787',
   ]
   return new Set([...trustedOrigins, ...ALLOWED_ORIGINS]).has(String(origin || ''))
 }

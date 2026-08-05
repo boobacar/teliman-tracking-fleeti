@@ -9,8 +9,18 @@ test('normalizeBackendUrl corrige le domaine API mal orthographié taliman vers 
   )
 })
 
-test('normalizeBackendUrl garde le fallback localhost si aucune URL backend n’est fournie en local', () => {
-  assert.equal(normalizeBackendUrl('', { currentFrontendHost: 'localhost' }), 'http://localhost:8787')
+test('normalizeBackendUrl utilise la même origine sur un hôte local (SPA + API sur le même Express)', () => {
+  // Vite (dev) proxy /api et /uploads vers 8787 ; en prod la SPA est servie par
+  // Express lui-même. L'URL absolue locale n'est donc jamais nécessaire.
+  assert.equal(normalizeBackendUrl('', { currentFrontendHost: 'localhost' }), '')
+  assert.equal(normalizeBackendUrl('', { currentFrontendHost: '127.0.0.1' }), '')
+  assert.equal(normalizeBackendUrl('', { currentFrontendHost: 'home-server-1.tail660cfd.ts.net' }), '')
+})
+
+test('normalizeBackendUrl ignore une VITE_BACKEND_URL périmée (ancienne IP Tailscale hors ligne) sur hôte privé', () => {
+  assert.equal(normalizeBackendUrl('http://100.65.78.40:8787', { currentFrontendHost: '127.0.0.1' }), '')
+  assert.equal(normalizeBackendUrl('http://100.65.78.40:8787', { currentFrontendHost: '100.67.148.58' }), '')
+  assert.equal(normalizeBackendUrl('http://100.65.78.40:8787', { currentFrontendHost: 'home-server-1.tail660cfd.ts.net' }), '')
 })
 
 test('normalizeBackendUrl bascule vers l’API publique quand un autre frontend public reçoit une URL backend privée', () => {

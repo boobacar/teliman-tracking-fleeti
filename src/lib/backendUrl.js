@@ -53,6 +53,12 @@ export function normalizeBackendUrl(value, options = {}) {
   // même si une ancienne variable VITE_BACKEND_URL est encore configurée.
   if (SAME_ORIGIN_PROXY_HOSTS.has(currentFrontendHost)) return ''
 
+  // Hôte privé (localhost, LAN, Tailscale) : la SPA et l'API sont servies par le
+  // même serveur Express sur le même port. Renvoyer '' évite d'utiliser une
+  // VITE_BACKEND_URL périmée (ex. ancienne IP Tailscale hors ligne) qui ferait
+  // échouer toutes les requêtes API.
+  if (isPrivateHostname(currentFrontendHost)) return ''
+
   if (!raw) {
     return isPublicFrontendHost(currentFrontendHost)
       ? PUBLIC_DEFAULT_BACKEND_URL

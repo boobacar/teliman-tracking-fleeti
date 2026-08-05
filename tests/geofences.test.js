@@ -189,6 +189,13 @@ test('server.js expose les routes CRUD et le moteur', () => {
   assert.match(serverSource, /evaluateGeofenceTransitions\(positions\)/)
 })
 
+test('les origines locales HTTP sont whitelistées CORS (modules ES + MacBook Tailscale)', () => {
+  assert.match(serverSource, /'http:\/\/127\.0\.0\.1:8787'/)
+  assert.match(serverSource, /'http:\/\/localhost:8787'/)
+  assert.match(serverSource, /'http:\/\/home-server-1:8787'/)
+  assert.match(serverSource, /'http:\/\/100\.67\.148\.58:8787'/)
+})
+
 test('la page Géofences couvre carte, formulaire, numéros et événements', () => {
   assert.match(geofencesPageSource, /Géofences & Alertes/)
   assert.match(geofencesPageSource, /MapContainer/)
