@@ -72,6 +72,30 @@ function createZoneCenterIcon(color, selected) {
 
 function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickEnabled, onDragStart, onDrag, onDragEnd }) {
   const mapRef = useRef(null)
+  // Cache d'icônes par (couleur, sélection) : références stables, sinon react-leaflet
+  // appelle setIcon() à chaque rendu et remplace l'élément pendant le glissement.
+  const iconCacheRef = useRef(new Map())
+
+  // Positions mémoïsées : références stables par zone. Sans cela, react-leaflet v5
+  // (updateMarker compare props.position !== prevProps.position) appelle setLatLng()
+  // à chaque rendu et le marqueur est re-collé à son ancienne position pendant le drag.
+  const positionByZoneId = useMemo(() => {
+    const map = {}
+    for (const zone of geofences) map[zone.id] = [zone.lat, zone.lng]
+    return map
+  }, [geofences])
+
+  const zones = useMemo(() => geofences.map((zone) => {
+    const selected = zone.id === selectedId
+    const fillColor = selected ? '#22d3ee' : (zone.color || '#946239')
+    const iconKey = `${fillColor}|${selected ? '1' : '0'}`
+    let icon = iconCacheRef.current.get(iconKey)
+    if (!icon) {
+      icon = createZoneCenterIcon(fillColor, selected)
+      iconCacheRef.current.set(iconKey, icon)
+    }
+    return { ...zone, selected, fillColor, icon }
+  }), [geofences, selectedId])
 
   useEffect(() => {
     if (selectedId) {
@@ -92,21 +116,18 @@ function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickE
     >
       <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <MapClickCapture onPick={onPick} enabled={pickEnabled} />
-      {geofences.map((zone) => {
-        const selected = zone.id === selectedId
+      {zones.map((zone) => {
         const isDraft = dragDraft?.id === zone.id
-        const centerLat = isDraft ? dragDraft.lat : zone.lat
-        const centerLng = isDraft ? dragDraft.lng : zone.lng
-        const fillColor = selected ? '#22d3ee' : (zone.color || '#946239')
+        const center = isDraft ? [dragDraft.lat, dragDraft.lng] : positionByZoneId[zone.id]
         return (
           <div key={zone.id}>
             <Circle
-              center={[centerLat, centerLng]}
+              center={center}
               radius={Number(zone.radiusMeters) || 1000}
               pathOptions={{
-                color: fillColor,
-                weight: selected ? 3 : 2,
-                fillColor,
+                color: zone.fillColor,
+                weight: zone.selected ? 3 : 2,
+                fillColor: zone.fillColor,
                 fillOpacity: zone.active ? 0.22 : 0.08,
                 dashArray: zone.active ? null : '6 6',
               }}
@@ -122,10 +143,10 @@ function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickE
               </Tooltip>
             </Circle>
             <Marker
-              position={[zone.lat, zone.lng]}
-              icon={createZoneCenterIcon(fillColor, selected)}
+              position={positionByZoneId[zone.id]}
+              icon={zone.icon}
               draggable
-              zIndexOffset={selected ? 1000 : 500}
+              zIndexOffset={zone.selected ? 1000 : 500}
               eventHandlers={{
                 click: () => onSelect(zone.id),
                 dragstart: () => onDragStart(zone),
@@ -212,8 +233,10 @@ export function GeofencesPage() {
     setPickEnabled(false)
   }
 
-  function handleDragStart(zone) {
-    if (form.id !== zone.id) startEdit(zone)
+  function handleDragStart() {
+    // Ne PAS toucher au formulaire ici : un changement de sélection recréerait
+    // l'icône (setIcon) et casserait le glissement en cours.
+    setPickEnabled(false)
   }
 
   function handleDrag(zoneId, latlng) {
@@ -229,6 +252,7 @@ export function GeofencesPage() {
     setSuccess('')
     try {
       await updateGeofence(zone.id, { lat, lng })
+      // Synchronise le formulaire uniquement si c'est la zone en cours d'édition
       setForm((previous) => (previous.id === zone.id ? { ...previous, lat, lng } : previous))
       setSuccess(`Zone « ${zone.name} » déplacée.`)
       await refresh()
