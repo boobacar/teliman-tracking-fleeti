@@ -2848,6 +2848,7 @@ app.patch('/api/alerts/:key', async (req, res) => {
     if (!alertKey) return res.status(400).json({ ok: false, error: 'Clé d’alerte manquante' })
     const previous = readAlertAction(alertKey)
     const next = transitionAlertAction(previous, validated)
+    next.alertKey = alertKey
     const saved = upsertAlertAction(next)
     res.json({ ok: true, action: saved })
   } catch (error) {
