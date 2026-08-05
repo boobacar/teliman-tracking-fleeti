@@ -10,11 +10,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
-import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema } from './src/backend/validation.js'
+import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
-import { buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
+import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
 import {
   initDatabase, closeDatabase,
   readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrderAtomic, updateDeliveryOrderAtomic, deleteDeliveryOrder,
@@ -22,6 +23,9 @@ import {
   readAuthUsers, createAuthUser, upsertAuthUser, deleteAuthUserAndSessions, createAuthSession, resolveAuthSession, revokeAuthSession, revokeUserSessions, purgeExpiredAuthSessions, checkDatabaseHealthFresh,
   readMasterData, writeMasterDataKey,
   readDriverOverrides, replaceDriverOverridesAtomic,
+  readGeofences, readActiveGeofences, readGeofenceById, insertGeofence, updateGeofence, deleteGeofence,
+  readAlertRecipients, readActiveAlertRecipients, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
+  readGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
 } from './src/backend/database.js'
 
 dotenv.config()
@@ -394,6 +398,17 @@ function requiredRoutePermissions(req) {
       ? ['manage_data']
       : ['manage_data', 'manage_delivery_orders', 'manage_fuel_vouchers', 'page_fleet']
   }
+  if (pathName.startsWith('/api/geofence-events')) return ['page_alerts', 'page_map']
+  if (pathName.startsWith('/api/geofences')) {
+    return mutation
+      ? ['manage_data']
+      : ['manage_data', 'page_map', 'page_alerts']
+  }
+  if (pathName.startsWith('/api/alert-recipients')) {
+    return mutation
+      ? ['manage_data']
+      : ['manage_data', 'page_alerts']
+  }
   if (pathName.startsWith('/api/reports')) return ['page_reports']
   if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
   if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) return ['page_alerts']
@@ -641,7 +656,102 @@ async function notifyFleetAlertWhatsApp(event) {
       console.warn(`[whatsapp] Alerte flotte ${result.eventType || '-'} non envoyée: ${result.reason || 'raison inconnue'}`)
     }
   }
+  // Supplément : destinataires configurés (table alert_recipients), dédupliqués par numéro
+  const alreadySent = new Set(results.filter((r) => r.sent).map((r) => r.recipient))
+  const extraPhones = getAlertRecipientPhones().filter((phone) => !alreadySent.has(phone))
+  for (const recipient of extraPhones) {
+    const message = buildFleetAlertWhatsAppMessage({ ...event, event: event?.event || event?.eventType })
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config: WHATSAPP_CONFIG, baileysClient: baileysWhatsAppClient })
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result: { ...result, recipient, eventType: event?.event || '' },
+      order: {
+        id: event?.tracker_id || event?.trackerId || '',
+        reference: event?.truckLabel || event?.trackerLabel || event?.label || '',
+        client: event?.event || '',
+      },
+      message,
+      source: 'fleet_alert',
+      senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+    }))
+    results.push({ source: 'fleet_alert', eventType: event?.event || '', recipient, message, ...result })
+    if (result.sent) console.log(`[whatsapp] Alerte flotte ${event?.event} envoyée à ${recipient} (liste d’alertes)`)
+  }
   return results
+}
+
+// ── Géofences : détection d’entrée / sortie ──
+
+const geofenceTracker = createGeofenceTracker({ minIntervalMs: 60 * 1000 })
+
+export { haversineDistanceMeters } from './src/backend/geofenceEngine.js'
+
+function getAlertRecipientPhones() {
+  try {
+    return (readActiveAlertRecipients() || [])
+      .map((recipient) => String(recipient.phone || '').trim())
+      .filter(Boolean)
+  } catch (error) {
+    console.warn('[geofence] lecture destinataires impossible:', error?.message || error)
+    return []
+  }
+}
+
+async function notifyGeofenceAlertWhatsApp(event, eventId) {
+  const recipients = getAlertRecipientPhones()
+  const results = await sendGeofenceAlertWhatsAppNotifications({
+    event,
+    recipients,
+    config: WHATSAPP_CONFIG,
+    baileysClient: baileysWhatsAppClient,
+  })
+  for (const result of results) {
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result,
+      order: {
+        id: event?.trackerId || '',
+        reference: event?.truckLabel || '',
+        client: `Géofence ${event?.geofenceName || ''}`,
+      },
+      message: result.message,
+      source: 'geofence',
+      senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+    }))
+    if (result.sent) {
+      console.log(`[whatsapp] Géofence ${event?.geofenceName || '-'} (${event?.eventType}) envoyée à ${result.recipient}`)
+    } else if (!result.skipped || result.reason) {
+      console.warn(`[whatsapp] Géofence ${event?.geofenceName || '-'} non envoyée: ${result.reason || 'raison inconnue'}`)
+    }
+  }
+  if (eventId) {
+    try { markGeofenceEventNotified(eventId) } catch (error) { console.warn('[geofence] marquage notifié impossible:', error?.message || error) }
+  }
+  return results
+}
+
+// Évalue les positions live contre les géofences actives (moteur geofenceEngine.js).
+function evaluateGeofenceTransitions(positions) {
+  let activeGeofences = []
+  try {
+    activeGeofences = readActiveGeofences()
+  } catch (error) {
+    console.warn('[geofence] lecture zones impossible:', error?.message || error)
+    return positions
+  }
+  return geofenceTracker(positions, {
+    activeGeofences,
+    onEvent(event) {
+      let eventId = null
+      try {
+        eventId = insertGeofenceEvent(event)
+        console.log(`[geofence] ${event.eventType === 'enter' ? 'ENTRÉE' : 'SORTIE'} — ${event.geofenceName} — tracker ${event.trackerId} (${event.truckLabel})`)
+      } catch (error) {
+        console.warn('[geofence] enregistrement événement impossible:', error?.message || error)
+      }
+      notifyGeofenceAlertWhatsApp(event, eventId).catch((error) => {
+        console.warn('[geofence] notification impossible:', error?.message || error)
+      })
+    },
+  })
 }
 
 function ensureValidTrackerId(value) {
@@ -2617,6 +2727,7 @@ app.get('/api/positions-live', async (req, res) => {
           last_update: state?.last_update || null,
         }
       }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      evaluateGeofenceTransitions(positions)
       positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
       return res.json({ ...positionsLiveCache.data, cached: false })
     }
@@ -2668,6 +2779,7 @@ app.get('/api/positions-live', async (req, res) => {
       }
     }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
 
+    evaluateGeofenceTransitions(positions)
     positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
     res.json({ positions, total: positions.length, cached: false })
   } catch (error) {
@@ -2699,6 +2811,101 @@ app.get('/api/alerts', async (_req, res) => {
     res.json({ alerts: data.history, unreadCount: data.unreadCount, rules: data.rules })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// ── Géofences ──
+
+app.get('/api/geofences', (_req, res) => {
+  try {
+    res.json({ ok: true, geofences: readGeofences() })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/geofences', requirePermission('manage_data'), (req, res) => {
+  try {
+    const validated = validateBody(geofenceSchema, req.body || {})
+    const geofence = insertGeofence({ ...validated, active: validated.active ?? true })
+    res.status(201).json({ ok: true, geofence })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.put('/api/geofences/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const validated = validateBody(geofenceUpdateSchema, req.body || {})
+    const geofence = updateGeofence(id, validated)
+    res.json({ ok: true, geofence })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/geofences/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    deleteGeofence(id)
+    res.json({ ok: true })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/geofence-events', (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50
+    res.json({ ok: true, events: readGeofenceEvents(limit) })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// ── Destinataires d'alertes ──
+
+app.get('/api/alert-recipients', (_req, res) => {
+  try {
+    res.json({ ok: true, recipients: readAlertRecipients() })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/alert-recipients', requirePermission('manage_data'), (req, res) => {
+  try {
+    const validated = validateBody(alertRecipientSchema, req.body || {})
+    const recipient = insertAlertRecipient({ ...validated, active: validated.active ?? true })
+    res.status(201).json({ ok: true, recipient })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.put('/api/alert-recipients/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const validated = validateBody(alertRecipientUpdateSchema, req.body || {})
+    const recipient = updateAlertRecipient(id, validated)
+    res.json({ ok: true, recipient })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/alert-recipients/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    deleteAlertRecipient(id)
+    res.json({ ok: true })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
   }
 })
 

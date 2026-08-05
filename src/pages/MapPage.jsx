@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { Circle, CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { LocateFixed, Maximize2, Minimize2, Search, X } from 'lucide-react'
-import { loadLivePositions, loadTracksBatch } from '../lib/fleeti'
+import { loadGeofences, loadLivePositions, loadTracksBatch } from '../lib/fleeti'
 
 const LIVE_POLL_DELAY_MS = 3000
 const LIVE_STALE_AFTER_MS = 15000
@@ -134,6 +134,22 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   const inflightCacheRef = useRef(new Map())
   const mapShellRef = useRef(null)
 
+  // ── Géofences (zones affichées sur la carte) ──
+  const [geofences, setGeofences] = useState([])
+  const [geofenceError, setGeofenceError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    loadGeofences()
+      .then((payload) => {
+        if (!cancelled) setGeofences(payload.geofences || [])
+      })
+      .catch((err) => {
+        if (!cancelled) setGeofenceError(err?.message || 'Zones indisponibles')
+      })
+    return () => { cancelled = true }
+  }, [])
+
   // ── Positions live (polling récursif sans chevauchement) ──
   const [livePositions, setLivePositions] = useState({})
   const [liveUpdatedAt, setLiveUpdatedAt] = useState(null)
@@ -189,6 +205,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
       if (!live || !Number.isFinite(live.lat) || !Number.isFinite(live.lng)) return tracker
       return {
         ...tracker,
+        liveGeofenceNames: Array.isArray(live.geofenceNames) ? live.geofenceNames : [],
         state: {
           ...tracker.state,
           gps: {
@@ -349,6 +366,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     <section className="panel panel-large map-panel">
       <div className="panel-header"><div><h1>Carte temps réel</h1><p role="status">{liveIsStale ? 'Données anciennes' : 'Données à jour'}{liveUpdatedAt ? ` · actualisées à ${new Date(liveUpdatedAt).toLocaleTimeString('fr-FR')}` : ''}</p></div></div>
       {liveError && <div className="error-banner" role="alert">Positions : {liveError}</div>}
+      {geofenceError && <div className="error-banner" role="alert">Zones : {geofenceError}</div>}
       <details className="map-insights-panel">
         <summary>Analyse de la sélection <span>{selectedTrackIds.length > 0 ? `${selectedTrackIds.length} camion(s)` : 'vue flotte'}</span></summary>
         <div className="map-kpi-row">
@@ -379,7 +397,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
         {selectedTrackIds.length > 0 && <div className="filters filter-row map-period-row" aria-label="Période du tracé">{[{ value: 'today', label: "Aujourd'hui" }, { value: '12h', label: '12h' }, { value: '24h', label: '24h' }, { value: '48h', label: '48h' }].map((item) => <button type="button" key={item.value} aria-pressed={period === item.value} className={`chip ${period === item.value ? 'selected' : ''}`} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div>}
       </div>
 
-      <div className="map-legend-row"><span><i className="legend-dot" style={{ background: '#22c55e' }}></i> Moving</span><span><i className="legend-dot" style={{ background: '#f59e0b' }}></i> Parking / Idle</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Offline</span><span><i className="legend-dot mission-legend-dot"></i> Mission active</span><span><i className="legend-line"></i> Tracé trajet</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Critique</span><span><i className="legend-dot" style={{ background: '#38bdf8' }}></i> Surveillance</span></div>
+      <div className="map-legend-row"><span><i className="legend-dot" style={{ background: '#22c55e' }}></i> Moving</span><span><i className="legend-dot" style={{ background: '#f59e0b' }}></i> Parking / Idle</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Offline</span><span><i className="legend-dot mission-legend-dot"></i> Mission active</span><span><i className="legend-line"></i> Tracé trajet</span><span><i className="legend-dot" style={{ background: '#ef4444' }}></i> Critique</span><span><i className="legend-dot" style={{ background: '#38bdf8' }}></i> Surveillance</span>{geofences.some((zone) => zone.active) && <span><i className="legend-circle"></i> Zone géofence</span>}</div>
 
       <div ref={mapShellRef} className={`leaflet-wrap large-map map-shell ${isFullscreen ? 'map-shell-fullscreen' : ''}`}>
         <div className="map-overlay-controls">
@@ -393,6 +411,29 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           {baseMap === 'plan' && <TileLayer key="plan" eventHandlers={tileEventHandlers} attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
           {baseMap === 'satellite' && <TileLayer key="satellite" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
           {baseMap === 'hybrid' && <><TileLayer key="hybrid-imagery" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" /><TileLayer key="hybrid-labels" eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" opacity={1} /></>}
+
+          {geofences.filter((zone) => zone.active).map((zone) => (
+            <Circle
+              key={`zone-${zone.id}`}
+              center={[zone.lat, zone.lng]}
+              radius={Number(zone.radiusMeters) || 1000}
+              pathOptions={{ color: zone.color || '#946239', weight: 2, fillColor: zone.color || '#946239', fillOpacity: 0.14 }}
+            >
+              <Tooltip className="geofence-zone-tooltip" direction="top" offset={[0, -6]} opacity={1}>
+                <strong>{zone.name}</strong>
+                <br />
+                Rayon: {Number(zone.radiusMeters).toLocaleString('fr-FR')} m
+              </Tooltip>
+            </Circle>
+          ))}
+          {geofences.filter((zone) => zone.active).map((zone) => (
+            <CircleMarker
+              key={`zone-center-${zone.id}`}
+              center={[zone.lat, zone.lng]}
+              radius={5}
+              pathOptions={{ color: '#07090c', weight: 2, fillColor: zone.color || '#946239', fillOpacity: 1 }}
+            />
+          ))}
 
           {selectedTrackIds.length > 0 && selectedTrackIds.map((trackerId) => {
             const track = trackMap[String(trackerId)]
@@ -408,7 +449,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
             const isActive = selectedTrackIds.includes(String(tracker.id))
             const activeOrder = deliveryOrders.find((item) => Number(item.trackerId) === Number(tracker.id) && item.active)
             const computedBearing = bearingByTrackerId.get(String(tracker.id))
-            return <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} icon={createTrackerIcon(tracker, !!activeOrder, isActive, computedBearing)} opacity={isActive || selectedTrackIds.length === 0 ? 1 : 0.72} eventHandlers={{ click: () => toggleTrackerSelection(tracker.id) }}><Tooltip className="truck-hover-tooltip" direction="top" offset={[0, -18]} opacity={1} sticky><div className="truck-hover-card"><strong>{tracker.label}</strong><span>{tracker.employeeName}</span><span>État: {state.text}</span><span>Vitesse: {tracker.state.gps.speed ?? 0} km/h</span><span>Connexion: {tracker.state.connection_status}</span><span>Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°</span>{activeOrder ? <span>BL: {activeOrder.reference} • {activeOrder.client}</span> : <span>Aucun bon actif</span>}</div></Tooltip><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />Etat: {state.text}<br />Connexion: {tracker.state.connection_status}<br />Mouvement: {tracker.state.movement_status}<br />Vitesse: {tracker.state.gps.speed ?? 0} km/h<br />Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°<br />{activeOrder ? <><br /><strong>BL:</strong> {activeOrder.reference}<br /><strong>Client:</strong> {activeOrder.client}<br /><strong>Destination:</strong> {activeOrder.destination}<br /><strong>Marchandise:</strong> {activeOrder.goods || '-'}<br /><strong>Quantité:</strong> {activeOrder.quantity || '-'}<br /><strong>Statut:</strong> {activeOrder.status}<br /><strong>Fiche mission:</strong> /delivery-order/{activeOrder.id}</> : <><br />Aucun bon actif</>}</Popup></Marker>
+            const zoneNames = tracker.liveGeofenceNames || []
+            return <Marker key={tracker.id} position={[tracker.state.gps.location.lat, tracker.state.gps.location.lng]} icon={createTrackerIcon(tracker, !!activeOrder, isActive, computedBearing)} opacity={isActive || selectedTrackIds.length === 0 ? 1 : 0.72} eventHandlers={{ click: () => toggleTrackerSelection(tracker.id) }}><Tooltip className="truck-hover-tooltip" direction="top" offset={[0, -18]} opacity={1} sticky><div className="truck-hover-card"><strong>{tracker.label}</strong><span>{tracker.employeeName}</span><span>État: {state.text}</span><span>Vitesse: {tracker.state.gps.speed ?? 0} km/h</span><span>Connexion: {tracker.state.connection_status}</span><span>Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°</span>{zoneNames.length > 0 ? <span className="truck-zone-badge">Dans zone: {zoneNames.join(', ')}</span> : null}{activeOrder ? <span>BL: {activeOrder.reference} • {activeOrder.client}</span> : <span>Aucun bon actif</span>}</div></Tooltip><Popup><strong>{tracker.label}</strong><br />{tracker.employeeName}<br />Etat: {state.text}<br />Connexion: {tracker.state.connection_status}<br />Mouvement: {tracker.state.movement_status}<br />Vitesse: {tracker.state.gps.speed ?? 0} km/h<br />Direction: {Math.round(computedBearing ?? tracker.state.gps.heading ?? 0)}°<br />{zoneNames.length > 0 ? <><strong>Zone:</strong> {zoneNames.join(', ')}<br /></> : null}{activeOrder ? <><br /><strong>BL:</strong> {activeOrder.reference}<br /><strong>Client:</strong> {activeOrder.client}<br /><strong>Destination:</strong> {activeOrder.destination}<br /><strong>Marchandise:</strong> {activeOrder.goods || '-'}<br /><strong>Quantité:</strong> {activeOrder.quantity || '-'}<br /><strong>Statut:</strong> {activeOrder.status}<br /><strong>Fiche mission:</strong> /delivery-order/{activeOrder.id}</> : <><br />Aucun bon actif</>}</Popup></Marker>
           })}
         </MapContainer>
       </div>

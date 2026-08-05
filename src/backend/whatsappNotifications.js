@@ -96,6 +96,55 @@ export async function sendFleetAlertWhatsAppNotifications({ event, masterData = 
   return results
 }
 
+export function buildGeofenceAlertWhatsAppMessage(event = {}) {
+  const eventType = String(event.eventType || '').trim()
+  const action = eventType === 'exit' ? 'SORTIE de zone' : 'ENTRÉE en zone'
+  const zoneName = display(event.geofenceName || event.zoneName)
+  const truckLabel = display(event.truckLabel || event.trackerLabel || event.label || event.tracker_id)
+  const driver = display(event.driver || event.driverName || event.employeeName)
+  const time = formatDateTime(event.time || event.createdAt || event.sentAt)
+  const speed = Number(event.speed)
+  const speedLine = Number.isFinite(speed) && speed > 0 ? `Vitesse: ${speed} km/h` : ''
+  const position = display(event.address || buildAlertCoordinates(event))
+  const mapsUrl = buildGoogleMapsUrl(event)
+  const driverLine = isUnassignedDriver(driver) ? '' : `Chauffeur: ${driver}`
+  const lines = [
+    'ALERTE GÉOFENCE 🚧',
+    '',
+    `Véhicule: ${truckLabel}`,
+    driverLine,
+    `${action}: ${zoneName}`,
+    speedLine,
+    `Position: ${position}`,
+    mapsUrl ? `Carte: ${mapsUrl}` : '',
+    `Heure: ${time}`,
+    '',
+    'Alerte générée automatiquement par Teliman Tracking.',
+  ]
+  return lines.filter((line) => line !== '').join('\n')
+}
+
+export async function sendGeofenceAlertWhatsAppNotifications({ event, recipients = [], config = {}, fetchImpl = fetch, baileysClient = null } = {}) {
+  const message = buildGeofenceAlertWhatsAppMessage(event)
+  const phoneList = normalizeWhatsAppPhoneList(recipients)
+  if (!phoneList.length) {
+    return [{
+      source: 'geofence',
+      eventType: event?.eventType || '',
+      sent: false,
+      skipped: true,
+      reason: 'Aucun numéro d’alerte configuré.',
+      message,
+    }]
+  }
+  const results = []
+  for (const recipient of phoneList) {
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
+    results.push({ source: 'geofence', eventType: event?.eventType || '', recipient, message, ...result })
+  }
+  return results
+}
+
 export function detectDeliveryOrderWhatsAppEvents(previousOrder = null, nextOrder = {}) {
   if (!previousOrder) return ['created']
 

@@ -109,6 +109,42 @@ function createTables() {
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL DEFAULT '{}'
     );
+
+    CREATE TABLE IF NOT EXISTS geofences (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL DEFAULT 'autre',
+      lat REAL NOT NULL DEFAULT 0,
+      lng REAL NOT NULL DEFAULT 0,
+      radiusMeters REAL NOT NULL DEFAULT 1000,
+      color TEXT NOT NULL DEFAULT '#946239',
+      active INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_geofences_active ON geofences(active);
+
+    CREATE TABLE IF NOT EXISTS alert_recipients (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_recipients_active ON alert_recipients(active);
+
+    CREATE TABLE IF NOT EXISTS geofence_events (
+      id INTEGER PRIMARY KEY,
+      geofenceId INTEGER NOT NULL,
+      geofenceName TEXT NOT NULL DEFAULT '',
+      trackerId INTEGER NOT NULL,
+      truckLabel TEXT NOT NULL DEFAULT '',
+      eventType TEXT NOT NULL DEFAULT '',
+      lat REAL NOT NULL DEFAULT 0,
+      lng REAL NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL DEFAULT '',
+      notified INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_geofence_events_created ON geofence_events(createdAt);
   `)
 }
 
@@ -423,6 +459,185 @@ export function checkDatabaseHealthFresh(dbPath) {
 export function runInTransaction(callback) {
   if (typeof callback !== 'function') throw new Error('Transaction invalide')
   return getDatabase().transaction(callback).immediate()
+}
+
+// ── Geofences ──
+
+export function readGeofences() {
+  const rows = getDatabase().prepare('SELECT * FROM geofences ORDER BY id ASC').all()
+  return rows.map((row) => ({ ...row, active: Boolean(row.active) }))
+}
+
+export function readActiveGeofences() {
+  const rows = getDatabase().prepare('SELECT * FROM geofences WHERE active = 1 ORDER BY id ASC').all()
+  return rows.map((row) => ({ ...row, active: Boolean(row.active) }))
+}
+
+export function readGeofenceById(id) {
+  const row = getDatabase().prepare('SELECT * FROM geofences WHERE id = ?').get(id)
+  if (!row) return null
+  return { ...row, active: Boolean(row.active) }
+}
+
+export function insertGeofence(item) {
+  const db = getDatabase()
+  const hasId = Number.isInteger(Number(item.id))
+  const stmt = db.prepare(`
+    INSERT INTO geofences (${hasId ? 'id, ' : ''}name, type, lat, lng, radiusMeters, color, active, createdAt)
+    VALUES (${hasId ? '@id, ' : ''}@name, @type, @lat, @lng, @radiusMeters, @color, @active, @createdAt)
+  `)
+  const info = stmt.run({
+    ...(hasId ? { id: Number(item.id) } : {}),
+    name: item.name || '',
+    type: item.type || 'autre',
+    lat: Number(item.lat) || 0,
+    lng: Number(item.lng) || 0,
+    radiusMeters: Number(item.radiusMeters) || 1000,
+    color: item.color || '#946239',
+    active: item.active ? 1 : 0,
+    createdAt: item.createdAt || new Date().toISOString(),
+  })
+  return readGeofenceById(hasId ? Number(item.id) : Number(info.lastInsertRowid))
+}
+
+export function updateGeofence(id, updates) {
+  const db = getDatabase()
+  const sets = []
+  const params = { id }
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'active') {
+      sets.push('active = @active')
+      params.active = value ? 1 : 0
+    } else {
+      sets.push(`${key} = @${key}`)
+      params[key] = value
+    }
+  }
+  if (sets.length === 0) throw new Error('Aucune modification fournie')
+  const result = db.prepare(`UPDATE geofences SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Géofence introuvable')
+  return readGeofenceById(id)
+}
+
+export function deleteGeofence(id) {
+  const result = getDatabase().prepare('DELETE FROM geofences WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Géofence introuvable')
+}
+
+export function insertGeofencesAtomic(items) {
+  return getDatabase().transaction((geofences) => {
+    const insert = getDatabase().prepare(`
+      INSERT INTO geofences (id, name, type, lat, lng, radiusMeters, color, active, createdAt)
+      VALUES (@id, @name, @type, @lat, @lng, @radiusMeters, @color, @active, @createdAt)
+    `)
+    for (const item of geofences) {
+      insert.run({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        lat: item.lat,
+        lng: item.lng,
+        radiusMeters: item.radiusMeters,
+        color: item.color,
+        active: item.active ? 1 : 0,
+        createdAt: item.createdAt || new Date().toISOString(),
+      })
+    }
+  }).immediate(items)
+}
+
+// ── Alert Recipients ──
+
+export function readAlertRecipients() {
+  const rows = getDatabase().prepare('SELECT * FROM alert_recipients ORDER BY id ASC').all()
+  return rows.map((row) => ({ ...row, active: Boolean(row.active) }))
+}
+
+export function readActiveAlertRecipients() {
+  const rows = getDatabase().prepare('SELECT * FROM alert_recipients WHERE active = 1 ORDER BY id ASC').all()
+  return rows.map((row) => ({ ...row, active: Boolean(row.active) }))
+}
+
+export function readAlertRecipientById(id) {
+  const row = getDatabase().prepare('SELECT * FROM alert_recipients WHERE id = ?').get(id)
+  if (!row) return null
+  return { ...row, active: Boolean(row.active) }
+}
+
+export function insertAlertRecipient(item) {
+  const db = getDatabase()
+  const hasId = Number.isInteger(Number(item.id))
+  const stmt = db.prepare(`
+    INSERT INTO alert_recipients (${hasId ? 'id, ' : ''}name, phone, active, createdAt)
+    VALUES (${hasId ? '@id, ' : ''}@name, @phone, @active, @createdAt)
+  `)
+  const info = stmt.run({
+    ...(hasId ? { id: Number(item.id) } : {}),
+    name: item.name || '',
+    phone: item.phone || '',
+    active: item.active ? 1 : 0,
+    createdAt: item.createdAt || new Date().toISOString(),
+  })
+  return readAlertRecipientById(hasId ? Number(item.id) : Number(info.lastInsertRowid))
+}
+
+export function updateAlertRecipient(id, updates) {
+  const db = getDatabase()
+  const sets = []
+  const params = { id }
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'active') {
+      sets.push('active = @active')
+      params.active = value ? 1 : 0
+    } else {
+      sets.push(`${key} = @${key}`)
+      params[key] = value
+    }
+  }
+  if (sets.length === 0) throw new Error('Aucune modification fournie')
+  const result = db.prepare(`UPDATE alert_recipients SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Destinataire introuvable')
+  return readAlertRecipientById(id)
+}
+
+export function deleteAlertRecipient(id) {
+  const result = getDatabase().prepare('DELETE FROM alert_recipients WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Destinataire introuvable')
+}
+
+// ── Geofence Events ──
+
+export function readGeofenceEvents(limit = 50) {
+  const rows = getDatabase()
+    .prepare('SELECT * FROM geofence_events ORDER BY id DESC LIMIT ?')
+    .all(Math.max(1, Math.min(Number(limit) || 50, 500)))
+  return rows
+}
+
+export function insertGeofenceEvent(item) {
+  const db = getDatabase()
+  const hasId = Number.isInteger(Number(item.id))
+  const stmt = db.prepare(`
+    INSERT INTO geofence_events (${hasId ? 'id, ' : ''}geofenceId, geofenceName, trackerId, truckLabel, eventType, lat, lng, createdAt, notified)
+    VALUES (${hasId ? '@id, ' : ''}@geofenceId, @geofenceName, @trackerId, @truckLabel, @eventType, @lat, @lng, @createdAt, @notified)
+  `)
+  const info = stmt.run({
+    ...(hasId ? { id: Number(item.id) } : {}),
+    geofenceId: Number(item.geofenceId) || 0,
+    geofenceName: item.geofenceName || '',
+    trackerId: Number(item.trackerId) || 0,
+    truckLabel: item.truckLabel || '',
+    eventType: item.eventType || '',
+    lat: Number(item.lat) || 0,
+    lng: Number(item.lng) || 0,
+    createdAt: item.createdAt || new Date().toISOString(),
+    notified: item.notified ? 1 : 0,
+  })
+  return hasId ? Number(item.id) : Number(info.lastInsertRowid)
+}
+
+export function markGeofenceEventNotified(id) {
+  getDatabase().prepare('UPDATE geofence_events SET notified = 1 WHERE id = ?').run(id)
 }
 
 // ── Import / Export (migration) ──

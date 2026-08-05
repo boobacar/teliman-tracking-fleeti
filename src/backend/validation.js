@@ -106,6 +106,30 @@ export const tracksBatchSchema = z.object({
 
 export const masterValueSchema = z.object({ value: z.string().trim().min(1).max(500) }).strict()
 
+// ── Geofence ──
+// NOTE: aucun .default() pour ne pas détruire les PATCH partiels (même règle que deliveryOrderUpdateSchema).
+export const geofenceTypes = ['depot', 'carriere', 'chantier', 'client', 'interdite', 'autre']
+export const geofenceSchema = z.object({
+  name: z.string().trim().min(1, 'Nom de la zone requis').max(160),
+  type: z.enum(geofenceTypes, { message: 'Type de zone invalide' }),
+  lat: z.union([z.string().trim(), z.number()]).transform((v) => Number(v)).pipe(z.number().finite().min(-90).max(90, 'Latitude invalide')),
+  lng: z.union([z.string().trim(), z.number()]).transform((v) => Number(v)).pipe(z.number().finite().min(-180).max(180, 'Longitude invalide')),
+  radiusMeters: z.union([z.string().trim(), z.number()]).transform((v) => Number(v)).pipe(z.number().finite().min(50, 'Rayon ≥ 50 m').max(100_000, 'Rayon ≤ 100 km')),
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Couleur hexadécimale invalide').optional(),
+  active: z.boolean().optional(),
+}).strict()
+
+export const geofenceUpdateSchema = geofenceSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')
+
+// ── Alert Recipient ──
+export const alertRecipientSchema = z.object({
+  name: z.string().trim().min(1, 'Nom du destinataire requis').max(160),
+  phone: z.string().trim().min(8, 'Numéro invalide').max(32).regex(/^\+?[0-9 ]+$/, 'Numéro invalide'),
+  active: z.boolean().optional(),
+}).strict()
+
+export const alertRecipientUpdateSchema = alertRecipientSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')
+
 // ── Helper ──
 export function validateBody(schema, body) {
   const result = schema.safeParse(body)

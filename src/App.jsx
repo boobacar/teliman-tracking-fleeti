@@ -23,6 +23,7 @@ const FuelVoucherDetailPage = lazy(() => import('./pages/FuelVoucherDetailPage')
 const OilChangesPage = lazy(() => import('./pages/OilChangesPage').then((module) => ({ default: module.OilChangesPage })))
 const TrackerDetailPage = lazy(() => import('./pages/TrackerDetailPage').then((module) => ({ default: module.TrackerDetailPage })))
 const DataPage = lazy(() => import('./pages/DataPage').then((module) => ({ default: module.DataPage })))
+const GeofencesPage = lazy(() => import('./pages/GeofencesPage').then((module) => ({ default: module.GeofencesPage })))
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((module) => ({ default: module.AdminUsersPage })))
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 
@@ -471,6 +472,7 @@ function App() {
           <Route path="/delivery-order/:id" element={guard('manage_delivery_orders', <DeliveryOrderDetailPage deliveryOrders={deliveryOrders} refreshData={refreshData} />)} />
           <Route path="/tracker/:id" element={guard('page_fleet', <TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />)} />
           <Route path="/data" element={guard('manage_data', <DataPage />)} />
+          <Route path="/geofences" element={guard('manage_data', <GeofencesPage />)} />
           <Route path="/admin-users" element={guard('manage_users', <AdminUsersPage />)} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

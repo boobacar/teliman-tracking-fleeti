@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, Menu, MessageCircle, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, MapPinned, Menu, MessageCircle, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
 
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
@@ -16,6 +16,7 @@ export const APP_VIEWS = [
   { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
   { id: '/oil-changes', label: 'Vidanges', icon: Droplet, permission: 'manage_delivery_orders' },
   { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
+  { id: '/geofences', label: 'Géofences & Alertes', icon: MapPinned, permission: 'manage_data' },
   { id: '/admin-users', label: 'Utilisateurs', icon: Shield, permission: 'manage_users' },
 ]
 
