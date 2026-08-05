@@ -297,6 +297,12 @@ export const updateAlertRecipient = (id, payload) => fetchJson(`/api/alert-recip
   body: JSON.stringify(payload),
 })
 export const deleteAlertRecipient = (id) => fetchJson(`/api/alert-recipients/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
+export const updateAlertAction = (key, payload) => fetchJson(`/api/alerts/${encodeURIComponent(key)}`, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+  body: JSON.stringify(payload),
+})
+export const resetAlertAction = (key) => fetchJson(`/api/alerts/${encodeURIComponent(key)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 export const loadVehicles = () => getJson('/api/vehicles')
 export const loadEmployeesDetail = () => getJson('/api/employees-detail')
 export const loadSensorsLive = () => getJson('/api/sensors-live')

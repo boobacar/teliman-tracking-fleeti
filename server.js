@@ -10,12 +10,18 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
-import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema } from './src/backend/validation.js'
+import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
+import {
+  ALERT_STATUSES,
+  countUnprocessed,
+  mergeAlertActions,
+  transitionAlertAction,
+} from './src/backend/alertActions.js'
 import {
   initDatabase, closeDatabase,
   readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrderAtomic, updateDeliveryOrderAtomic, deleteDeliveryOrder,
@@ -25,6 +31,7 @@ import {
   readDriverOverrides, replaceDriverOverridesAtomic,
   readGeofences, readActiveGeofences, readGeofenceById, insertGeofence, updateGeofence, deleteGeofence,
   readAlertRecipients, readActiveAlertRecipients, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
+  readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
   readGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
 } from './src/backend/database.js'
 
@@ -418,7 +425,9 @@ function requiredRoutePermissions(req) {
   }
   if (pathName.startsWith('/api/reports')) return ['page_reports']
   if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
-  if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) return ['page_alerts']
+  if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) {
+    return mutation ? ['manage_alerts'] : ['page_alerts']
+  }
   if (pathName.startsWith('/api/live-odometer')) return ['manage_delivery_orders', 'page_fleet']
   if (pathName.startsWith('/api/sensors-live')) return ['page_fleet', 'page_analytics']
   if (pathName.startsWith('/api/trackers') || pathName.startsWith('/api/drivers') || pathName.startsWith('/api/employees-detail') || pathName.startsWith('/api/vehicles') || pathName.startsWith('/api/vehicle') || pathName.startsWith('/api/cameras')) return ['page_fleet', 'manage_delivery_orders']
@@ -2815,7 +2824,43 @@ app.get('/api/drivers', async (_req, res) => {
 app.get('/api/alerts', async (_req, res) => {
   try {
     const data = await getDashboardData()
-    res.json({ alerts: data.history, unreadCount: data.unreadCount, rules: data.rules })
+    const actions = readAlertActions()
+    const alerts = mergeAlertActions(data.history, actions, Date.now())
+    res.json({
+      alerts,
+      unreadCount: countUnprocessed(alerts),
+      rules: data.rules,
+      statusCounts: ALERT_STATUSES.reduce((map, status) => {
+        map[status] = alerts.filter((alert) => alert.status === status).length
+        return map
+      }, {}),
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// Cycle de vie d'une alerte : reconnaissance, traitement, résolution, assignation.
+app.patch('/api/alerts/:key', async (req, res) => {
+  try {
+    const validated = validateBody(alertActionPatchSchema, req.body || {})
+    const alertKey = String(req.params.key || '').slice(0, 300)
+    if (!alertKey) return res.status(400).json({ ok: false, error: 'Clé d’alerte manquante' })
+    const previous = readAlertAction(alertKey)
+    const next = transitionAlertAction(previous, validated)
+    const saved = upsertAlertAction(next)
+    res.json({ ok: true, action: saved })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+// Réinitialise le cycle de vie (retour à « nouvelle »).
+app.delete('/api/alerts/:key', async (req, res) => {
+  try {
+    const alertKey = String(req.params.key || '').slice(0, 300)
+    const changes = deleteAlertAction(alertKey)
+    res.json({ ok: true, removed: changes })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }

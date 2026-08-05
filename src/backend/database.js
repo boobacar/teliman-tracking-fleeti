@@ -145,6 +145,18 @@ function createTables() {
       notified INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_geofence_events_created ON geofence_events(createdAt);
+
+    CREATE TABLE IF NOT EXISTS alert_actions (
+      alertKey TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'new',
+      priority TEXT,
+      assignedTo TEXT DEFAULT '',
+      comment TEXT DEFAULT '',
+      acknowledgedAt TEXT,
+      resolvedAt TEXT,
+      history TEXT NOT NULL DEFAULT '[]',
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `)
 }
 
@@ -638,6 +650,64 @@ export function insertGeofenceEvent(item) {
 
 export function markGeofenceEventNotified(id) {
   getDatabase().prepare('UPDATE geofence_events SET notified = 1 WHERE id = ?').run(id)
+}
+
+// ── Alertes actionnables (cycle de vie) ──
+
+export function readAlertActions() {
+  return getDatabase()
+    .prepare('SELECT alertKey, status, priority, assignedTo, comment, acknowledgedAt, resolvedAt, history, updatedAt FROM alert_actions ORDER BY updatedAt DESC')
+    .all()
+    .map((row) => {
+      let history = []
+      try { history = JSON.parse(row.history || '[]') } catch { /* historique illisible */ }
+      return { ...row, history }
+    })
+}
+
+export function readAlertAction(alertKey) {
+  const row = getDatabase().prepare('SELECT * FROM alert_actions WHERE alertKey = ?').get(String(alertKey))
+  if (!row) return null
+  let history = []
+  try { history = JSON.parse(row.history || '[]') } catch { /* historique illisible */ }
+  return { ...row, history }
+}
+
+export function upsertAlertAction(action) {
+  const db = getDatabase()
+  const existing = readAlertAction(action.alertKey)
+  const merged = {
+    alertKey: action.alertKey,
+    status: action.status || existing?.status || 'new',
+    priority: action.priority || existing?.priority || null,
+    assignedTo: action.assignedTo ?? existing?.assignedTo ?? '',
+    comment: action.comment ?? existing?.comment ?? '',
+    acknowledgedAt: action.acknowledgedAt ?? existing?.acknowledgedAt ?? null,
+    resolvedAt: action.resolvedAt ?? existing?.resolvedAt ?? null,
+    history: Array.isArray(action.history) ? action.history : existing?.history || [],
+    updatedAt: action.updatedAt || new Date().toISOString(),
+  }
+  db.prepare(`
+    INSERT INTO alert_actions (alertKey, status, priority, assignedTo, comment, acknowledgedAt, resolvedAt, history, updatedAt)
+    VALUES (@alertKey, @status, @priority, @assignedTo, @comment, @acknowledgedAt, @resolvedAt, @history, @updatedAt)
+    ON CONFLICT(alertKey) DO UPDATE SET
+      status = excluded.status,
+      priority = excluded.priority,
+      assignedTo = excluded.assignedTo,
+      comment = excluded.comment,
+      acknowledgedAt = excluded.acknowledgedAt,
+      resolvedAt = excluded.resolvedAt,
+      history = excluded.history,
+      updatedAt = excluded.updatedAt
+  `).run({
+    ...merged,
+    history: JSON.stringify(merged.history || []),
+  })
+  return readAlertAction(action.alertKey)
+}
+
+export function deleteAlertAction(alertKey) {
+  return getDatabase().prepare('DELETE FROM alert_actions WHERE alertKey = ?').run(String(alertKey)).changes
 }
 
 // ── Import / Export (migration) ──

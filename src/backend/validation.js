@@ -130,6 +130,13 @@ export const alertRecipientSchema = z.object({
 
 export const alertRecipientUpdateSchema = alertRecipientSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')
 
+export const alertActionPatchSchema = z.object({
+  status: z.enum(['new', 'acknowledged', 'processing', 'resolved']).optional(),
+  priority: z.enum(['low', 'normal', 'medium', 'high', 'critical']).optional(),
+  assignedTo: z.string().max(120).nullable().optional(),
+  comment: z.string().max(2000).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'Modification requise')
+
 // ── Helper ──
 export function validateBody(schema, body) {
   const result = schema.safeParse(body)

@@ -6020,3 +6020,62 @@ a.leaflet-control-zoom-out {
   }
   .map-control-body { max-height: calc(46vh - 46px); }
 }
+
+/* ── Cycle de vie des alertes ── */
+.alert-lifecycle-card { border-left: 3px solid #64748b; }
+.alert-lifecycle-card.status-new { border-left-color: #ef4444; }
+.alert-lifecycle-card.status-acknowledged { border-left-color: #f59e0b; }
+.alert-lifecycle-card.status-processing { border-left-color: #38bdf8; }
+.alert-lifecycle-card.status-resolved { border-left-color: #22c55e; }
+.alert-lifecycle-card.escalated { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.45), 0 6px 18px rgba(239, 68, 68, 0.08); }
+.alert-card-main {
+  display: grid; grid-template-columns: 150px minmax(0, 1.4fr) minmax(110px, 0.6fr) 110px 150px;
+  gap: 12px; align-items: center; padding: 12px 14px; cursor: pointer;
+}
+.alert-status-badge { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.alert-status-badge strong { font-size: 12.5px; color: #f3f5f7; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.status-dot.status-new { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.7); }
+.status-dot.status-acknowledged { background: #f59e0b; }
+.status-dot.status-processing { background: #38bdf8; }
+.status-dot.status-resolved { background: #22c55e; }
+.alert-escalated-badge {
+  font-style: normal; font-size: 10.5px; color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 999px; padding: 1px 7px;
+}
+.alert-type-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alert-type-cell small { color: #97a3b6; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-driver-cell { display: flex; flex-direction: column; gap: 2px; }
+.alert-driver-cell small { color: #97a3b6; font-size: 12px; }
+.alert-time-cell { color: #8a94a5; font-size: 12px; text-align: right; }
+.priority-chip { font-size: 11px; border-radius: 999px; padding: 2px 9px; display: inline-block; }
+.priority-chip.priority-high, .priority-chip.priority-critical { background: rgba(239, 68, 68, 0.16); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); }
+.priority-chip.priority-medium { background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+.priority-chip.priority-normal { background: rgba(148, 163, 184, 0.14); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
+.alert-action-panel {
+  border-top: 1px solid #1b3a19; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: rgba(7, 9, 12, 0.35);
+}
+.alert-action-row { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; }
+.alert-action-field { display: flex; flex-direction: column; gap: 4px; }
+.alert-action-field > span { font-size: 11px; color: #97a3b6; display: inline-flex; align-items: center; gap: 4px; }
+.alert-action-field select, .alert-action-field input, .alert-action-field textarea {
+  background: #0d1117; border: 1px solid #23511f; color: #f3f5f7;
+  border-radius: 9px; padding: 8px 10px; font-size: 13px; width: 100%;
+}
+.alert-action-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.alert-meta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 11.5px; color: #8a94a5; }
+.alert-history { border-top: 1px dashed #1b3a19; padding-top: 8px; }
+.alert-history h4 { display: flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; color: #a97c50; margin: 0 0 6px; }
+.alert-history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.alert-history li { font-size: 12px; color: #cdd5df; display: flex; gap: 10px; }
+.alert-history li span { color: #8a94a5; flex: none; }
+.spin { animation: map-spin 0.9s linear infinite; }
+@keyframes map-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .alert-card-main { grid-template-columns: 1fr 1.4fr; grid-template-rows: auto auto auto; }
+  .alert-time-cell { text-align: left; }
+  .alert-action-row { grid-template-columns: 1fr; }
+}
