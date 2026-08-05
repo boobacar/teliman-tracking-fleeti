@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
+import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Bell, BellOff, CirclePlus, MapPin, Phone, Plus, Save, Trash2, X } from 'lucide-react'
 import { ErrorBanner, EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
@@ -60,7 +61,16 @@ function MapClickCapture({ onPick, enabled }) {
   return null
 }
 
-function GeofenceMap({ geofences, selectedId, onSelect, onPick, pickEnabled }) {
+function createZoneCenterIcon(color, selected) {
+  return L.divIcon({
+    className: 'geofence-center-icon-wrap',
+    html: `<div class="geofence-center-icon ${selected ? 'selected' : ''}" style="background:${color}"></div>`,
+    iconSize: selected ? [22, 22] : [18, 18],
+    iconAnchor: selected ? [11, 11] : [9, 9],
+  })
+}
+
+function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickEnabled, onDragStart, onDrag, onDragEnd }) {
   const mapRef = useRef(null)
 
   useEffect(() => {
@@ -84,11 +94,14 @@ function GeofenceMap({ geofences, selectedId, onSelect, onPick, pickEnabled }) {
       <MapClickCapture onPick={onPick} enabled={pickEnabled} />
       {geofences.map((zone) => {
         const selected = zone.id === selectedId
+        const isDraft = dragDraft?.id === zone.id
+        const centerLat = isDraft ? dragDraft.lat : zone.lat
+        const centerLng = isDraft ? dragDraft.lng : zone.lng
         const fillColor = selected ? '#22d3ee' : (zone.color || '#946239')
         return (
           <div key={zone.id}>
             <Circle
-              center={[zone.lat, zone.lng]}
+              center={[centerLat, centerLng]}
               radius={Number(zone.radiusMeters) || 1000}
               pathOptions={{
                 color: fillColor,
@@ -108,12 +121,22 @@ function GeofenceMap({ geofences, selectedId, onSelect, onPick, pickEnabled }) {
                 Rayon: {Number(zone.radiusMeters).toLocaleString('fr-FR')} m
               </Tooltip>
             </Circle>
-            <CircleMarker
-              center={[zone.lat, zone.lng]}
-              radius={selected ? 8 : 6}
-              pathOptions={{ color: '#07090c', weight: 2, fillColor, fillOpacity: 1 }}
-              eventHandlers={{ click: () => onSelect(zone.id) }}
-            />
+            <Marker
+              position={[zone.lat, zone.lng]}
+              icon={createZoneCenterIcon(fillColor, selected)}
+              draggable
+              zIndexOffset={selected ? 1000 : 500}
+              eventHandlers={{
+                click: () => onSelect(zone.id),
+                dragstart: () => onDragStart(zone),
+                drag: (event) => onDrag(zone.id, event.target.getLatLng()),
+                dragend: (event) => onDragEnd(zone, event.target.getLatLng()),
+              }}
+            >
+              <Tooltip direction="top" offset={[0, -14]} opacity={1}>
+                {zone.name} — glisser pour déplacer
+              </Tooltip>
+            </Marker>
           </div>
         )
       })}
@@ -133,6 +156,7 @@ export function GeofencesPage() {
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [pickEnabled, setPickEnabled] = useState(false)
+  const [dragDraft, setDragDraft] = useState(null) // { id, lat, lng } pendant un glissement
 
   const [recipientForm, setRecipientForm] = useState({ name: '', phone: '', active: true })
   const [recipientSaving, setRecipientSaving] = useState(false)
@@ -186,6 +210,34 @@ export function GeofencesPage() {
   function handleMapPick({ lat, lng }) {
     setForm((previous) => ({ ...previous, lat, lng }))
     setPickEnabled(false)
+  }
+
+  function handleDragStart(zone) {
+    if (form.id !== zone.id) startEdit(zone)
+  }
+
+  function handleDrag(zoneId, latlng) {
+    setDragDraft({ id: zoneId, lat: Number(latlng.lat.toFixed(6)), lng: Number(latlng.lng.toFixed(6)) })
+  }
+
+  async function handleDragEnd(zone, latlng) {
+    const lat = Number(latlng.lat.toFixed(6))
+    const lng = Number(latlng.lng.toFixed(6))
+    setDragDraft(null)
+    setSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      await updateGeofence(zone.id, { lat, lng })
+      setForm((previous) => (previous.id === zone.id ? { ...previous, lat, lng } : previous))
+      setSuccess(`Zone « ${zone.name} » déplacée.`)
+      await refresh()
+    } catch (err) {
+      setError(err.message || 'Déplacement impossible.')
+      await refresh()
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleSaveGeofence(event) {
@@ -308,13 +360,18 @@ export function GeofencesPage() {
               <MapPin size={16} />
               {pickEnabled ? 'Cliquez sur la carte pour placer la zone' : 'Placer une zone sur la carte'}
             </button>
+            <span className="geofence-map-hint"><MapPin size={14} /> Cliquez sur une zone pour la modifier · glissez le point central pour la déplacer</span>
           </div>
           <GeofenceMap
             geofences={geofences}
             selectedId={form.id}
+            dragDraft={dragDraft}
             onSelect={startEdit}
             onPick={handleMapPick}
             pickEnabled={pickEnabled}
+            onDragStart={handleDragStart}
+            onDrag={handleDrag}
+            onDragEnd={handleDragEnd}
           />
           {geofences.length === 0 && !loading && <EmptyBanner message="Aucune géofence configurée. Créez la première zone ci-contre." />}
         </div>

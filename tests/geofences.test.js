@@ -198,6 +198,17 @@ test('la page Géofences couvre carte, formulaire, numéros et événements', ()
   assert.match(geofencesPageSource, /Derniers événements de zone/)
 })
 
+test('le point central d’une géofence est déplaçable à la souris', () => {
+  assert.match(geofencesPageSource, /<Marker/)
+  assert.match(geofencesPageSource, /draggable/)
+  assert.match(geofencesPageSource, /dragstart: \(\) => onDragStart\(zone\)/)
+  assert.match(geofencesPageSource, /dragend: \(event\) => onDragEnd\(zone, event\.target\.getLatLng\(\)\)/)
+  assert.match(geofencesPageSource, /handleDragEnd/)
+  assert.match(geofencesPageSource, /dragDraft/)
+  assert.match(geofencesPageSource, /glissez le point central pour la déplacer/)
+  assert.match(geofencesPageSource, /updateGeofence\(zone\.id, \{ lat, lng \}\)/)
+})
+
 test('le routeur et la sidebar exposent la page Géofences', () => {
   assert.match(appSource, /path="\/geofences"/)
   assert.match(appSource, /GeofencesPage/)
