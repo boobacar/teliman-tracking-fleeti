@@ -131,7 +131,7 @@ function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickE
                 fillOpacity: zone.active ? 0.22 : 0.08,
                 dashArray: zone.active ? null : '6 6',
               }}
-              eventHandlers={{ click: () => onSelect(zone.id) }}
+              eventHandlers={{ click: () => onSelect(zone) }}
             >
               <Tooltip direction="top" offset={[0, -8]} opacity={1}>
                 <strong>{zone.name}</strong>
@@ -148,7 +148,7 @@ function GeofenceMap({ geofences, selectedId, dragDraft, onSelect, onPick, pickE
               draggable
               zIndexOffset={zone.selected ? 1000 : 500}
               eventHandlers={{
-                click: () => onSelect(zone.id),
+                click: () => onSelect(zone),
                 dragstart: () => onDragStart(zone),
                 drag: (event) => onDrag(zone.id, event.target.getLatLng()),
                 dragend: (event) => onDragEnd(zone, event.target.getLatLng()),

@@ -216,6 +216,12 @@ test('le point central d’une géofence est déplaçable à la souris', () => {
   assert.match(geofencesPageSource, /updateGeofence\(zone\.id, \{ lat, lng \}\)/)
 })
 
+test('le clic sur une zone charge son objet complet dans le formulaire', () => {
+  const mapSection = geofencesPageSource.slice(geofencesPageSource.indexOf('function GeofenceMap'))
+  assert.match(mapSection, /click: \(\) => onSelect\(zone\)/)
+  assert.doesNotMatch(mapSection, /onSelect\(zone\.id\)/)
+})
+
 test('le routeur et la sidebar exposent la page Géofences', () => {
   assert.match(appSource, /path="\/geofences"/)
   assert.match(appSource, /GeofencesPage/)
