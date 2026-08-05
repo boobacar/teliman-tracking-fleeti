@@ -729,7 +729,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
                 <div className={`map-control-kpi state-${getPinState(focusedTracker).text.toLowerCase()}`}><span>État</span><strong>{getPinState(focusedTracker).text}</strong></div>
                 <div className="map-control-kpi"><span>Vitesse</span><strong>{focusedTracker.state?.gps?.speed ?? 0} km/h</strong></div>
                 <div className="map-control-kpi"><span>Connexion</span><strong>{focusedTracker.state?.connection_status}</strong></div>
-                <div className="map-control-kpi"><span>Dernière position</span><strong>{formatPositionAge(focusedLive?.last_update || focusedTracker.liveLastUpdate, ageNow)}</strong></div>
+                <div className="map-control-kpi"><span>Dernière position</span><strong>{formatPositionAge(focusedLive?.last_update || focusedTracker.liveLastUpdate || liveUpdatedAt, ageNow)}</strong></div>
               </div>
 
               {focusedOrder ? (
