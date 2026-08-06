@@ -16,6 +16,7 @@ import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient
 import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
+import { buildMissionTimelineEvent, planMissionStatusChange } from './src/backend/missionWorkflow.js'
 import {
   ALERT_STATUSES,
   countUnprocessed,
@@ -32,6 +33,7 @@ import {
   readGeofences, readActiveGeofences, readGeofenceById, insertGeofence, updateGeofence, deleteGeofence,
   readAlertRecipients, readActiveAlertRecipients, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
+  readMissionTimeline, appendMissionTimelineEvent,
   readGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
 } from './src/backend/database.js'
 
@@ -762,6 +764,23 @@ function evaluateGeofenceTransitions(positions) {
         console.log(`[geofence] ${event.eventType === 'enter' ? 'ENTRÉE' : 'SORTIE'} — ${event.geofenceName} — tracker ${event.trackerId} (${event.truckLabel})`)
       } catch (error) {
         console.warn('[geofence] enregistrement événement impossible:', error?.message || error)
+      }
+      try {
+        const activeOrders = readDeliveryOrders().filter((order) => order.active && String(order.trackerId) === String(event.trackerId))
+        const zonesById = Object.fromEntries(activeGeofences.map((zone) => [String(zone.id), zone]))
+        const change = planMissionStatusChange(event, activeOrders, zonesById)
+        if (change) {
+          updateDeliveryOrderAtomic(change.orderId, { status: change.newStatus })
+          appendMissionTimelineEvent(buildMissionTimelineEvent(change.orderId, event, change, event.trackerId, event.truckLabel))
+          console.log(`[mission] BL ${change.orderId} → « ${change.newStatus} » (${change.label})`)
+        } else {
+          const order = activeOrders[0]
+          if (order) {
+            appendMissionTimelineEvent(buildMissionTimelineEvent(order.id, event, null, event.trackerId, event.truckLabel))
+          }
+        }
+      } catch (error) {
+        console.warn('[mission] workflow impossible:', error?.message || error)
       }
       notifyGeofenceAlertWhatsApp(event, eventId).catch((error) => {
         console.warn('[geofence] notification impossible:', error?.message || error)
@@ -3379,6 +3398,42 @@ app.get('/api/delivery-order/:id', (req, res) => {
   const item = readDeliveryOrders().find((entry) => Number(entry.id) === id)
   if (!item) return res.status(404).json({ ok: false, error: 'Bon introuvable' })
   res.json({ item })
+})
+
+// Timeline mission : journal des événements (géofences auto + saisies manuelles)
+app.get('/api/delivery-orders/:id/timeline', (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    const item = readDeliveryOrderById(id)
+    if (!item) return res.status(404).json({ ok: false, error: 'Bon de livraison introuvable' })
+    res.json({ ok: true, timeline: readMissionTimeline(id) })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/delivery-orders/:id/timeline', (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    const item = readDeliveryOrderById(id)
+    if (!item) return res.status(404).json({ ok: false, error: 'Bon de livraison introuvable' })
+    const { eventType, label, at } = req.body || {}
+    const text = String(label || '').trim().slice(0, 300)
+    if (!text) return res.status(400).json({ ok: false, error: 'Libellé requis' })
+    const event = appendMissionTimelineEvent({
+      deliveryOrderId: id,
+      trackerId: item.trackerId || null,
+      eventType: String(eventType || 'event').slice(0, 40),
+      label: text,
+      lat: null,
+      lng: null,
+      at: at || new Date().toISOString(),
+      actor: 'manuel',
+    })
+    res.json({ ok: true, event })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
 })
 
 app.get('/api/delivery-orders-summary', (_req, res) => {

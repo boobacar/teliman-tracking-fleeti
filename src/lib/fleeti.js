@@ -235,6 +235,8 @@ export const loadDeliveryOrder = async (id) => {
   return data?.item || null
 }
 export const loadDeliveryOrdersSummary = () => getJson('/api/delivery-orders-summary')
+export const loadMissionTimeline = (orderId) => getJson(`/api/delivery-orders/${orderId}/timeline`)
+export const appendMissionTimeline = (orderId, payload) => postJson(`/api/delivery-orders/${orderId}/timeline`, payload)
 export const loadFuelVouchers = ({ page, limit } = {}) => {
   const params = new URLSearchParams()
   if (page != null) params.set('page', page)

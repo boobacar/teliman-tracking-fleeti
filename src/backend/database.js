@@ -157,6 +157,19 @@ function createTables() {
       history TEXT NOT NULL DEFAULT '[]',
       updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS mission_timeline (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      deliveryOrderId INTEGER NOT NULL,
+      trackerId INTEGER,
+      eventType TEXT NOT NULL DEFAULT 'event',
+      label TEXT DEFAULT '',
+      lat REAL,
+      lng REAL,
+      at TEXT NOT NULL,
+      actor TEXT DEFAULT 'auto'
+    );
+    CREATE INDEX IF NOT EXISTS idx_mission_timeline_order ON mission_timeline(deliveryOrderId, at);
   `)
 }
 
@@ -708,6 +721,30 @@ export function upsertAlertAction(action) {
 
 export function deleteAlertAction(alertKey) {
   return getDatabase().prepare('DELETE FROM alert_actions WHERE alertKey = ?').run(String(alertKey)).changes
+}
+
+// ── Timeline mission (journal des événements d'une mission) ──
+
+export function readMissionTimeline(deliveryOrderId, limit = 100) {
+  return getDatabase()
+    .prepare('SELECT * FROM mission_timeline WHERE deliveryOrderId = ? ORDER BY at DESC, id DESC LIMIT ?')
+    .all(Number(deliveryOrderId), Math.min(Number(limit) || 100, 500))
+}
+
+export function appendMissionTimelineEvent(item) {
+  const info = getDatabase()
+    .prepare('INSERT INTO mission_timeline (deliveryOrderId, trackerId, eventType, label, lat, lng, at, actor) VALUES (@deliveryOrderId, @trackerId, @eventType, @label, @lat, @lng, @at, @actor)')
+    .run({
+      deliveryOrderId: Number(item.deliveryOrderId),
+      trackerId: item.trackerId ? Number(item.trackerId) : null,
+      eventType: String(item.eventType || 'event'),
+      label: String(item.label || ''),
+      lat: Number.isFinite(item.lat) ? item.lat : null,
+      lng: Number.isFinite(item.lng) ? item.lng : null,
+      at: item.at || new Date().toISOString(),
+      actor: String(item.actor || 'auto'),
+    })
+  return { id: Number(info.lastInsertRowid), ...item }
 }
 
 // ── Import / Export (migration) ──

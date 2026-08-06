@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, History, Loader2, MapPin, Plus, Printer, Trash2 } from 'lucide-react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { useNavigate, useParams } from 'react-router-dom'
-import { deleteDeliveryOrder, loadDeliveryOrder, updateDeliveryOrder } from '../lib/fleeti'
+import { appendMissionTimeline, deleteDeliveryOrder, loadDeliveryOrder, loadMissionTimeline, updateDeliveryOrder } from '../lib/fleeti'
 import { printDeliveryOrder } from '../lib/printDeliveryOrder'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { formatDeliveryQuantity } from '../lib/deliveryOrders.js'
@@ -22,7 +22,43 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
   const [form, setForm] = useState(null)
   const [lightboxOpen, setLightboxOpen] = useState('')
   const [loadError, setLoadError] = useState('')
+  const [timeline, setTimeline] = useState(null)
+  const [timelineError, setTimelineError] = useState('')
+  const [timelineLabel, setTimelineLabel] = useState('')
+  const [timelineSaving, setTimelineSaving] = useState(false)
   const formInitializedFor = useRef(null)
+
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    async function loadTimeline() {
+      try {
+        const data = await loadMissionTimeline(id)
+        if (!cancelled) setTimeline(data?.timeline || [])
+      } catch (error) {
+        if (!cancelled) setTimelineError(error?.message || 'Timeline indisponible')
+      }
+    }
+    void loadTimeline()
+    return () => { cancelled = true }
+  }, [id])
+
+  async function addTimelineEvent() {
+    const label = timelineLabel.trim()
+    if (!label || timelineSaving) return
+    setTimelineSaving(true)
+    setTimelineError('')
+    try {
+      await appendMissionTimeline(id, { eventType: 'manual', label })
+      const data = await loadMissionTimeline(id)
+      setTimeline(data?.timeline || [])
+      setTimelineLabel('')
+    } catch (error) {
+      setTimelineError(error?.message || 'Ajout impossible.')
+    } finally {
+      setTimelineSaving(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -295,13 +331,39 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
     </section>
 
     <section className="panel panel-large">
-      <div className="panel-header"><div><h3>Timeline mission</h3><p>Lecture compacte des étapes</p></div></div>
+      <div className="panel-header"><div><h3><History size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />Timeline mission</h3><p>Étapes structurées + événements automatiques (géofences) et saisies terrain</p></div></div>
+      {timelineError && <div className="error-banner" role="alert">{timelineError}</div>}
+      {Array.isArray(timeline) && timeline.length > 0 && (
+        <div className="mission-timeline-events" aria-label="Événements de la mission">
+          {timeline.slice(0, 15).map((event) => (
+            <div key={event.id} className={`timeline-row mission-event-row ${event.actor === 'auto' ? 'auto' : 'manual'}`}>
+              <div className="timeline-icon">{event.eventType === 'mission_arrived' ? '▲' : event.eventType === 'mission_at_depot' ? '⬤' : event.eventType === 'mission_left_site' || event.eventType === 'mission_left_depot' ? '▼' : '•'}</div>
+              <div>
+                <strong>{event.label || event.eventType}</strong>
+                <p>{event.at ? new Date(event.at).toLocaleString('fr-FR') : '-'}</p>
+                <span>{event.actor === 'auto' ? 'Automatique (géofence)' : 'Saisie manuelle'}{Number.isFinite(event.lat) && <><MapPin size={11} style={{ marginLeft: 6, verticalAlign: 'middle' }} /> {event.lat.toFixed(5)}, {event.lng.toFixed(5)}</>}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="timeline-list">
         <div className="timeline-row"><div className="timeline-icon">1</div><div><strong>Création</strong><p>{order.date ? new Date(order.date).toLocaleString() : '-'}</p><span>Mission enregistrée</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">2</div><div><strong>Départ mission</strong><p>{order.departureDateTime ? new Date(order.departureDateTime).toLocaleString() : '-'}</p><span>{order.loadingPoint || 'Départ non renseigné'}</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">3</div><div><strong>Arrivée mission</strong><p>{order.arrivalDateTime ? new Date(order.arrivalDateTime).toLocaleString() : '-'}</p><span>{order.destination}</span></div></div>
         <div className="timeline-row"><div className="timeline-icon">4</div><div><strong>Preuve de livraison</strong><p>{order.proofStatus || 'En attente'}</p><span>{proofPhotos.length ? `${proofPhotos.length} photo(s) disponible(s)` : (order.proofNote || 'Aucun commentaire')}</span></div></div>
         {order.completedAt && <div className="timeline-row"><div className="timeline-icon">5</div><div><strong>Fin mission</strong><p>{new Date(order.completedAt).toLocaleString()}</p><span>Bon livré</span></div></div>}
+      </div>
+      <div className="mission-timeline-add">
+        <input
+          value={timelineLabel}
+          onChange={(event) => setTimelineLabel(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') void addTimelineEvent() }}
+          placeholder="Ajouter un événement (ex. chargement terminé, départ confirmé…)"
+          aria-label="Nouvel événement de mission"
+          disabled={timelineSaving}
+        />
+        <button type="button" className="ghost-btn" onClick={() => void addTimelineEvent()} disabled={timelineSaving || !timelineLabel.trim()}>{timelineSaving ? <Loader2 size={15} className="spin" /> : <Plus size={15} />}Ajouter</button>
       </div>
     </section>
 
