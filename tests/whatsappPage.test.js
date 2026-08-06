@@ -40,3 +40,13 @@ test('l’historique WhatsApp est filtré et paginé pour éviter une longue lis
   assert.match(pageSource, /Précédent/)
   assert.match(pageSource, /Suivant/)
 })
+
+test('la page WhatsApp affiche le panneau Cloud API officielle (Meta)', () => {
+  const source = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
+  assert.match(source, /Cloud API officielle \(Meta\)/)
+  assert.match(source, /cloudApiConfigured/)
+  assert.match(source, /defaultTemplateName/)
+  assert.match(source, /webhookConfigured/)
+  assert.match(source, /File d'attente/)
+  assert.match(source, /template à créer dans WhatsApp Manager/i)
+})

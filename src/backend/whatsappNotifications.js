@@ -1,3 +1,5 @@
+import { buildTemplateBodyComponents, normalizeWhatsAppPhone as normalizePhone, sendWhatsAppFreeFormText, sendWhatsAppTemplateMessage } from './whatsappApi.js'
+
 const DEFAULT_WHATSAPP_API_VERSION = 'v20.0'
 
 const EVENT_TITLES = {
@@ -72,7 +74,7 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
   return lines.filter((line) => line !== '').join('\n')
 }
 
-export async function sendFleetAlertWhatsAppNotifications({ event, masterData = {}, config, fetchImpl = fetch, baileysClient = null } = {}) {
+export async function sendFleetAlertWhatsAppNotifications({ event, masterData = {}, config, fetchImpl = fetch, baileysClient = null, context = null } = {}) {
   const eventType = normalizeFleetAlertEventType(event?.event || event?.eventType)
   const recipients = resolveAlertWhatsAppRecipients(eventType, masterData)
   if (!eventType) return []
@@ -90,7 +92,7 @@ export async function sendFleetAlertWhatsAppNotifications({ event, masterData = 
 
   const results = []
   for (const recipient of recipients) {
-    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient, context: { source: 'fleet_alert', eventType, order: event, ...context } })
     results.push({ source: 'fleet_alert', eventType, recipient, message, ...result })
   }
   return results
@@ -124,7 +126,7 @@ export function buildGeofenceAlertWhatsAppMessage(event = {}) {
   return lines.filter((line) => line !== '').join('\n')
 }
 
-export async function sendGeofenceAlertWhatsAppNotifications({ event, recipients = [], config = {}, fetchImpl = fetch, baileysClient = null } = {}) {
+export async function sendGeofenceAlertWhatsAppNotifications({ event, recipients = [], config = {}, fetchImpl = fetch, baileysClient = null, context = null } = {}) {
   const message = buildGeofenceAlertWhatsAppMessage(event)
   const phoneList = normalizeWhatsAppPhoneList(recipients)
   if (!phoneList.length) {
@@ -139,7 +141,7 @@ export async function sendGeofenceAlertWhatsAppNotifications({ event, recipients
   }
   const results = []
   for (const recipient of phoneList) {
-    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient, context: { source: 'geofence', eventType: event?.eventType || '', order: event, ...context } })
     results.push({ source: 'geofence', eventType: event?.eventType || '', recipient, message, ...result })
   }
   return results
@@ -217,10 +219,18 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
     phoneNumberId: String(env.WHATSAPP_PHONE_NUMBER_ID || env.META_WHATSAPP_PHONE_NUMBER_ID || '').trim(),
     apiVersion: String(env.WHATSAPP_API_VERSION || DEFAULT_WHATSAPP_API_VERSION).trim() || DEFAULT_WHATSAPP_API_VERSION,
     baileysAuthDir: String(env.WHATSAPP_BAILEYS_AUTH_DIR || '').trim(),
+    // Template générique (1 variable : le message complet) — requis pour les envois hors fenêtre 24 h
+    defaultTemplateName: String(env.WHATSAPP_DEFAULT_TEMPLATE_NAME || '').trim(),
+    templateLanguage: String(env.WHATSAPP_TEMPLATE_LANGUAGE || 'fr').trim() || 'fr',
+    webhookVerifyToken: String(env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim(),
+    queueEnabled: String(env.WHATSAPP_QUEUE_ENABLED ?? 'true').toLowerCase() !== 'false',
+    // Injectés au démarrage du serveur (pas depuis l'environnement)
+    queue: null,
+    windowCheck: null,
   }
 }
 
-export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null } = {}) {
+export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null, context = null } = {}) {
   const recipient = normalizeWhatsAppPhone(to)
   if (!recipient) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
   if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
@@ -233,40 +243,57 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
     return { sent: false, skipped: true, reason: 'WhatsApp Cloud API non configurée.' }
   }
 
-  try {
-    const apiVersion = config.apiVersion || DEFAULT_WHATSAPP_API_VERSION
-    const response = await fetchImpl(`https://graph.facebook.com/${apiVersion}/${config.phoneNumberId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: recipient,
-        type: 'text',
-        text: { preview_url: false, body: message },
-      }),
-    })
+  // File d'attente : throttle + retry (la file envoie sans queue pour éviter la récursion)
+  if (config.queue) {
+    const job = { to: recipient, message, config: { ...config, queue: null }, fetchImpl, context }
+    config.queue.enqueue(job)
+    return { sent: false, queued: true, reason: 'En file d’attente WhatsApp.', recipient }
+  }
 
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) {
+  // Fenêtre de conversation ouverte (contact < 24 h) → texte libre autorisé
+  const windowOpen = typeof config.windowCheck === 'function' && config.windowCheck(recipient)
+  const templateName = config.defaultTemplateName || ''
+
+  if (windowOpen) {
+    const result = await sendWhatsAppFreeFormText({ to: recipient, body: message, config, fetchImpl })
+    // Hors fenêtre détectée côté API (race) → bascule sur le template générique si configuré
+    if (!result.sent && result.errorKind === 'requires_template' && templateName) {
+      return sendWhatsAppTemplateMessage({
+        to: recipient,
+        templateName,
+        languageCode: config.templateLanguage,
+        components: buildTemplateBodyComponents([message]),
+        config,
+        fetchImpl,
+      })
+    }
+    return result
+  }
+
+  // Hors fenêtre : un template approuvé est OBLIGATOIRE (erreur Meta 131047 sinon)
+  if (templateName) {
+    const result = await sendWhatsAppTemplateMessage({
+      to: recipient,
+      templateName,
+      languageCode: config.templateLanguage,
+      components: buildTemplateBodyComponents([message]),
+      config,
+      fetchImpl,
+    })
+    if (!result.sent && result.errorKind === 'template_not_found') {
       return {
-        sent: false,
-        skipped: false,
-        reason: payload?.error?.message || `WhatsApp API HTTP ${response.status}`,
-        details: payload,
+        ...result,
+        reason: `${result.reason} — créez le template « ${templateName} » (1 variable texte) dans WhatsApp Manager.`,
       }
     }
-
-    return { sent: true, messageId: payload?.messages?.[0]?.id || '', details: payload }
-  } catch (error) {
-    return { sent: false, skipped: false, reason: error?.message || 'Erreur WhatsApp API.' }
+    return result
   }
+
+  // Pas de template configuré : tentative texte (échouera hors fenêtre, erreur documentée)
+  return sendWhatsAppFreeFormText({ to: recipient, body: message, config, fetchImpl })
 }
 
-export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES } = {}) {
+export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES, context = null } = {}) {
   const events = detectDeliveryOrderWhatsAppEvents(previousOrder, order)
   const recipients = resolveClientWhatsAppRecipients(order, masterData)
 
@@ -285,7 +312,7 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
   for (const eventType of events) {
     const message = buildWhatsAppMessageFromTemplate(eventType, order, templates)
     for (const recipient of recipients) {
-      const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient })
+      const result = await sendWhatsAppTextMessage({ to: recipient, message, config, fetchImpl, baileysClient, context: { source: 'delivery_order', eventType, order, ...context } })
       results.push({ eventType, recipient, message, ...result })
     }
   }

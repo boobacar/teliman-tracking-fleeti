@@ -192,6 +192,49 @@ export function WhatsAppPage() {
         </div>
       </section>
 
+      {/* ── Cloud API officielle (Meta) : statut, file d'attente, template ── */}
+      <section className="panel panel-large">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Cloud API officielle (Meta)</p>
+            <h2>Envoi des alertes &amp; notifications</h2>
+            <p>Envoyé via Graph API. Hors fenêtre de conversation de 24 h, Meta exige un template approuvé.</p>
+          </div>
+        </div>
+        <div className="mission-highlight-grid compact-mission-grid">
+          <div className="mission-highlight-card">
+            <span>Cloud API configurée</span>
+            <strong>{whatsAppStatus?.cloudApiConfigured ? 'Oui — prête à envoyer' : 'Non — access token manquant'}</strong>
+            <small>WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span>Template par défaut</span>
+            <strong>{whatsAppStatus?.defaultTemplateName ? whatsAppStatus.defaultTemplateName : 'Aucun (envois texte hors fenêtre rejetés)'}</strong>
+            <small>{whatsAppStatus?.defaultTemplateName ? 'Utilisé automatiquement pour les messages proactifs.' : 'Définissez WHATSAPP_DEFAULT_TEMPLATE_NAME.'}</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span>Webhook</span>
+            <strong>{whatsAppStatus?.webhookConfigured ? 'Configuré' : 'Non configuré'}</strong>
+            <small>{whatsAppStatus?.webhookPath || ''}{whatsAppStatus?.webhookConfigured ? ' — fenêtre 24 h et réponses suivies' : ' — WHATSAPP_WEBHOOK_VERIFY_TOKEN requis'}</small>
+          </div>
+          <div className="mission-highlight-card">
+            <span>File d'attente</span>
+            <strong>{whatsAppStatus?.queue?.queued ?? 0} en file · {whatsAppStatus?.queue?.sentToday ?? 0} envoyés aujourd'hui</strong>
+            <small>{whatsAppStatus?.queue?.failedToday ? `${whatsAppStatus.queue.failedToday} échec(s) — ${whatsAppStatus.queue.lastError || ''}` : `${whatsAppStatus?.contactsToday ?? 0} contacts actifs aujourd'hui · débit ~1 msg/s`}</small>
+          </div>
+        </div>
+        {whatsAppStatus?.defaultTemplateName ? (
+          <div className="whatsapp-template-setup" style={{ marginTop: 16 }}>
+            <h3>Template à créer dans WhatsApp Manager</h3>
+            <p>Créez un template <strong>{whatsAppStatus.defaultTemplateName}</strong> (langue {whatsAppStatus.provider === 'meta' ? 'fr' : 'fr'}, catégorie « Transactionnelle ») avec <strong>1 variable texte</strong> qui reçoit le message complet :</p>
+            <pre className="whatsapp-template-preview">Corps du template : {"{{1}}"}</pre>
+            <div className="table-actions">
+              <button type="button" className="ghost-btn small-btn" onClick={() => copyValue(`Corps du template : {{1}}`, 'corps du template copié')}><Copy size={16} /> Copier le corps du template</button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="panel panel-large whatsapp-connection-panel">
         <div className="whatsapp-connection-hero">
           <div className="connection-hero-copy">

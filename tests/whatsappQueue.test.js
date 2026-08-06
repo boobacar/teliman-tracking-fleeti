@@ -1,0 +1,126 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { createWhatsAppQueue, dayKey } from '../src/backend/whatsappQueue.js'
+import { buildWhatsAppConfigFromEnv, sendWhatsAppTextMessage } from '../src/backend/whatsappNotifications.js'
+
+test('dayKey bascule à minuit', () => {
+  assert.equal(dayKey(new Date('2026-08-06T23:59:00Z')), '2026-08-06')
+  assert.equal(dayKey(new Date('2026-08-07T00:00:01Z')), '2026-08-07')
+})
+
+test('la file envoie séquentiellement avec un débit minimal', async () => {
+  const sentAt = []
+  const queue = createWhatsAppQueue({
+    sendFn: async () => { sentAt.push(Date.now()); return { sent: true } },
+    minIntervalMs: 50,
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  queue.enqueue({ to: 'c' })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  queue.stop()
+  assert.equal(sentAt.length, 3)
+  assert.ok(sentAt[1] - sentAt[0] >= 45, `écart 1-2=${sentAt[1] - sentAt[0]}ms`)
+  assert.ok(sentAt[2] - sentAt[1] >= 45, `écart 2-3=${sentAt[2] - sentAt[1]}ms`)
+  assert.equal(queue.status().queued, 0)
+})
+
+test('la file retente un échec API puis renonce après maxRetries', async () => {
+  let attempts = 0
+  const queue = createWhatsAppQueue({
+    sendFn: async () => { attempts += 1; return { sent: false, skipped: false, reason: '5xx' } },
+    minIntervalMs: 10,
+    maxRetries: 2,
+  })
+  let finalResult = null
+  queue.enqueue({ to: 'a', onResult: (result) => { finalResult = result } })
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  queue.stop()
+  assert.equal(attempts, 3) // 1 essai + 2 retries
+  assert.equal(finalResult.sent, false)
+  assert.equal(queue.status().failedToday, 1)
+  assert.equal(queue.status().retried, 2)
+})
+
+test('la file respecte le plafond journalier', async () => {
+  const queue = createWhatsAppQueue({
+    sendFn: async () => ({ sent: true }),
+    minIntervalMs: 5,
+    dailyLimit: 2,
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  queue.enqueue({ to: 'c' })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  queue.stop()
+  const status = queue.status()
+  assert.equal(status.sentToday, 2)
+  assert.ok(status.queued >= 1, 'le 3e reste en file')
+  assert.equal(queue.status().queued, 1)
+})
+
+test('sendWhatsAppTextMessage passe par la file quand config.queue est présent', async () => {
+  const jobs = []
+  const queue = { enqueue: (job) => jobs.push(job) }
+  const config = buildWhatsAppConfigFromEnv({})
+  const result = await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Test', config: { ...config, accessToken: 'T', phoneNumberId: '1', queue } })
+  assert.equal(result.queued, true)
+  assert.equal(jobs.length, 1)
+  assert.equal(jobs[0].to, '2250701020304')
+  assert.equal(jobs[0].config.queue, null) // pas de récursion
+})
+
+test('sendWhatsAppTextMessage utilise le template hors fenêtre 24h', async () => {
+  const calls = []
+  const fakeFetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body))
+    return { ok: true, json: async () => ({ messages: [{ id: 'wamid-t' }] }) }
+  }
+  const config = buildWhatsAppConfigFromEnv({
+    WHATSAPP_ACCESS_TOKEN: 'T',
+    WHATSAPP_PHONE_NUMBER_ID: '1',
+    WHATSAPP_DEFAULT_TEMPLATE_NAME: 'teliman_notification',
+  })
+  const result = await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Alerte !', config, fetchImpl: fakeFetch })
+  assert.equal(result.sent, true)
+  assert.equal(calls[0].type, 'template')
+  assert.equal(calls[0].template.name, 'teliman_notification')
+  assert.equal(calls[0].template.components[0].parameters[0].text, 'Alerte !')
+})
+
+test('sendWhatsAppTextMessage envoie en texte libre si la fenêtre 24h est ouverte', async () => {
+  const calls = []
+  const fakeFetch = async (_url, options) => {
+    calls.push(JSON.parse(options.body))
+    return { ok: true, json: async () => ({ messages: [{ id: 'wamid-t' }] }) }
+  }
+  const config = buildWhatsAppConfigFromEnv({
+    WHATSAPP_ACCESS_TOKEN: 'T',
+    WHATSAPP_PHONE_NUMBER_ID: '1',
+    WHATSAPP_DEFAULT_TEMPLATE_NAME: 'teliman_notification',
+  })
+  config.windowCheck = () => true
+  const result = await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Réponse', config, fetchImpl: fakeFetch })
+  assert.equal(result.sent, true)
+  assert.equal(calls[0].type, 'text')
+})
+
+test('sendWhatsAppTextMessage bascule sur template quand Meta rejette le texte hors fenêtre', async () => {
+  const calls = []
+  const fakeFetch = async (_url, options) => {
+    const body = JSON.parse(options.body)
+    calls.push(body.type)
+    if (body.type === 'text') return { ok: false, json: async () => ({ error: { message: '(#131047) requires template', code: 131047 } }) }
+    return { ok: true, json: async () => ({ messages: [{ id: 'wamid-fallback' }] }) }
+  }
+  const config = buildWhatsAppConfigFromEnv({
+    WHATSAPP_ACCESS_TOKEN: 'T',
+    WHATSAPP_PHONE_NUMBER_ID: '1',
+    WHATSAPP_DEFAULT_TEMPLATE_NAME: 'teliman_notification',
+  })
+  config.windowCheck = () => true // fenêtre supposée ouverte mais Meta dit non
+  const result = await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Salut', config, fetchImpl: fakeFetch })
+  assert.deepEqual(calls, ['text', 'template'])
+  assert.equal(result.sent, true)
+  assert.equal(result.messageId, 'wamid-fallback')
+})

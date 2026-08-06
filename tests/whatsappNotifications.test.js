@@ -212,7 +212,26 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
     phoneNumberId: '',
     apiVersion: 'v20.0',
     baileysAuthDir: '/tmp/teliman-wa-auth',
+    defaultTemplateName: '',
+    templateLanguage: 'fr',
+    webhookVerifyToken: '',
+    queueEnabled: true,
+    queue: null,
+    windowCheck: null,
   })
+})
+
+test('buildWhatsAppConfigFromEnv lit le template par défaut et le token de webhook', () => {
+  const config = buildWhatsAppConfigFromEnv({
+    WHATSAPP_DEFAULT_TEMPLATE_NAME: 'teliman_notification',
+    WHATSAPP_TEMPLATE_LANGUAGE: 'en',
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'secret-123',
+    WHATSAPP_QUEUE_ENABLED: 'false',
+  })
+  assert.equal(config.defaultTemplateName, 'teliman_notification')
+  assert.equal(config.templateLanguage, 'en')
+  assert.equal(config.webhookVerifyToken, 'secret-123')
+  assert.equal(config.queueEnabled, false)
 })
 
 test('toBaileysJid transforme un numéro international en identifiant WhatsApp', () => {

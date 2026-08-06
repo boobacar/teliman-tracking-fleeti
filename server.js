@@ -14,6 +14,8 @@ import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVouch
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { isWebhookChallengeValid, normalizeWhatsAppPhone as normalizeWhatsAppApiPhone, parseWhatsAppWebhook } from './src/backend/whatsappApi.js'
+import { createWhatsAppQueue } from './src/backend/whatsappQueue.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
 import { buildMissionTimelineEvent, planMissionStatusChange } from './src/backend/missionWorkflow.js'
@@ -34,6 +36,7 @@ import {
   readAlertRecipients, readActiveAlertRecipients, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
   readMissionTimeline, appendMissionTimelineEvent,
+  touchWhatsAppInbound, isWhatsAppWindowOpen, bumpWhatsAppOutbound, countWhatsAppContactsActiveSince,
   readGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
 } from './src/backend/database.js'
 
@@ -328,6 +331,7 @@ function secureCompare(a, b) {
 
 function protectApi(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
+  if (isWebhookPublicPath(req.path)) return next()
   if (!REQUIRE_API_TOKEN) return next()
   const providedToken = req.get('x-api-key') || ''
   if (INTERNAL_API_TOKEN && secureCompare(providedToken, INTERNAL_API_TOKEN)) return next()
@@ -395,6 +399,10 @@ function isServiceSuspended() {
   return fs.existsSync(SERVICE_SUSPENSION_FILE)
 }
 
+function isWebhookPublicPath(pathname) {
+  return pathname === '/api/whatsapp/webhook'
+}
+
 function isSuspensionBypassPath(pathname) {
   return pathname === '/api/auth/login'
     || pathname === '/api/auth/me'
@@ -442,7 +450,7 @@ function requiredRoutePermissions(req) {
 
 function protectAppSession(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
-  if (isSuspensionBypassPath(req.path)) return next()
+  if (isSuspensionBypassPath(req.path) || isWebhookPublicPath(req.path)) return next()
   const user = getSessionUser(req)
   if (user) {
     req.authUser = user
@@ -457,7 +465,7 @@ function protectAppSession(req, res, next) {
 
 function blockSuspendedDataAccess(req, res, next) {
   if (!req.path.startsWith('/api/')) return next()
-  if (isSuspensionBypassPath(req.path)) return next()
+  if (isSuspensionBypassPath(req.path) || isWebhookPublicPath(req.path)) return next()
   if (!isServiceSuspended()) return next()
   return res.status(503).json({ ok: false, suspended: true, error: SERVICE_SUSPENSION_MESSAGE })
 }
@@ -626,6 +634,30 @@ async function appendWhatsAppHistory(entries) {
   return writeWhatsAppHistory([...newEntries, ...readWhatsAppHistory()])
 }
 
+// ── File d'attente WhatsApp (throttle ~1 msg/s, retry, quotas journaliers) ──
+const whatsappSendQueue = createWhatsAppQueue({
+  sendFn: async (job) => {
+    const result = await sendWhatsAppTextMessage({ to: job.to, message: job.message, config: job.config, fetchImpl: job.fetchImpl })
+    if (result.sent && job.to) bumpWhatsAppOutbound(job.to)
+    return result
+  },
+  onResult: async (result, job) => {
+    if (!result || result.queued) return
+    const context = job.context || {}
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result: { ...result, recipient: job.to, eventType: context.eventType || '' },
+      order: context.order || { id: '', reference: job.to, client: context.eventType || '' },
+      message: job.message,
+      source: context.source || 'whatsapp_queue',
+      senderPhone: '',
+    }))
+    if (result.sent) console.log(`[whatsapp] envoyé à ${job.to} (${context.source || 'file'})`)
+    else console.warn(`[whatsapp] échec ${job.to}: ${result.reason || 'raison inconnue'}`)
+  },
+})
+WHATSAPP_CONFIG.queue = WHATSAPP_CONFIG.queueEnabled ? whatsappSendQueue : null
+WHATSAPP_CONFIG.windowCheck = isWhatsAppWindowOpen
+
 async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   const results = await sendDeliveryOrderWhatsAppNotifications({
     previousOrder,
@@ -636,6 +668,10 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
     templates: readWhatsAppTemplates(),
   })
   for (const result of results) {
+    if (result.queued) {
+      console.log(`[whatsapp] BL ${order?.reference || order?.id || '-'} ${result.eventType} mis en file pour ${result.recipient}`)
+      continue
+    }
     await appendWhatsAppHistory(createWhatsAppHistoryEntry({
       result,
       order,
@@ -660,6 +696,10 @@ async function notifyFleetAlertWhatsApp(event) {
     baileysClient: baileysWhatsAppClient,
   })
   for (const result of results) {
+    if (result.queued) {
+      console.log(`[whatsapp] Alerte flotte ${result.eventType} en file pour ${result.recipient}`)
+      continue
+    }
     await appendWhatsAppHistory(createWhatsAppHistoryEntry({
       result,
       order: {
@@ -682,7 +722,11 @@ async function notifyFleetAlertWhatsApp(event) {
   const extraPhones = getAlertRecipientPhones().filter((phone) => !alreadySent.has(phone))
   for (const recipient of extraPhones) {
     const message = buildFleetAlertWhatsAppMessage({ ...event, event: event?.event || event?.eventType })
-    const result = await sendWhatsAppTextMessage({ to: recipient, message, config: WHATSAPP_CONFIG, baileysClient: baileysWhatsAppClient })
+    const result = await sendWhatsAppTextMessage({ to: recipient, message, config: WHATSAPP_CONFIG, baileysClient: baileysWhatsAppClient, context: { source: 'fleet_alert', eventType: event?.event || '', order: event } })
+    if (result.queued) {
+      console.log(`[whatsapp] Alerte flotte ${event?.event} en file pour ${recipient} (liste d’alertes)`)
+      continue
+    }
     await appendWhatsAppHistory(createWhatsAppHistoryEntry({
       result: { ...result, recipient, eventType: event?.event || '' },
       order: {
@@ -2661,15 +2705,44 @@ app.get('/api/service-status', (_req, res) => {
 })
 
 app.get('/api/whatsapp/status', (_req, res) => {
-  if (!baileysWhatsAppClient) {
-    return res.json({
-      provider: WHATSAPP_CONFIG.provider,
-      enabled: WHATSAPP_CONFIG.enabled,
-      connected: false,
-      state: WHATSAPP_CONFIG.enabled ? 'not_configured' : 'disabled',
-    })
+  const queueStatus = whatsappSendQueue ? whatsappSendQueue.status() : { queued: 0, sentToday: 0, failedToday: 0 }
+  const sinceMidnight = new Date().toISOString().slice(0, 10)
+  const contactsToday = countWhatsAppContactsActiveSince(`${sinceMidnight}T00:00:00Z`)
+  res.json({
+    provider: WHATSAPP_CONFIG.provider,
+    enabled: WHATSAPP_CONFIG.enabled,
+    cloudApiConfigured: Boolean(WHATSAPP_CONFIG.accessToken && WHATSAPP_CONFIG.phoneNumberId),
+    defaultTemplateName: WHATSAPP_CONFIG.defaultTemplateName || '',
+    webhookConfigured: Boolean(WHATSAPP_CONFIG.webhookVerifyToken),
+    webhookPath: '/api/whatsapp/webhook',
+    queue: queueStatus,
+    contactsToday,
+    ...(baileysWhatsAppClient ? baileysWhatsAppClient.getStatus() : {}),
+  })
+})
+
+// ── Webhook WhatsApp Cloud API (Meta) : vérification + réception ──
+// Exempté d'authentification : Meta appelle cette route sans session.
+app.get('/api/whatsapp/webhook', (req, res) => {
+  if (!isWebhookChallengeValid(req.query, WHATSAPP_CONFIG.webhookVerifyToken)) {
+    return res.status(403).json({ ok: false, error: 'Vérification du webhook échouée.' })
   }
-  res.json({ enabled: WHATSAPP_CONFIG.enabled, ...baileysWhatsAppClient.getStatus() })
+  res.type('text/plain').send(String(req.query['hub.challenge'] || ''))
+})
+
+app.post('/api/whatsapp/webhook', (req, res) => {
+  const parsed = parseWhatsAppWebhook(req.body || {})
+  for (const message of parsed.messages) {
+    const phone = message.from || message.messageId
+    touchWhatsAppInbound(message.from)
+    console.log(`[whatsapp-webhook] message reçu de ${message.from || 'inconnu'} (${message.type || '?'}): ${String(message.text || '').slice(0, 80)}`)
+  }
+  for (const status of parsed.statuses) {
+    if (status.errorCode) {
+      console.warn(`[whatsapp-webhook] envoi ${status.status} échoué pour ${status.messageId}: ${status.errorTitle} (${status.errorCode})`)
+    }
+  }
+  res.json({ ok: true })
 })
 
 app.get('/api/whatsapp/qr', (_req, res) => {
@@ -2705,7 +2778,11 @@ app.post('/api/whatsapp/test-message', requirePermission('manage_whatsapp'), asy
     message: validated.message,
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
+    context: { source: 'manual_test', eventType: 'test' },
   })
+  if (result.queued) {
+    return res.json({ ok: true, queued: true, reason: result.reason, recipient: validated.to })
+  }
   await appendWhatsAppHistory(createWhatsAppHistoryEntry({
     result: { ...result, recipient: validated.to, eventType: 'test' },
     order: {},
