@@ -142,6 +142,42 @@ export function DashboardPage({
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [])
 
+  const mileageData = useMemo(
+    () => filteredTrackers.slice(0, 12).map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage })),
+    [filteredTrackers],
+  )
+  const filteredVehicles = useMemo(() => {
+    if (!searchQuery) return vehicles
+    const q = searchQuery.toLowerCase()
+    return vehicles.filter((v) =>
+      (v.label || v.name || '').toLowerCase().includes(q) ||
+      (v.garage || '').toLowerCase().includes(q)
+    )
+  }, [vehicles, searchQuery])
+  const filteredOdo = useMemo(() => {
+    if (!searchQuery) return liveOdo
+    const q = searchQuery.toLowerCase()
+    return liveOdo.filter((entry) =>
+      (entry.truckLabel || entry.label || '').toLowerCase().includes(q)
+    )
+  }, [liveOdo, searchQuery])
+  const visibleTrackerIds = useMemo(() => new Set(filteredTrackers.map((tracker) => String(tracker.id))), [filteredTrackers])
+  const dashboardPriorityTrackers = useMemo(() => priorityTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [priorityTrackers, visibleTrackerIds])
+  const dashboardOfflineTrackers = useMemo(() => offlineTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [offlineTrackers, visibleTrackerIds])
+  const dashboardAnomalyTrackers = useMemo(() => anomalyTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [anomalyTrackers, visibleTrackerIds])
+  const visibleLabels = useMemo(() => new Set(filteredTrackers.map((tracker) => tracker.label)), [filteredTrackers])
+  const dashboardTopDrivers = useMemo(() => topDrivers.filter((driver) => visibleLabels.has(driver.tracker)), [topDrivers, visibleLabels])
+  const dashboardStats = useMemo(() => ({
+    total: filteredTrackers.length,
+    active: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'active').length,
+    offline: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'offline').length,
+    moving: filteredTrackers.filter((tracker) => tracker.state?.movement_status === 'moving').length,
+    avgSpeed: filteredTrackers.length ? Math.round(filteredTrackers.reduce((sum, tracker) => sum + Number(tracker.state?.gps?.speed || 0), 0) / filteredTrackers.length) : 0,
+  }), [filteredTrackers])
+  const dashboardConnectionChart = useMemo(() => connectionChart.map((entry) => ({
+    ...entry,
+    value: entry.name === 'Actifs' ? dashboardStats.active : entry.name === 'Offline' ? dashboardStats.offline : Math.max(0, dashboardStats.total - dashboardStats.active - dashboardStats.offline),
+  })), [connectionChart, dashboardStats])
   const kpis = useMemo(() => {
     const withSpeedup = filteredTrackers.filter((t) => (t.eventCounts?.speedup || 0) > 0)
     const withParking = filteredTrackers.filter((t) => (t.eventCounts?.excessive_parking || 0) > 0)
@@ -182,43 +218,6 @@ export function DashboardPage({
     }
     setKpiFocus((prev) => (prev === kpi.id ? null : kpi.id))
   }
-
-  const mileageData = useMemo(
-    () => filteredTrackers.slice(0, 12).map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage })),
-    [filteredTrackers],
-  )
-  const filteredVehicles = useMemo(() => {
-    if (!searchQuery) return vehicles
-    const q = searchQuery.toLowerCase()
-    return vehicles.filter((v) =>
-      (v.label || v.name || '').toLowerCase().includes(q) ||
-      (v.garage || '').toLowerCase().includes(q)
-    )
-  }, [vehicles, searchQuery])
-  const filteredOdo = useMemo(() => {
-    if (!searchQuery) return liveOdo
-    const q = searchQuery.toLowerCase()
-    return liveOdo.filter((entry) =>
-      (entry.truckLabel || entry.label || '').toLowerCase().includes(q)
-    )
-  }, [liveOdo, searchQuery])
-  const visibleTrackerIds = useMemo(() => new Set(filteredTrackers.map((tracker) => String(tracker.id))), [filteredTrackers])
-  const dashboardPriorityTrackers = useMemo(() => priorityTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [priorityTrackers, visibleTrackerIds])
-  const dashboardOfflineTrackers = useMemo(() => offlineTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [offlineTrackers, visibleTrackerIds])
-  const dashboardAnomalyTrackers = useMemo(() => anomalyTrackers.filter((tracker) => visibleTrackerIds.has(String(tracker.id))), [anomalyTrackers, visibleTrackerIds])
-  const visibleLabels = useMemo(() => new Set(filteredTrackers.map((tracker) => tracker.label)), [filteredTrackers])
-  const dashboardTopDrivers = useMemo(() => topDrivers.filter((driver) => visibleLabels.has(driver.tracker)), [topDrivers, visibleLabels])
-  const dashboardStats = useMemo(() => ({
-    total: filteredTrackers.length,
-    active: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'active').length,
-    offline: filteredTrackers.filter((tracker) => tracker.state?.connection_status === 'offline').length,
-    moving: filteredTrackers.filter((tracker) => tracker.state?.movement_status === 'moving').length,
-    avgSpeed: filteredTrackers.length ? Math.round(filteredTrackers.reduce((sum, tracker) => sum + Number(tracker.state?.gps?.speed || 0), 0) / filteredTrackers.length) : 0,
-  }), [filteredTrackers])
-  const dashboardConnectionChart = useMemo(() => connectionChart.map((entry) => ({
-    ...entry,
-    value: entry.name === 'Actifs' ? dashboardStats.active : entry.name === 'Offline' ? dashboardStats.offline : Math.max(0, dashboardStats.total - dashboardStats.active - dashboardStats.offline),
-  })), [connectionChart, dashboardStats])
 
   return (
     <PageStack className="dashboard-page">
