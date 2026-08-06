@@ -30,3 +30,4 @@ dist-ssr
 .data/
 data/
 auth-users.json
+dist.backup.*
