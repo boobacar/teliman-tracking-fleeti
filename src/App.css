@@ -5922,10 +5922,10 @@ a.leaflet-control-zoom-out {
 /* ── Poste de contrôle (panneau latéral / bottom sheet) ── */
 .map-shell { position: relative; }
 .map-control-panel {
-  position: absolute;
+  position: fixed;
   bottom: 12px; right: 10px;
   z-index: 600;
-  width: 320px; max-height: calc(100% - 140px);
+  width: 320px; max-height: calc(100vh - 140px);
   display: flex; flex-direction: column;
   background: rgba(12, 15, 20, 0.94);
   border: 1px solid #23511f;

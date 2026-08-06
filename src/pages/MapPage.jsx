@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Circle, CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
@@ -707,8 +708,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           })}
         </MapContainer>
 
-        {/* ── Poste de contrôle : panneau latéral (desktop) / bottom sheet (mobile) ── */}
-        {focusedTracker && (
+        {/* ── Poste de contrôle : panneau (bas à droite, portail → body pour un fixed fiable) ── */}
+        {focusedTracker && createPortal(
           <aside className="map-control-panel" role="complementary" aria-label="Poste de contrôle">
             <div className="map-control-head">
               <div><strong>{focusedTracker.label}</strong><span>{focusedTracker.employeeName || 'Chauffeur non assigné'}</span></div>
@@ -778,7 +779,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
                 {focusedOrder && <button type="button" className="ghost-btn" onClick={() => { window.location.hash = `#/delivery-order/${focusedOrder.id}` }}><ExternalLink size={16} />Fiche mission</button>}
               </div>
             </div>
-          </aside>
+          </aside>, document.body
         )}
       </div>
       <details className="panel map-accessible-list" aria-label="Liste accessible des véhicules affichés">
