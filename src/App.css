@@ -5923,9 +5923,9 @@ a.leaflet-control-zoom-out {
 .map-shell { position: relative; }
 .map-control-panel {
   position: absolute;
-  top: 46px; right: 10px;
+  bottom: 12px; right: 10px;
   z-index: 600;
-  width: 320px; max-height: calc(100% - 60px);
+  width: 320px; max-height: calc(100% - 140px);
   display: flex; flex-direction: column;
   background: rgba(12, 15, 20, 0.94);
   border: 1px solid #23511f;
