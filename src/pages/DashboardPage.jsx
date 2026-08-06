@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Car, CheckCircle, Clock, Gauge, Radio, ShieldAlert, Signal, Wifi, WifiOff } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Activity, AlertTriangle, Car, CheckCircle, ClipboardList, Clock, Fuel, Gauge, Radio, Route, ShieldAlert, Signal, Wifi, WifiOff, X } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -18,16 +18,19 @@ import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { useAutoRefresh } from '../hooks'
 import { loadLiveOdometer, loadVehicles } from '../lib/fleeti'
 
-function StatCard({ icon, label, value, helper }) {
+// Indicateur cliquable du tableau de bord journalier.
+function KpiCard({ icon, label, value, helper, tone, selected, onClick }) {
   return (
-    <article className="stat-card stat-card--dashboard">
-      <div className="stat-icon">{icon}</div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{helper}</small>
-      </div>
-    </article>
+    <button
+      type="button"
+      className={`kpi-card kpi-card--${tone || 'neutral'} ${selected ? 'selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onClick}
+      title={`${label} — cliquer pour filtrer`}
+    >
+      <span className="kpi-card__icon">{icon}</span>
+      <span className="kpi-card__body"><strong>{value}</strong><span>{label}</span><small>{helper}</small></span>
+    </button>
   )
 }
 
@@ -76,7 +79,12 @@ export function DashboardPage({
   loading: _loading,
   onRefresh: _onRefresh,
   lastRefreshAt,
+  deliveryOrders = [],
+  importantEvents = [],
 }) {
+  const navigate = useNavigate()
+  const [kpiFocus, setKpiFocus] = useState(null)
+  const [unresolvedAlerts, setUnresolvedAlerts] = useState(null)
   const [vehicles, setVehicles] = useState([])
   const [liveOdo, setLiveOdo] = useState([])
   const [liveDataLoading, setLiveDataLoading] = useState(true)
@@ -116,6 +124,64 @@ export function DashboardPage({
 
   useEffect(() => { void loadDashboardLiveData() }, [loadDashboardLiveData, lastRefreshAt])
   useAutoRefresh(loadDashboardLiveData, 60000)
+
+  // Alertes non traitées (cycle de vie) pour le KPI dédié
+  useEffect(() => {
+    let cancelled = false
+    async function loadAlertsCount() {
+      try {
+        const { loadAlerts } = await import('../lib/fleeti')
+        const data = await loadAlerts()
+        if (!cancelled) setUnresolvedAlerts(data?.statusCounts?.new ?? data?.unreadCount ?? null)
+      } catch {
+        // silencieux : le KPI affiche les événements importants en secours
+      }
+    }
+    void loadAlertsCount()
+    const timer = window.setInterval(loadAlertsCount, 60000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
+
+  const kpis = useMemo(() => {
+    const withSpeedup = filteredTrackers.filter((t) => (t.eventCounts?.speedup || 0) > 0)
+    const withParking = filteredTrackers.filter((t) => (t.eventCounts?.excessive_parking || 0) > 0)
+    const withFuelLeap = filteredTrackers.filter((t) => (t.eventCounts?.fuel_level_leap || 0) > 0)
+    const totalKm = filteredTrackers.reduce((sum, t) => sum + (Number(t.latestDayMileage) || 0), 0)
+    const activeOrders = (deliveryOrders || []).filter((order) => order.active)
+    const deliveredToday = (deliveryOrders || []).filter((order) => {
+      const status = String(order.status || '').toLowerCase()
+      const referenceDate = order.completedAt || order.date
+      if (!referenceDate) return false
+      const day = new Date(referenceDate)
+      const today = new Date()
+      return status.includes('livr') && day.toDateString() === today.toDateString()
+    })
+    const alertsCount = unresolvedAlerts ?? importantEvents.length
+    return [
+      { id: 'flotte', icon: <Car size={18} />, label: 'Flotte totale', value: filteredTrackers.length, helper: 'unités géolocalisées', tone: 'neutral', trackers: filteredTrackers },
+      { id: 'actifs', icon: <Wifi size={18} />, label: 'Connectés', value: dashboardStats.active, helper: 'liaison live active', tone: 'good', trackers: filteredTrackers.filter((t) => t.state?.connection_status === 'active') },
+      { id: 'mouvement', icon: <Activity size={18} />, label: 'En mouvement', value: dashboardStats.moving, helper: 'terrain roulant', tone: 'good', trackers: filteredTrackers.filter((t) => t.state?.movement_status === 'moving') },
+      { id: 'offline', icon: <WifiOff size={18} />, label: 'Offline', value: dashboardStats.offline, helper: 'unités à vérifier', tone: 'bad', trackers: filteredTrackers.filter((t) => t.state?.connection_status === 'offline') },
+      { id: 'surveillance', icon: <ShieldAlert size={18} />, label: 'À surveiller', value: dashboardPriorityTrackers.length, helper: 'classés par alertes', tone: 'warn', trackers: dashboardPriorityTrackers },
+      { id: 'speedup', icon: <Gauge size={18} />, label: 'Excès de vitesse', value: withSpeedup.length, helper: 'camions concernés', tone: 'bad', trackers: withSpeedup },
+      { id: 'parking', icon: <Clock size={18} />, label: 'Stationnements', value: withParking.length, helper: 'arrêts prolongés', tone: 'warn', trackers: withParking },
+      { id: 'carburant', icon: <Fuel size={18} />, label: 'Variations carburant', value: withFuelLeap.length, helper: 'sauts de niveau détectés', tone: 'warn', trackers: withFuelLeap },
+      { id: 'km', icon: <Route size={18} />, label: 'Km du jour', value: `${Math.round(totalKm)} km`, helper: 'activité consolidée', tone: 'neutral', trackers: topDrivers.map((d) => ({ id: d.tracker, label: d.name || d.tracker, employeeName: d.tracker, meta: `${d.mileage} km` })) },
+      { id: 'missions', icon: <ClipboardList size={18} />, label: 'Missions actives', value: activeOrders.length, helper: 'BL en cours', tone: 'neutral', navigate: '/delivery-orders', meta: `${activeOrders.length} BL actifs` },
+      { id: 'livraisons', icon: <CheckCircle size={18} />, label: 'Livraisons du jour', value: deliveredToday.length, helper: 'BL livrés', tone: 'good', navigate: '/delivery-orders', meta: `${deliveredToday.length} livrés` },
+      { id: 'alertes', icon: <AlertTriangle size={18} />, label: 'Alertes non traitées', value: alertsCount, helper: 'cycle de vie ouvert', tone: 'bad', navigate: '/alerts', meta: `${alertsCount} nouvelles` },
+    ]
+  }, [filteredTrackers, dashboardStats, dashboardPriorityTrackers, topDrivers, deliveryOrders, unresolvedAlerts, importantEvents])
+
+  const focusedKpi = kpis.find((kpi) => kpi.id === kpiFocus)
+
+  function openKpi(kpi) {
+    if (kpi.navigate) {
+      navigate(kpi.navigate)
+      return
+    }
+    setKpiFocus((prev) => (prev === kpi.id ? null : kpi.id))
+  }
 
   const mileageData = useMemo(
     () => filteredTrackers.slice(0, 12).map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage })),
@@ -185,12 +251,47 @@ export function DashboardPage({
       {liveDataError.odometer && <div className="error-banner" role="alert">Odomètres : {liveDataError.odometer}</div>}
       {!liveDataLoading && !liveDataError.vehicles && !liveDataError.odometer && vehicles.length === 0 && liveOdo.length === 0 && <EmptyBanner message="Aucune donnée véhicule ou odomètre disponible." />}
 
-      <section className="stats-grid dashboard-stats-grid">
-        <StatCard icon={<Car size={18} />} label="Trackers" value={dashboardStats.total} helper="base flotte" />
-        <StatCard icon={<Wifi size={18} />} label="Actifs" value={dashboardStats.active} helper="connectés live" />
-        <StatCard icon={<Activity size={18} />} label="En mouvement" value={dashboardStats.moving} helper="terrain roulant" />
-        <StatCard icon={<Gauge size={18} />} label="Vitesse moyenne" value={`${dashboardStats.avgSpeed} km/h`} helper="instantané" />
+      <section className="kpi-grid dashboard-kpi-grid" aria-label="Indicateurs journaliers cliquables">
+        {kpis.map((kpi) => (
+          <KpiCard
+            key={kpi.id}
+            icon={kpi.icon}
+            label={kpi.label}
+            value={kpi.value}
+            helper={kpi.helper}
+            tone={kpi.tone}
+            selected={kpiFocus === kpi.id}
+            onClick={() => openKpi(kpi)}
+          />
+        ))}
       </section>
+
+      {focusedKpi && (
+        <section className="panel kpi-focus-panel" aria-label={`Focus : ${focusedKpi.label}`}>
+          <div className="panel-header">
+            <div>
+              <h2>{focusedKpi.label} <span className="kpi-focus-count">({focusedKpi.trackers?.length ?? focusedKpi.value})</span></h2>
+              <p>{focusedKpi.helper}{focusedKpi.meta ? ` · ${focusedKpi.meta}` : ''}</p>
+            </div>
+            <button type="button" className="ghost-btn" onClick={() => setKpiFocus(null)} aria-label="Fermer le focus"><X size={18} />Fermer</button>
+          </div>
+          {focusedKpi.trackers?.length ? (
+            <div className="kpi-focus-list">
+              {focusedKpi.trackers.slice(0, 12).map((tracker) => (
+                <article key={`${focusedKpi.id}-${tracker.id}`} className="kpi-focus-row">
+                  <strong>{tracker.label}</strong>
+                  <span>{tracker.employeeName || 'Non assigné'}</span>
+                  {tracker.meta ? <small>{tracker.meta}</small> : <small>{tracker.state?.connection_status === 'offline' ? 'Offline' : `${tracker.state?.gps?.speed ?? 0} km/h`}</small>}
+                </article>
+              ))}
+              {focusedKpi.trackers.length > 12 && <p className="kpi-focus-more">+ {focusedKpi.trackers.length - 12} autres…</p>}
+            </div>
+          ) : <div className="empty-banner">Aucun élément pour cet indicateur.</div>}
+          {focusedKpi.id !== 'km' && (
+            <p className="kpi-focus-actions"><Link className="ghost-btn" to="/map">Ouvrir sur la carte</Link></p>
+          )}
+        </section>
+      )}
 
       <section className="dashboard-grid dashboard-grid--primary">
         <div className="panel panel-large dashboard-chart-panel">

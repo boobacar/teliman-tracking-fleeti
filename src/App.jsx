@@ -454,7 +454,7 @@ function App() {
       <Suspense fallback={<SkeletonPage cards={4} tableRows={5} />}>
       <ErrorBoundary resetKey={location.pathname}>
         <Routes>
-          <Route path="/" element={guard('page_dashboard', <DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} />)} />
+          <Route path="/" element={guard('page_dashboard', <DashboardPage filteredTrackers={filteredTrackers} stats={stats} connectionChart={connectionChart} priorityTrackers={priorityTrackers} topDrivers={topDrivers} executiveCards={executiveCards} offlineTrackers={offlineTrackers} anomalyTrackers={anomalyTrackers} filter={filter} setFilter={setFilter} searchQuery={searchQuery} setSearchQuery={setSearchQuery} loading={loading} onRefresh={refreshData} lastRefreshAt={lastRefreshAt} deliveryOrders={deliveryOrders} importantEvents={importantEvents} />)} />
           <Route path="/map" element={guard('page_map', <MapPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} deliveryOrders={deliveryOrders} />)} />
           <Route path="/fleet" element={guard('page_fleet', <FleetPage filteredTrackers={operationalTrackers} setSelectedTrackerId={setSelectedTrackerId} />)} />
           <Route path="/whatsapp" element={guard('page_whatsapp', <WhatsAppPage />)} />
