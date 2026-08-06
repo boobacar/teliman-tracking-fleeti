@@ -7,6 +7,7 @@ import {
   formatDurationMs,
   formatPositionAge,
   haversineDistanceMeters,
+  nearestZone,
   parsePointTime,
 } from '../src/lib/mapUtils.js'
 
@@ -143,4 +144,44 @@ test('formatDurationMs rend des durées lisibles', () => {
   assert.equal(formatDurationMs(45 * 60_000), '45 min')
   assert.equal(formatDurationMs(90 * 60_000), '1 h 30 min')
   assert.equal(formatDurationMs(120 * 60_000), '2 h')
+})
+
+// Zones géofence — la distance prime sur le type 'client' (régression : camion près
+// de Bouaké ne doit PAS afficher « Korhogo, client » qui est pourtant la seule zone
+// de type client du jeu de données).
+const DOCX_ZONES = [
+  { id: 1, name: 'Fadyadougou, mine', type: 'carriere', lat: 8.694837, lng: -6.62101, active: true },
+  { id: 2, name: 'Korhogo, client', type: 'client', lat: 9.411007, lng: -5.626558, active: true },
+  { id: 3, name: 'Bouaké, Carrière', type: 'carriere', lat: 7.691854, lng: -5.181342, active: true },
+  { id: 4, name: 'Bouaké, ville', type: 'depot', lat: 7.686495, lng: -5.03208, active: true },
+  { id: 5, name: 'Abidjan, carrière', type: 'carriere', lat: 5.514565, lng: -4.285578, active: true },
+]
+
+test('camion près de Bouaké : la zone la plus proche est Bouaké, pas Korhogo (client)', () => {
+  const nearBouake = { lat: 7.70, lng: -5.15 }
+  const zone = nearestZone(nearBouake, DOCX_ZONES)
+  assert.equal(zone.name, 'Bouaké, Carrière')
+  assert.ok(zone.distanceMeters < 20_000, `distance=${zone.distanceMeters}m`)
+})
+
+test('camion à Korhogo : Korhogo, client gagne (la plus proche ET client)', () => {
+  const zone = nearestZone({ lat: 9.40, lng: -5.62 }, DOCX_ZONES)
+  assert.equal(zone.name, 'Korhogo, client')
+})
+
+test('zone inactive exclue ; position invalide → null', () => {
+  const zones = [...DOCX_ZONES, { id: 9, name: 'Zone off', type: 'client', lat: 7.7, lng: -5.15, active: false }]
+  const zone = nearestZone({ lat: 7.7, lng: -5.15 }, zones)
+  assert.equal(zone.name, 'Bouaké, Carrière')
+  assert.equal(nearestZone(null, DOCX_ZONES), null)
+  assert.equal(nearestZone({ lat: 7.7, lng: -5.15 }, []), null)
+})
+
+test('à distance égale, une zone client départage', () => {
+  const zones = [
+    { id: 1, name: 'Carrière X', type: 'carriere', lat: 7.7, lng: -5.15, active: true },
+    { id: 2, name: 'Client X', type: 'client', lat: 7.7, lng: -5.15, active: true },
+  ]
+  const zone = nearestZone({ lat: 7.7, lng: -5.15 }, zones)
+  assert.equal(zone.name, 'Client X')
 })

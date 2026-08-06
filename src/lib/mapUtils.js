@@ -157,3 +157,21 @@ export function formatDurationMs(durationMs) {
   const rest = minutes % 60
   return rest ? `${hours} h ${rest} min` : `${hours} h`
 }
+
+// Zone géofence active la plus proche d'une position.
+// La distance est le critère PRINCIPAL ; le type 'client' ne départage que les égalités.
+export function nearestZone(position, zones) {
+  if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return null
+  const active = (zones || []).filter((zone) => zone.active && Number.isFinite(Number(zone.lat)) && Number.isFinite(Number(zone.lng)))
+  if (active.length === 0) return null
+  const withDistance = active.map((zone) => ({
+    ...zone,
+    distanceMeters: haversineDistanceMeters(position.lat, position.lng, Number(zone.lat), Number(zone.lng)),
+  }))
+  withDistance.sort((a, b) => {
+    if (a.distanceMeters !== b.distanceMeters) return a.distanceMeters - b.distanceMeters
+    // égalité : une zone client passe devant
+    return (b.type === 'client') - (a.type === 'client')
+  })
+  return withDistance[0]
+}

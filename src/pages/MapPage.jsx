@@ -11,6 +11,7 @@ import {
   formatDurationMs,
   formatPositionAge,
   haversineDistanceMeters,
+  nearestZone,
   parsePointTime,
 } from '../lib/mapUtils'
 
@@ -505,18 +506,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
 
   const nearestClientZone = useMemo(() => {
     if (!focusedTracker?.state?.gps?.location) return null
-    const position = focusedTracker.state.gps.location
-    const zones = geofences.filter((zone) => zone.active)
-    if (zones.length === 0) return null
-    const withDistance = zones.map((zone) => ({
-      ...zone,
-      distanceMeters: haversineDistanceMeters(position.lat, position.lng, zone.lat, zone.lng),
-    }))
-    withDistance.sort((a, b) => {
-      if ((a.type === 'client') !== (b.type === 'client')) return a.type === 'client' ? -1 : 1
-      return a.distanceMeters - b.distanceMeters
-    })
-    return withDistance[0]
+    return nearestZone(focusedTracker.state.gps.location, geofences)
   }, [focusedTracker, geofences])
 
   const focusedEta = useMemo(() => {
