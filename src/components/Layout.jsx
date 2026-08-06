@@ -102,6 +102,12 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
           <LogOut size={16} />
           Déconnexion
         </button>
+
+        <div className="sidebar-version" title={`Version ${__APP_VERSION__} — commit ${__APP_COMMIT__}`}>
+          <span>v{__APP_VERSION__}</span>
+          <span>·</span>
+          <code>{__APP_COMMIT__}</code>
+        </div>
       </aside>
 
       <main id="main-content" tabIndex={-1} className="main-content premium-main">

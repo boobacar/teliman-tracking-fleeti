@@ -6143,3 +6143,13 @@ a.leaflet-control-zoom-out {
   background: #0d1117; border: 1px solid #23511f; color: #f3f5f7;
   border-radius: 9px; padding: 9px 11px; font-size: 13px;
 }
+
+/* ── Version / commit affichés (P1 production) ── */
+.sidebar-version {
+  margin-top: auto;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 12px;
+  font-size: 11px; color: #64748b;
+  border-top: 1px solid #16261a;
+}
+.sidebar-version code { font-size: 10.5px; background: #0d1117; border: 1px solid #1b3a19; border-radius: 6px; padding: 1px 6px; color: #7dd3fc; }

@@ -272,12 +272,48 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     let cancelled = false
     let timerId = null
     let inFlight = false
+    const lastSseAt = { value: 0 }
+
+    // SSE temps réel (fallback polling automatique si le flux meurt)
+    let eventSource = null
+    try {
+      const sessionToken = window.localStorage.getItem('teliman_session_token') || ''
+      eventSource = new EventSource(`/api/positions-live/stream${sessionToken ? `?token=${encodeURIComponent(sessionToken)}` : ''}`)
+      eventSource.onmessage = (event) => {
+        if (cancelled) return
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type !== 'positions') return
+          lastSseAt.value = Date.now()
+          const map = {}
+          for (const pos of message.positions || []) {
+            map[String(pos.trackerId)] = pos
+          }
+          setLivePositions(map)
+          setLiveUpdatedAt(Date.now())
+          setLiveError('')
+        } catch {
+          /* message ignoré */
+        }
+      }
+      eventSource.onerror = () => {
+        // le polling prend le relais tant que le flux est muet
+        lastSseAt.value = 0
+      }
+    } catch {
+      /* pas de SSE (vieille origine) → polling seul */
+    }
 
     async function poll() {
       if (timerId) window.clearTimeout(timerId)
       timerId = null
       if (cancelled || inFlight) return
       if (document.hidden) {
+        timerId = window.setTimeout(poll, LIVE_POLL_DELAY_MS)
+        return
+      }
+      // Si le SSE est actif (< 9 s depuis le dernier message), on évite le double fetch
+      if (Date.now() - lastSseAt.value < 9000) {
         timerId = window.setTimeout(poll, LIVE_POLL_DELAY_MS)
         return
       }
@@ -307,6 +343,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     return () => {
       cancelled = true
       if (timerId) window.clearTimeout(timerId)
+      eventSource?.close()
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])

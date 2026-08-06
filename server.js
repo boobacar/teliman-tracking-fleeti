@@ -361,7 +361,10 @@ function findAuthUser(email) {
 function getSessionToken(req) {
   const authorization = String(req.get('authorization') || '')
   if (authorization.toLowerCase().startsWith('bearer ')) return authorization.slice(7).trim()
-  return String(req.get('x-session-token') || '').trim()
+  const header = String(req.get('x-session-token') || '').trim()
+  if (header) return header
+  // SSE/EventSource ne peut pas envoyer de header → token via query (même mécanisme)
+  return String(req.query?.token || '').trim()
 }
 
 function getSessionUser(req) {
@@ -2742,37 +2745,71 @@ const POSITIONS_LIVE_CACHE_TTL_MS = Number(process.env.POSITIONS_LIVE_CACHE_TTL_
 app.get('/api/positions-live', async (req, res) => {
   try {
     const forceRefresh = String(req.query.refresh || '').trim() === '1'
-    if (!forceRefresh && positionsLiveCache.data && Date.now() - positionsLiveCache.ts < POSITIONS_LIVE_CACHE_TTL_MS) {
-      return res.json({ ...positionsLiveCache.data, cached: true })
-    }
-    if (!PRIVATE_API_CONFIGURED) {
-      // Fallback: utiliser le cache dashboard existant
-      const dashboard = await getDashboardData()
-      const positions = (dashboard.trackers || []).map((tracker) => {
-        const state = dashboard.states?.[tracker.id] || {}
-        return {
-          trackerId: tracker.id,
-          label: tracker.label || `Tracker ${tracker.id}`,
-          lat: state?.gps?.location?.lat ?? null,
-          lng: state?.gps?.location?.lng ?? null,
-          speed: state?.gps?.speed ?? 0,
-          heading: state?.gps?.heading ?? 0,
-          connection_status: state?.connection_status || 'unknown',
-          movement_status: state?.movement_status || 'unknown',
-          last_update: state?.last_update || null,
-        }
-      }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-      evaluateGeofenceTransitions(positions)
-      positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
-      return res.json({ ...positionsLiveCache.data, cached: false })
-    }
+    const result = await refreshPositionsLive({ force: forceRefresh })
+    res.json({ ...result.data, cached: result.cached })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
 
+// SSE : diffusion temps réel des positions + évaluation géofence indépendante du trafic HTTP
+const ssePositionClients = new Set()
+
+function broadcastPositionsLive(payload) {
+  if (ssePositionClients.size === 0) return
+  const message = `data: ${JSON.stringify({ type: 'positions', ...payload })}\n\n`
+  for (const client of ssePositionClients) {
+    try {
+      client.write(message)
+    } catch {
+      ssePositionClients.delete(client)
+    }
+  }
+}
+
+app.get('/api/positions-live/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders?.()
+  ssePositionClients.add(res)
+  if (positionsLiveCache.data) {
+    res.write(`data: ${JSON.stringify({ type: 'positions', ...positionsLiveCache.data })}\n\n`)
+  }
+  req.on('close', () => ssePositionClients.delete(res))
+})
+
+async function refreshPositionsLive({ force = false } = {}) {
+  if (!force && positionsLiveCache.data && Date.now() - positionsLiveCache.ts < POSITIONS_LIVE_CACHE_TTL_MS) {
+    return { data: positionsLiveCache.data, cached: true }
+  }
+  let payload
+  if (!PRIVATE_API_CONFIGURED) {
+    // Fallback: utiliser le cache dashboard existant
+    const dashboard = await getDashboardData()
+    const positions = (dashboard.trackers || []).map((tracker) => {
+      const state = dashboard.states?.[tracker.id] || {}
+      return {
+        trackerId: tracker.id,
+        label: tracker.label || `Tracker ${tracker.id}`,
+        lat: state?.gps?.location?.lat ?? null,
+        lng: state?.gps?.location?.lng ?? null,
+        speed: state?.gps?.speed ?? 0,
+        heading: state?.gps?.heading ?? 0,
+        connection_status: state?.connection_status || 'unknown',
+        movement_status: state?.movement_status || 'unknown',
+        last_update: state?.last_update || null,
+      }
+    }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    payload = { positions, total: positions.length }
+  } else {
     const hash = await authenticate().catch((error) => {
       console.warn(`[positions-live] auth failed: ${error?.message || error}`)
       return null
     })
     if (!hash) {
-      return res.status(502).json({ ok: false, error: 'Authentification Fleeti indisponible' })
+      throw new Error('Authentification Fleeti indisponible')
     }
 
     // Récupérer les trackers disponibles
@@ -2783,44 +2820,52 @@ app.get('/api/positions-live', async (req, res) => {
     const scopedTrackerIds = resolveScopedTrackerIds(availableTrackerIds, TRACKER_IDS)
 
     if (!scopedTrackerIds.length) {
-      return res.json({ positions: [], total: 0, cached: false })
-    }
+      payload = { positions: [], total: 0 }
+    } else {
+      // Appel léger : seulement les states (positions GPS)
+      const statesResult = await fetchPrivateStates(hash, scopedTrackerIds)
+      const states = extractObjectPayload(statesResult, ['states', 'result', 'data'])
 
-    // Appel léger : seulement les states (positions GPS)
-    const statesResult = await fetchPrivateStates(hash, scopedTrackerIds)
-    const states = extractObjectPayload(statesResult, ['states', 'result', 'data'])
-
-    // Construire le label map à partir des trackers
-    const labelById = {}
-    for (const tracker of sanitizedTrackers) {
-      const id = Number(tracker.trackerId ?? tracker.id)
-      if (Number.isFinite(id)) {
-        labelById[id] = tracker.label || tracker.name || `Tracker ${id}`
+      // Construire le label map à partir des trackers
+      const labelById = {}
+      for (const tracker of sanitizedTrackers) {
+        const id = Number(tracker.trackerId ?? tracker.id)
+        if (Number.isFinite(id)) {
+          labelById[id] = tracker.label || tracker.name || `Tracker ${id}`
+        }
       }
+
+      const positions = scopedTrackerIds.map((trackerId) => {
+        const state = states?.[trackerId] ?? states?.[String(trackerId)] ?? {}
+        return {
+          trackerId,
+          label: labelById[trackerId] || state?.label || `Tracker ${trackerId}`,
+          lat: state?.gps?.location?.lat ?? null,
+          lng: state?.gps?.location?.lng ?? null,
+          speed: state?.gps?.speed ?? 0,
+          heading: state?.gps?.heading ?? 0,
+          connection_status: state?.connection_status || 'unknown',
+          movement_status: state?.movement_status || 'unknown',
+          last_update: state?.last_update || null,
+        }
+      }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      payload = { positions, total: positions.length }
     }
-
-    const positions = scopedTrackerIds.map((trackerId) => {
-      const state = states?.[trackerId] ?? states?.[String(trackerId)] ?? {}
-      return {
-        trackerId,
-        label: labelById[trackerId] || state?.label || `Tracker ${trackerId}`,
-        lat: state?.gps?.location?.lat ?? null,
-        lng: state?.gps?.location?.lng ?? null,
-        speed: state?.gps?.speed ?? 0,
-        heading: state?.gps?.heading ?? 0,
-        connection_status: state?.connection_status || 'unknown',
-        movement_status: state?.movement_status || 'unknown',
-        last_update: state?.last_update || null,
-      }
-    }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-
-    evaluateGeofenceTransitions(positions)
-    positionsLiveCache = { data: { positions, total: positions.length }, ts: Date.now() }
-    res.json({ positions, total: positions.length, cached: false })
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message })
   }
-})
+  evaluateGeofenceTransitions(payload.positions)
+  positionsLiveCache = { data: payload, ts: Date.now() }
+  broadcastPositionsLive(payload)
+  return { data: payload, cached: false }
+}
+
+// Ticker serveur : positions + évaluation géofence + diffusion SSE toutes les 3 s,
+// même sans navigateur ouvert (temps réel et workflow mission autonomes).
+setInterval(() => {
+  void refreshPositionsLive().catch((error) => {
+    console.warn('[positions-live] ticker:', error?.message || error)
+  })
+}, 3000)
+
 
 app.get('/api/trackers', async (_req, res) => {
   try {

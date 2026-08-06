@@ -1,12 +1,12 @@
 {
   "name": "teliman-tracking-fleeti",
   "private": true,
-  "version": "0.0.0",
+  "version": "3.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:server": "node server.js",
-    "build": "vite build",
+    "build": "VITE_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo dev) vite build",
     "lint": "eslint .",
     "test": "node --test tests/*.test.js",
     "preview": "vite preview"

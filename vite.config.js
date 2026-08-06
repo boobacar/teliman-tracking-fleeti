@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || 'dev'),
+    __APP_COMMIT__: JSON.stringify(process.env.VITE_COMMIT || 'dev'),
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
