@@ -8,9 +8,28 @@ import {
   isCameraLike,
   normalizeTrackEvent,
   normalizeTrackPoint,
+  parseIsoDuration,
   resolveScopedTrackerIds,
   resolveTracksSource,
 } from '../src/backend/fleetiBackend.js'
+
+test('parseIsoDuration convertit les durées ISO-8601 en secondes', () => {
+  assert.equal(parseIsoDuration('PT4H6M46S'), 4 * 3600 + 6 * 60 + 46)
+  assert.equal(parseIsoDuration('PT19H53M14S'), 19 * 3600 + 53 * 60 + 14)
+  assert.equal(parseIsoDuration('PT0S'), 0)
+  assert.equal(parseIsoDuration('PT45M'), 45 * 60)
+  assert.equal(parseIsoDuration('PT1H'), 3600)
+  assert.equal(parseIsoDuration('PT30S'), 30)
+  assert.equal(parseIsoDuration('PT1.5H'), 5400)
+})
+
+test('parseIsoDuration renvoie null sur les valeurs inexploitables', () => {
+  assert.equal(parseIsoDuration(null), null)
+  assert.equal(parseIsoDuration(''), null)
+  assert.equal(parseIsoDuration(undefined), null)
+  assert.equal(parseIsoDuration('P1D'), null)
+  assert.equal(parseIsoDuration('4h'), null)
+})
 
 test('resolveTracksSource utilise l’API publique pour les trajets par défaut', () => {
   assert.equal(resolveTracksSource(), 'public')

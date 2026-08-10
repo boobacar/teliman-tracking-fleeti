@@ -5817,6 +5817,90 @@ a.leaflet-control-zoom-out {
   vertical-align: middle;
 }
 
+/* ── Situation flotte (dashboard) ── */
+.fleet-situation-panel {
+  width: 100%;
+}
+
+.fleet-situation-table-wrap {
+  overflow-x: auto;
+}
+
+.fleet-situation-table td:first-child,
+.fleet-situation-table th:first-child {
+  padding-left: 16px;
+}
+
+.fleet-situation-table td:last-child,
+.fleet-situation-table th:last-child {
+  padding-right: 16px;
+}
+
+.fleet-situation-driver {
+  display: block;
+  color: var(--ops-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.fleet-situation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fleet-situation-status--moving {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+}
+
+.fleet-situation-status--parked {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+.fleet-situation-status--idle {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.fleet-situation-status--unknown {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.fleet-situation-offline {
+  color: var(--ops-danger);
+  font-size: 12px;
+}
+
+.fleet-situation-stop {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--ops-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.fleet-situation-stop svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--ops-accent);
+}
+
+@media (max-width: 720px) {
+  .fleet-situation-panel .dashboard-toolbar__filters {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 .recipient-phone {
   display: inline-flex;
   align-items: center;

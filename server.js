@@ -8,7 +8,7 @@ import dotenv from 'dotenv'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
+import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, parseIsoDuration, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
 import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
@@ -134,6 +134,7 @@ validateRequiredEnv()
 
 const app = express()
 let dashboardCache = { data: null, ts: 0 }
+let fleetSituationCache = { data: null, ts: 0, period: '' }
 let authCache = { hash: '', ts: 0 }
 let fuelLiveCache = { data: null, ts: 0 }
 let tracksBatchCache = new Map()
@@ -148,6 +149,7 @@ const VEHICLES_CACHE_TTL_MS = Number(process.env.VEHICLES_CACHE_TTL_MS || 120 * 
 const EMPLOYEES_DETAIL_CACHE_TTL_MS = Number(process.env.EMPLOYEES_DETAIL_CACHE_TTL_MS || 300 * 1000)
 const SENSORS_LIVE_CACHE_TTL_MS = Number(process.env.SENSORS_LIVE_CACHE_TTL_MS || 60 * 1000)
 const RULES_DETAIL_CACHE_TTL_MS = Number(process.env.RULES_DETAIL_CACHE_TTL_MS || 300 * 1000)
+const FLEET_SITUATION_CACHE_TTL_MS = Number(process.env.FLEET_SITUATION_CACHE_TTL_MS || 60 * 1000)
 
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
@@ -444,7 +446,7 @@ function requiredRoutePermissions(req) {
   if (pathName.startsWith('/api/live-odometer')) return ['manage_delivery_orders', 'page_fleet']
   if (pathName.startsWith('/api/sensors-live')) return ['page_fleet', 'page_analytics']
   if (pathName.startsWith('/api/trackers') || pathName.startsWith('/api/drivers') || pathName.startsWith('/api/employees-detail') || pathName.startsWith('/api/vehicles') || pathName.startsWith('/api/vehicle') || pathName.startsWith('/api/cameras')) return ['page_fleet', 'manage_delivery_orders']
-  if (pathName.startsWith('/api/dashboard') || pathName.startsWith('/api/fleeti/')) return ['page_dashboard', 'page_fleet', 'page_map', 'page_analytics', 'manage_delivery_orders', 'manage_fuel_vouchers']
+  if (pathName.startsWith('/api/dashboard') || pathName.startsWith('/api/fleet-situation') || pathName.startsWith('/api/fleeti/')) return ['page_dashboard', 'page_fleet', 'page_map', 'page_analytics', 'manage_delivery_orders', 'manage_fuel_vouchers']
   return []
 }
 
@@ -3268,6 +3270,143 @@ app.get('/api/fleeti/live', async (_req, res) => {
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// ── Situation flotte : heures de route, temps de repos et lieu du repos par camion ──
+const FLEET_SITUATION_PERIODS = new Set(['today', '24h', '48h', '7d'])
+
+function formatFleetSituationDuration(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return null
+  const rounded = Math.round(seconds)
+  const hours = Math.floor(rounded / 3600)
+  const minutes = Math.floor((rounded % 3600) / 60)
+  return { hours, minutes, seconds: rounded % 60 }
+}
+
+async function buildFleetSituation(period = 'today') {
+  const range = getDateRange(period)
+  const { from, to } = range
+
+  if (!PRIVATE_API_CONFIGURED) {
+    throw new Error('API privée Fleeti non configurée')
+  }
+
+  const hash = await authenticate()
+  const sanitizedTrackers = await fetchTrackersPrivate(hash).catch((error) => {
+    console.warn(`[fleet-situation] tracker/list indisponible: ${error?.message || error}`)
+    return []
+  })
+  const availableTrackerIds = sanitizedTrackers
+    .map((tracker) => Number(tracker.trackerId ?? tracker.id))
+    .filter((value) => Number.isFinite(value) && value > 0)
+  const scopedTrackerIds = resolveScopedTrackerIds(availableTrackerIds, TRACKER_IDS)
+
+  const [statesResult, employeesResult] = await Promise.all([
+    scopedTrackerIds.length
+      ? fetchPrivateStates(hash, scopedTrackerIds)
+      : Promise.resolve({ states: {} }),
+    apiCall('employee/list', { hash }).catch(() => ({ list: [] })),
+  ])
+  const states = extractObjectPayload(statesResult, ['states', 'result', 'data'])
+  const employees = sanitizeEmployees(extractArrayPayload(employeesResult))
+  const employeesByTracker = new Map()
+  for (const employee of employees) {
+    for (const trackerId of extractEmployeeTrackerIds(employee)) {
+      if (!employeesByTracker.has(trackerId)) employeesByTracker.set(trackerId, employee)
+    }
+  }
+
+  const labelById = new Map()
+  for (const tracker of sanitizedTrackers) {
+    const id = Number(tracker.trackerId ?? tracker.id)
+    if (Number.isFinite(id) && id > 0) labelById.set(id, tracker.label || tracker.name || `Tracker ${id}`)
+  }
+
+  const items = await mapWithConcurrency(scopedTrackerIds, 6, async (trackerId) => {
+    const state = states?.[trackerId] ?? states?.[String(trackerId)] ?? {}
+    const [trackListPayload, trackReadPayload] = await Promise.all([
+      apiCall('track/list', { hash, tracker_id: trackerId, from, to }).catch(() => ({ total: {} })),
+      apiCall('track/read', { hash, tracker_id: trackerId, from, to }).catch(() => ({ list: [] })),
+    ])
+
+    const total = trackListPayload?.total || {}
+    const tripDurationSec = parseIsoDuration(total.trip_duration)
+    const parkingDurationSec = parseIsoDuration(total.parking_duration)
+    const tripsCount = Number(total.count ?? 0)
+    const distanceKm = Number(total.length ?? 0)
+
+    const trackPoints = extractArrayPayload(trackReadPayload, ['list', 'points', 'tracks', 'items', 'results', 'data', 'result'])
+      .map(normalizeTrackPoint)
+      .filter(Boolean)
+    const lastPoint = trackPoints.length ? trackPoints[trackPoints.length - 1] : null
+
+    // Lieu du repos : dernier point de trace, sinon position GPS de l'état, sinon coordonnées connues
+    const rawLast = trackReadPayload?.list?.[trackReadPayload.list.length - 1]
+      || (Array.isArray(trackReadPayload?.points) ? trackReadPayload.points[trackReadPayload.points.length - 1] : null)
+    const address = String(rawLast?.address || '').trim() || ''
+    const restLocation = lastPoint
+      ? {
+          lat: lastPoint.lat,
+          lng: lastPoint.lng,
+          address,
+          time: lastPoint.time || null,
+        }
+      : state?.gps?.location
+        ? {
+            lat: state.gps.location.lat,
+            lng: state.gps.location.lng,
+            address,
+            time: state?.last_update || null,
+          }
+        : null
+
+    const employee = employeesByTracker.get(trackerId)
+    const employeeName = employee
+      ? [employee.first_name, employee.last_name].filter(Boolean).join(' ').trim() || 'Non assigné'
+      : 'Non assigné'
+
+    return {
+      trackerId,
+      label: labelById.get(trackerId) || state?.label || state?.name || `Tracker ${trackerId}`,
+      employeeName,
+      movementStatus: state?.movement_status || 'unknown',
+      connectionStatus: state?.connection_status || 'unknown',
+      speed: state?.gps?.speed ?? 0,
+      lastUpdate: state?.last_update || null,
+      tripDurationSec,
+      parkingDurationSec,
+      tripDuration: formatFleetSituationDuration(tripDurationSec),
+      parkingDuration: formatFleetSituationDuration(parkingDurationSec),
+      tripsCount,
+      distanceKm,
+      restLocation,
+    }
+  })
+
+  return {
+    period,
+    from,
+    to,
+    generatedAt: new Date().toISOString(),
+    source: 'private',
+    items,
+  }
+}
+
+app.get('/api/fleet-situation', async (req, res) => {
+  try {
+    const period = FLEET_SITUATION_PERIODS.has(String(req.query.period || '').trim())
+      ? String(req.query.period).trim()
+      : 'today'
+    if (fleetSituationCache.data && fleetSituationCache.period === period && (Date.now() - fleetSituationCache.ts) < FLEET_SITUATION_CACHE_TTL_MS) {
+      return res.json({ ...fleetSituationCache.data, cached: true })
+    }
+    const data = await buildFleetSituation(period)
+    fleetSituationCache = { data, ts: Date.now(), period }
+    res.json({ ...data, cached: false })
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error.message || 'Impossible de charger la situation de la flotte.' })
   }
 })
 

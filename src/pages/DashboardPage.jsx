@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Car, CheckCircle, ClipboardList, Clock, Fuel, Gauge, Radio, Route, ShieldAlert, Signal, Wifi, WifiOff, X } from 'lucide-react'
+import { Activity, AlertTriangle, Car, CheckCircle, ClipboardList, Clock, Fuel, Gauge, MapPin, Radio, Route, ShieldAlert, Signal, Wifi, WifiOff, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Bar,
@@ -16,7 +16,7 @@ import {
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { useAutoRefresh } from '../hooks'
-import { loadLiveOdometer, loadVehicles } from '../lib/fleeti'
+import { loadFleetSituation, loadLiveOdometer, loadVehicles } from '../lib/fleeti'
 
 // Indicateur cliquable du tableau de bord journalier.
 function KpiCard({ icon, label, value, helper, tone, selected, onClick }) {
@@ -63,6 +63,35 @@ function formatLastRefresh(date) {
   }).format(new Date(date))
 }
 
+// Formate des secondes en « 4h 06m » (ou « 45m » / « 12s »), retourne '—' si nul.
+function formatDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return '—'
+  const total = Math.round(Number(seconds))
+  if (total <= 0) return '0m'
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`
+  if (minutes > 0) return `${minutes}m`
+  return `${secs}s`
+}
+
+function formatStopAddress(location) {
+  if (!location) return 'Position inconnue'
+  if (location.address) return location.address
+  if (Number.isFinite(Number(location.lat)) && Number.isFinite(Number(location.lng))) {
+    return `${Number(location.lat).toFixed(5)}, ${Number(location.lng).toFixed(5)}`
+  }
+  return 'Position inconnue'
+}
+
+const FLEET_SITUATION_STATUS_LABELS = {
+  moving: 'En route',
+  parked: 'À l’arrêt',
+  idle: 'Au repos',
+  unknown: 'Inconnu',
+}
+
 export function DashboardPage({
   filteredTrackers,
   stats: _stats,
@@ -91,6 +120,33 @@ export function DashboardPage({
   const [liveDataError, setLiveDataError] = useState({ vehicles: '', odometer: '' })
   const [liveDataUpdatedAt, setLiveDataUpdatedAt] = useState(null)
   const liveLoadInFlight = useRef(false)
+
+  // Situation flotte : heures de route, temps de repos et lieu du repos par camion
+  const [fleetSituation, setFleetSituation] = useState([])
+  const [fleetSituationPeriod, setFleetSituationPeriod] = useState('today')
+  const [fleetSituationLoading, setFleetSituationLoading] = useState(true)
+  const [fleetSituationError, setFleetSituationError] = useState('')
+  const fleetSituationInFlight = useRef(false)
+
+  const loadFleetSituationData = useCallback(async () => {
+    if (fleetSituationInFlight.current) return
+    fleetSituationInFlight.current = true
+    setFleetSituationLoading(true)
+    try {
+      const data = await loadFleetSituation(fleetSituationPeriod)
+      const raw = Array.isArray(data) ? data : data?.items || []
+      setFleetSituation(raw.filter((item) => item && item.trackerId != null))
+      setFleetSituationError('')
+    } catch (error) {
+      setFleetSituationError(error?.message || 'Impossible de charger la situation de la flotte.')
+    } finally {
+      setFleetSituationLoading(false)
+      fleetSituationInFlight.current = false
+    }
+  }, [fleetSituationPeriod])
+
+  useEffect(() => { void loadFleetSituationData() }, [loadFleetSituationData, lastRefreshAt])
+  useAutoRefresh(loadFleetSituationData, 60000)
 
   const loadDashboardLiveData = useCallback(async () => {
     if (liveLoadInFlight.current) return
@@ -378,6 +434,78 @@ export function DashboardPage({
             {!dashboardTopDrivers.length && <EmptyBanner message="Aucune donnée chauffeur disponible." />}
           </div>
         </div>
+      </section>
+
+      <section className="panel fleet-situation-panel" aria-label="Situation flotte">
+        <SectionHeader
+          title="Situation flotte"
+          description="Heures de route, temps de repos et lieu du repos par camion"
+          right={(
+            <div className="dashboard-toolbar__filters">
+              {[['today', 'Aujourd’hui'], ['24h', '24h'], ['7d', '7 jours']].map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  className={`chip ${fleetSituationPeriod === value ? 'selected' : ''}`}
+                  onClick={() => setFleetSituationPeriod(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        />
+
+        {fleetSituationLoading && fleetSituation.length === 0 && <div className="info-banner" role="status">Chargement de la situation flotte…</div>}
+        {fleetSituationError && <div className="error-banner" role="alert">Situation flotte : {fleetSituationError}</div>}
+
+        {!fleetSituationLoading && !fleetSituationError && fleetSituation.length === 0 && (
+          <EmptyBanner message="Aucune donnée de situation flotte disponible." />
+        )}
+
+        {fleetSituation.length > 0 && (
+          <div className="fleet-situation-table-wrap">
+            <table className="ops-table fleet-situation-table">
+              <thead>
+                <tr>
+                  <th>Camion</th>
+                  <th>Statut</th>
+                  <th>Heures de route</th>
+                  <th>Temps de repos</th>
+                  <th>Trajets</th>
+                  <th>Distance</th>
+                  <th>Lieu du repos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fleetSituation.map((item) => (
+                  <tr key={item.trackerId}>
+                    <td>
+                      <strong>{item.label}</strong>
+                      <small className="fleet-situation-driver">{item.employeeName}</small>
+                    </td>
+                    <td>
+                      <span className={`fleet-situation-status fleet-situation-status--${item.movementStatus}`}>
+                        {FLEET_SITUATION_STATUS_LABELS[item.movementStatus] || item.movementStatus}
+                      </span>
+                      {item.connectionStatus === 'offline' && <small className="fleet-situation-offline"> hors ligne</small>}
+                    </td>
+                    <td>{formatDuration(item.tripDurationSec)}</td>
+                    <td>{formatDuration(item.parkingDurationSec)}</td>
+                    <td>{item.tripsCount || '—'}</td>
+                    <td>{item.distanceKm ? `${Math.round(item.distanceKm)} km` : '—'}</td>
+                    <td>
+                      <span className="fleet-situation-stop">
+                        <MapPin size={14} />
+                        {formatStopAddress(item.restLocation)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="dashboard-grid dashboard-grid--tertiary">

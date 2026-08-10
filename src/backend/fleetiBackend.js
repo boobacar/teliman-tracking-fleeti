@@ -4,6 +4,22 @@ export function resolveTracksSource(value = '') {
   return 'public'
 }
 
+/**
+ * Convertit une durée ISO-8601 (ex: "PT4H6M46S") en secondes.
+ * Renvoie null si la valeur n'est pas une durée exploitable.
+ */
+export function parseIsoDuration(value) {
+  if (value == null || value === '') return null
+  const raw = String(value).trim()
+  const match = /^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/.exec(raw)
+  if (!match) return null
+  const hours = Number(match[1] || 0)
+  const minutes = Number(match[2] || 0)
+  const seconds = Number(match[3] || 0)
+  if (!hours && !minutes && !seconds) return 0
+  return Math.round(hours * 3600 + minutes * 60 + seconds)
+}
+
 export function extractArrayPayload(payload = {}, keys = ['results', 'items', 'list', 'data', 'result']) {
   if (Array.isArray(payload)) return payload
   for (const key of keys) {

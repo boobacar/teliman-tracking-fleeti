@@ -36,3 +36,20 @@ test('les compteurs métier du dashboard sont calculés', () => {
 test('le dashboard reçoit les BL et les événements pour les KPI mission/alertes', () => {
   assert.match(appSource, /deliveryOrders=\{deliveryOrders\} importantEvents=\{importantEvents\} \/>/) // on DashboardPage
 })
+
+test('le dashboard expose la section Situation flotte (heures de route, repos, lieu)', () => {
+  assert.match(dashboardSource, /Situation flotte/)
+  assert.match(dashboardSource, /loadFleetSituation/)
+  assert.match(dashboardSource, /fleetSituationPeriod/)
+  assert.match(dashboardSource, /Heures de route/)
+  assert.match(dashboardSource, /Temps de repos/)
+  assert.match(dashboardSource, /Lieu du repos/)
+  assert.match(dashboardSource, /formatDuration/)
+  assert.match(dashboardSource, /MapPin/)
+})
+
+test('la page charge la situation flotte avec les périodes proposées', () => {
+  assert.match(dashboardSource, /\['today', 'Aujourd’hui'\]/)
+  assert.match(dashboardSource, /\['24h', '24h'\]/)
+  assert.match(dashboardSource, /\['7d', '7 jours'\]/)
+})
