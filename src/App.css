@@ -6003,13 +6003,13 @@ a.leaflet-control-zoom-out {
   }
 }
 
-/* ── Poste de contrôle (panneau latéral / bottom sheet) ── */
+/* ── Poste de contrôle (panneau ancré dans la carte, bas à gauche) ── */
 .map-shell { position: relative; }
 .map-control-panel {
-  position: fixed;
-  bottom: 12px; right: 10px;
-  z-index: 600;
-  width: 320px; max-height: calc(100vh - 140px);
+  position: absolute;
+  bottom: 12px; left: 12px;
+  z-index: 900;
+  width: 320px; max-height: calc(100% - 24px);
   display: flex; flex-direction: column;
   background: rgba(12, 15, 20, 0.94);
   border: 1px solid #23511f;

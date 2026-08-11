@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const mapPageSource = readFileSync(new URL('../src/pages/MapPage.jsx', import.meta.url), 'utf8')
+const appCss = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8')
 
 test('la Live Map charge la feuille de style Leaflet indispensable au positionnement des tuiles', () => {
   assert.match(mapPageSource, /import ['"]leaflet\/dist\/leaflet\.css['"]/)
@@ -40,6 +41,25 @@ test('la Live Map navigue via le routeur (navigate) et non via window.location.h
   assert.match(mapPageSource, /navigate\(`\/tracker\/\$\{focusedTracker\.id\}`\)/)
   assert.match(mapPageSource, /navigate\(`\/delivery-order\/\$\{focusedOrder\.id\}`\)/)
   assert.doesNotMatch(mapPageSource, /window\.location\.hash/)
+})
+
+test('le poste de contrôle est ancré DANS la carte, en bas à gauche (portail → conteneur carte, pas le body)', () => {
+  assert.match(mapPageSource, /createPortal\(/)
+  assert.match(mapPageSource, /mapShellRef\.current/)
+  assert.doesNotMatch(mapPageSource, /document\.body/)
+  const panelCss = appCss.match(/\.map-control-panel \{[\s\S]*?\n\}/)?.[0] || ''
+  assert.match(panelCss, /position: absolute;/)
+  assert.match(panelCss, /bottom: 12px; left: 12px;/)
+  assert.doesNotMatch(panelCss, /position: fixed;/)
+})
+
+test('la lecture de trajet suit automatiquement le point en cours (PlaybackFollow, panTo, interruption)', () => {
+  assert.match(mapPageSource, /function PlaybackFollow/)
+  assert.match(mapPageSource, /map\.panTo\(\[lat, lng\], \{ animate: true \}\)/)
+  assert.match(mapPageSource, /<PlaybackFollow position=\{playbackPosition\}/)
+  assert.match(mapPageSource, /onUserInterrupt=\{\(\) => setPlaybackFollowOn\(false\)\}/)
+  assert.match(mapPageSource, /following=\{followOn && !!focusedTracker && !playbackActive\}/)
+  assert.match(mapPageSource, /const playbackActive = !!/)
 })
 
 test('la Live Map est un poste de contrôle (panneau, âge, suivi, ETA)', () => {

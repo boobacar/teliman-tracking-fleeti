@@ -196,6 +196,34 @@ function FollowController({ position, following, onUserInterrupt }) {
   return null
 }
 
+// Suivi de la lecture animée : la carte se centre sur le point du trajet en cours
+// de lecture et le suit automatiquement (panTo lisse, zoom conservé).
+function PlaybackFollow({ position, active, onUserInterrupt }) {
+  const map = useMap()
+  const lastRef = useRef(null)
+
+  useEffect(() => {
+    if (!active || !position) return
+    const [lat, lng] = position
+    const previous = lastRef.current
+    if (!previous || Math.abs(previous[0] - lat) > 0.00001 || Math.abs(previous[1] - lng) > 0.00001) {
+      map.panTo([lat, lng], { animate: true })
+      lastRef.current = [lat, lng]
+    }
+  }, [position, active, map])
+
+  useEffect(() => {
+    if (!active) return
+    const stop = () => onUserInterrupt()
+    map.on('dragstart zoomstart', stop)
+    return () => {
+      map.off('dragstart zoomstart', stop)
+    }
+  }, [active, map, onUserInterrupt])
+
+  return null
+}
+
 function ZoomProbe({ onZoom }) {
   const map = useMap()
   useEffect(() => {
@@ -246,6 +274,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   const [mapZoom, setMapZoom] = useState(7)
   const [ageNow, setAgeNow] = useState(Date.now())
   const [playback, setPlayback] = useState(null) // { trackerId, index }
+  const [playbackFollowOn, setPlaybackFollowOn] = useState(true)
   const trackCacheRef = useRef(new Map())
   const inflightCacheRef = useRef(new Map())
   const mapShellRef = useRef(null)
@@ -517,6 +546,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
     setFocusTrackId(null)
     setFollowOn(false)
     setPlayback(null)
+    setPlaybackFollowOn(true)
   }
 
   const selectedTrackData = selectedTrackIds.length > 0 ? selectedTrackIds.map((id) => trackMap[id]).filter(Boolean) : []
@@ -568,6 +598,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
   // Lecture animée du trajet
   const focusedTrackPoints = focusTrackId ? (trackMap[focusTrackId]?.points || []) : []
   const playbackIndex = playback && playback.trackerId === focusTrackId ? playback.index : null
+  const playbackActive = !!(playback && playback.trackerId === focusTrackId && playbackIndex != null && focusedTrackPoints[playbackIndex])
+  const playbackPosition = playbackActive ? [focusedTrackPoints[playbackIndex].lat, focusedTrackPoints[playbackIndex].lng] : null
 
   useEffect(() => {
     if (!playback || playback.trackerId !== focusTrackId) return
@@ -646,7 +678,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           <FleetBounds trackers={displayedTrackers} fitKey={mapFitKey} />
           <ZoomProbe onZoom={setMapZoom} />
           <FlyToTarget position={focusedTracker?.state?.gps?.location ? [focusedTracker.state.gps.location.lat, focusedTracker.state.gps.location.lng] : null} requestKey={focusedTracker && recenterRequest > 0 ? `${focusTrackId}:${recenterRequest}` : null} />
-          <FollowController position={focusedTracker?.state?.gps?.location ? [focusedTracker.state.gps.location.lat, focusedTracker.state.gps.location.lng] : null} following={followOn && !!focusedTracker} onUserInterrupt={() => setFollowOn(false)} />
+          <FollowController position={focusedTracker?.state?.gps?.location ? [focusedTracker.state.gps.location.lat, focusedTracker.state.gps.location.lng] : null} following={followOn && !!focusedTracker && !playbackActive} onUserInterrupt={() => setFollowOn(false)} />
+          <PlaybackFollow position={playbackPosition} active={playbackActive && playbackFollowOn} onUserInterrupt={() => setPlaybackFollowOn(false)} />
           {baseMap === 'plan' && <TileLayer key={`plan-${tileKey}`} eventHandlers={tileEventHandlers} attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />}
           {baseMap === 'satellite' && <TileLayer key={`satellite-${tileKey}`} eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" />}
           {baseMap === 'hybrid' && <><TileLayer key={`hybrid-imagery-${tileKey}`} eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" /><TileLayer key={`hybrid-labels-${tileKey}`} eventHandlers={tileEventHandlers} attribution='&copy; Esri' url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" opacity={1} /></>}
@@ -748,8 +781,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
           })}
         </MapContainer>
 
-        {/* ── Poste de contrôle : panneau (bas à droite, portail → body pour un fixed fiable) ── */}
-        {focusedTracker && createPortal(
+        {/* ── Poste de contrôle : panneau ancré DANS la carte (bas à gauche, portail → conteneur carte) ── */}
+        {focusedTracker && mapShellRef.current && createPortal(
           <aside className="map-control-panel" role="complementary" aria-label="Poste de contrôle">
             <div className="map-control-head">
               <div><strong>{focusedTracker.label}</strong><span>{focusedTracker.employeeName || 'Chauffeur non assigné'}</span></div>
@@ -796,17 +829,17 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
                 <div className="map-control-block">
                   <h3>Lecture du trajet <span className="map-control-count">{focusedTrackPoints.length} pts</span></h3>
                   <div className="map-playback-bar">
-                    <button type="button" className="ghost-btn small-btn" aria-label="Revenir au début" onClick={() => setPlayback({ trackerId: focusTrackId, index: 0, playing: false })}><SkipBack size={16} /></button>
-                    <button type="button" className="ghost-btn small-btn" aria-label={playback?.playing ? 'Pause' : 'Lire le trajet'} onClick={() => setPlayback((prev) => (prev && prev.trackerId === focusTrackId ? { ...prev, playing: !prev.playing } : { trackerId: focusTrackId, index: 0, playing: true }))}>{playback?.playing ? <Pause size={16} /> : <Play size={16} />}</button>
+                    <button type="button" className="ghost-btn small-btn" aria-label="Revenir au début" onClick={() => { setPlaybackFollowOn(true); setPlayback({ trackerId: focusTrackId, index: 0, playing: false }) }}><SkipBack size={16} /></button>
+                    <button type="button" className="ghost-btn small-btn" aria-label={playback?.playing ? 'Pause' : 'Lire le trajet'} onClick={() => { setPlaybackFollowOn(true); setPlayback((prev) => (prev && prev.trackerId === focusTrackId ? { ...prev, playing: !prev.playing } : { trackerId: focusTrackId, index: 0, playing: true })) }}>{playback?.playing ? <Pause size={16} /> : <Play size={16} />}</button>
                     <input
                       type="range"
                       min={0}
                       max={focusedTrackPoints.length - 1}
                       value={playbackIndex ?? 0}
                       aria-label="Position dans le trajet"
-                      onChange={(event) => setPlayback({ trackerId: focusTrackId, index: Number(event.target.value), playing: false })}
+                      onChange={(event) => { setPlaybackFollowOn(true); setPlayback({ trackerId: focusTrackId, index: Number(event.target.value), playing: false }) }}
                     />
-                    <button type="button" className="ghost-btn small-btn" aria-label="Fin du trajet" onClick={() => setPlayback({ trackerId: focusTrackId, index: focusedTrackPoints.length - 1, playing: false })}><SkipForward size={16} /></button>
+                    <button type="button" className="ghost-btn small-btn" aria-label="Fin du trajet" onClick={() => { setPlaybackFollowOn(true); setPlayback({ trackerId: focusTrackId, index: focusedTrackPoints.length - 1, playing: false }) }}><SkipForward size={16} /></button>
                   </div>
                   <p className="map-control-muted">{playbackIndex != null ? formatPlaybackTime(focusedTrackPoints[playbackIndex]) : formatPlaybackTime(focusedTrackPoints[0])}</p>
                 </div>
@@ -819,7 +852,7 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
                 {focusedOrder && <button type="button" className="ghost-btn" onClick={() => navigate(`/delivery-order/${focusedOrder.id}`)}><ExternalLink size={16} />Fiche mission</button>}
               </div>
             </div>
-          </aside>, document.body
+          </aside>, mapShellRef.current
         )}
       </div>
       <details className="panel map-accessible-list" aria-label="Liste accessible des véhicules affichés">
