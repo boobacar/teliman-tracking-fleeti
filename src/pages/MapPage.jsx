@@ -12,6 +12,7 @@ import {
   formatDurationMs,
   formatPositionAge,
   haversineDistanceMeters,
+  headingToCssRotation,
   nearestZone,
   parsePointTime,
 } from '../lib/mapUtils'
@@ -64,7 +65,7 @@ function createTrackerIcon(tracker, hasMission = false, isActive = false, bearin
   const speed = Number(tracker.state?.gps?.speed ?? 0)
   const isMoving = tracker.state?.movement_status === 'moving' || speed > 0
   const movingArrow = isMoving
-    ? `<div class="pin-heading-tail ${isActive ? 'active' : ''}" style="transform: rotate(${heading}deg)"></div>`
+    ? `<div class="pin-heading-tail ${isActive ? 'active' : ''}" style="transform: rotate(${headingToCssRotation(heading)}deg)"></div>`
     : ''
 
   return L.divIcon({
@@ -88,7 +89,7 @@ function createClusterIcon(count) {
 function createDirectionArrowIcon(bearing) {
   return L.divIcon({
     className: 'track-direction-arrow-wrap',
-    html: `<div class="track-direction-arrow" style="transform: rotate(${bearing}deg)">➤</div>`,
+    html: `<div class="track-direction-arrow" style="transform: rotate(${headingToCssRotation(bearing)}deg)">➤</div>`,
     iconSize: [16, 16],
     iconAnchor: [8, 8],
   })

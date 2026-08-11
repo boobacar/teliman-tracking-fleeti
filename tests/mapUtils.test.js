@@ -7,9 +7,22 @@ import {
   formatDurationMs,
   formatPositionAge,
   haversineDistanceMeters,
+  headingToCssRotation,
   nearestZone,
   parsePointTime,
 } from '../src/lib/mapUtils.js'
+
+test('headingToCssRotation aligne le cap boussole sur la rotation CSS (flèche par défaut = Est)', () => {
+  // Cap 0° = Nord (haut de carte) ; la flèche CSS pointe par défaut vers l'Est.
+  assert.equal(headingToCssRotation(0), 270)    // Nord → flèche vers le haut
+  assert.equal(headingToCssRotation(90), 0)     // Est → flèche vers la droite
+  assert.equal(headingToCssRotation(180), 90)   // Sud → flèche vers le bas
+  assert.equal(headingToCssRotation(270), 180)  // Ouest → flèche vers la gauche
+  assert.equal(headingToCssRotation(360), 270)  // wrap au-delà de 360
+  assert.equal(headingToCssRotation(-90), 180)  // cap négatif
+  assert.equal(headingToCssRotation('abc'), 0)  // invalide → neutre
+  assert.equal(headingToCssRotation(null), 0)
+})
 
 test('formatPositionAge rend un âge humain', () => {
   const now = 1_800_000_000_000

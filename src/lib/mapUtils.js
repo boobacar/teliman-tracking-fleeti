@@ -1,5 +1,16 @@
 // Utilitaires purs de la Live Map (poste de contrôle) — testables sans navigateur.
 
+// Cap boussole (0° = Nord, sens horaire) → rotation CSS de la flèche.
+// La flèche (barre .pin-heading-tail / glyphe ➤) pointe par défaut vers l'EST
+// (rotate(0) = orientation d'origine), alors qu'un cap de 0° = Nord (haut de carte).
+// Décalage de −90° pour que rotate(cap) aligne la flèche sur la direction réelle.
+export function headingToCssRotation(headingDeg) {
+  if (headingDeg == null || headingDeg === '') return 0
+  const degrees = Number(headingDeg)
+  if (!Number.isFinite(degrees)) return 0
+  return ((degrees - 90) % 360 + 360) % 360
+}
+
 export function haversineDistanceMeters(lat1, lng1, lat2, lng2) {
   const toRad = (value) => (Number(value) * Math.PI) / 180
   const radius = 6371000
