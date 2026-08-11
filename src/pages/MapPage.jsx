@@ -197,7 +197,9 @@ function FollowController({ position, following, onUserInterrupt }) {
 }
 
 // Suivi de la lecture animée : la carte se centre sur le point du trajet en cours
-// de lecture et le suit automatiquement (panTo lisse, zoom conservé).
+// de lecture et le suit automatiquement. setView instantané (pas de panTo animé :
+// sur les grands sauts entre points de tracé, l'animation PosAnimation de Leaflet
+// reste bloquée à mi-chemin — CSS transition/rAF — et la carte ne rattrape jamais).
 function PlaybackFollow({ position, active, onUserInterrupt }) {
   const map = useMap()
   const lastRef = useRef(null)
@@ -207,7 +209,7 @@ function PlaybackFollow({ position, active, onUserInterrupt }) {
     const [lat, lng] = position
     const previous = lastRef.current
     if (!previous || Math.abs(previous[0] - lat) > 0.00001 || Math.abs(previous[1] - lng) > 0.00001) {
-      map.panTo([lat, lng], { animate: true })
+      map.setView([lat, lng], map.getZoom(), { animate: false })
       lastRef.current = [lat, lng]
     }
   }, [position, active, map])

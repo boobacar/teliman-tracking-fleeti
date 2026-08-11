@@ -53,9 +53,10 @@ test('le poste de contrôle est ancré DANS la carte, en bas à gauche (portail 
   assert.doesNotMatch(panelCss, /position: fixed;/)
 })
 
-test('la lecture de trajet suit automatiquement le point en cours (PlaybackFollow, panTo, interruption)', () => {
+test('la lecture de trajet suit automatiquement le point en cours (PlaybackFollow, setView, interruption)', () => {
   assert.match(mapPageSource, /function PlaybackFollow/)
-  assert.match(mapPageSource, /map\.panTo\(\[lat, lng\], \{ animate: true \}\)/)
+  assert.match(mapPageSource, /map\.setView\(\[lat, lng\], map\.getZoom\(\), \{ animate: false \}\)/)
+  assert.doesNotMatch(mapPageSource, /map\.panTo/)
   assert.match(mapPageSource, /<PlaybackFollow position=\{playbackPosition\}/)
   assert.match(mapPageSource, /onUserInterrupt=\{\(\) => setPlaybackFollowOn\(false\)\}/)
   assert.match(mapPageSource, /following=\{followOn && !!focusedTracker && !playbackActive\}/)
