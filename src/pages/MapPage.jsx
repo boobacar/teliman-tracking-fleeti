@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Circle, CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
@@ -226,6 +227,7 @@ function formatPlaybackTime(point) {
 }
 
 export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
+  const navigate = useNavigate()
   const [mapFilter, setMapFilter] = useState('all')
   const [selectedTrackIds, setSelectedTrackIds] = useState([])
   const [focusTrackId, setFocusTrackId] = useState(null)
@@ -813,8 +815,8 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
               <div className="map-control-actions">
                 <button type="button" className="ghost-btn" onClick={() => setRecenterRequest((value) => value + 1)}><Crosshair size={16} />Recentrer</button>
                 <button type="button" className={`ghost-btn ${followOn ? 'selected' : ''}`} aria-pressed={followOn} onClick={() => setFollowOn((value) => !value)}>{followOn ? <Eye size={16} /> : <EyeOff size={16} />}{followOn ? 'Suivi en cours' : 'Suivre le camion'}</button>
-                <button type="button" className="ghost-btn" onClick={() => { window.location.hash = `#/tracker/${focusedTracker.id}` }}><ExternalLink size={16} />Fiche camion</button>
-                {focusedOrder && <button type="button" className="ghost-btn" onClick={() => { window.location.hash = `#/delivery-order/${focusedOrder.id}` }}><ExternalLink size={16} />Fiche mission</button>}
+                <button type="button" className="ghost-btn" onClick={() => navigate(`/tracker/${focusedTracker.id}`)}><ExternalLink size={16} />Fiche camion</button>
+                {focusedOrder && <button type="button" className="ghost-btn" onClick={() => navigate(`/delivery-order/${focusedOrder.id}`)}><ExternalLink size={16} />Fiche mission</button>}
               </div>
             </div>
           </aside>, document.body

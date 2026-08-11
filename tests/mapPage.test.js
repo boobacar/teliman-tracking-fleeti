@@ -35,6 +35,13 @@ test('la Live Map bloque les transitions marqueurs pendant zoom/pan', () => {
   assert.match(mapPageSource, /<MapInteractionGuard \/>/)
 })
 
+test('la Live Map navigue via le routeur (navigate) et non via window.location.hash', () => {
+  assert.match(mapPageSource, /useNavigate\(\)/)
+  assert.match(mapPageSource, /navigate\(`\/tracker\/\$\{focusedTracker\.id\}`\)/)
+  assert.match(mapPageSource, /navigate\(`\/delivery-order\/\$\{focusedOrder\.id\}`\)/)
+  assert.doesNotMatch(mapPageSource, /window\.location\.hash/)
+})
+
 test('la Live Map est un poste de contrôle (panneau, âge, suivi, ETA)', () => {
   assert.match(mapPageSource, /map-control-panel/)
   assert.match(mapPageSource, /aria-label="Poste de contrôle"/)
