@@ -37,9 +37,14 @@ test('normalizeBackendUrl utilise l’API publique par défaut si aucun backend 
   )
 })
 
-test('normalizeBackendUrl utilise le proxy même origine sur le déploiement Vercel', () => {
+test('normalizeBackendUrl appelle DIRECTEMENT le backend public depuis Vercel (proxy /api instable, 502 DNS)', () => {
   assert.equal(
-    normalizeBackendUrl('https://home-server.tail660cfd.ts.net', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
-    '',
+    normalizeBackendUrl('', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    'https://home-server-1.tail660cfd.ts.net',
+  )
+  // Une vieille VITE_BACKEND_URL privée (IP Tailscale hors ligne) est aussi corrigée
+  assert.equal(
+    normalizeBackendUrl('http://100.65.78.40:8787', { currentFrontendHost: 'teliman-tracking-fleeti.vercel.app' }),
+    'https://home-server-1.tail660cfd.ts.net',
   )
 })

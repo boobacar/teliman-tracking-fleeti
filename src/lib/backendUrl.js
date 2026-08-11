@@ -1,7 +1,10 @@
 const LOCAL_DEFAULT_BACKEND_URL = 'http://localhost:8787'
 const PUBLIC_DEFAULT_BACKEND_URL = 'https://home-server-1.tail660cfd.ts.net'
+// Hôtes publics dont le proxy même-origine /api → backend est FIABLE.
+// teliman-tracking-fleeti.vercel.app en a été retiré : son proxy Vercel résout
+// mal le Funnel Tailscale (502 DNS_HOSTNAME_NOT_FOUND/EMPTY intermittents) —
+// la SPA appelle donc directement le backend public (CORS déjà autorisé).
 const SAME_ORIGIN_PROXY_HOSTS = new Set([
-  'teliman-tracking-fleeti.vercel.app',
   'www.telimanlogistique.com',
   'telimanlogistique.com',
 ])
@@ -49,8 +52,9 @@ export function normalizeBackendUrl(value, options = {}) {
   // Toute origine explicite contournerait le Funnel et serait inaccessible au navigateur.
   if (currentFrontendHost.endsWith('.ts.net')) return ''
 
-  // Vercel relaie /api et /uploads vers le backend public. Utiliser ce proxy
-  // même si une ancienne variable VITE_BACKEND_URL est encore configurée.
+  // Vercel (teliman-tracking-fleeti.vercel.app) : le proxy /api → backend est
+  // instable (502 DNS_HOSTNAME_* intermittents). Appeler DIRECTEMENT le backend
+  // public (Funnel) — le CORS du serveur autorise déjà cette origine.
   if (SAME_ORIGIN_PROXY_HOSTS.has(currentFrontendHost)) return ''
 
   // Hôte privé (localhost, LAN, Tailscale) : la SPA et l'API sont servies par le
