@@ -260,7 +260,11 @@ export const deleteFuelVoucher = (id) => fetchJson(`/api/fuel-vouchers/${id}`, {
 export const loadLiveOdometer = () => getJson('/api/live-odometer')
 export const loadLivePositions = () => getJson('/api/positions-live')
 export const fetchSseToken = async () => {
-  const data = await fetchJson('/api/sse-token', { method: 'POST', headers: { ...getSessionHeaders() } })
+  const data = await fetchJson('/api/sse-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+    body: JSON.stringify({}),
+  })
   return data?.token || ''
 }
 export const loadFleetSituation = (period = 'today') => getJson(`/api/fleet-situation?period=${encodeURIComponent(period)}`)

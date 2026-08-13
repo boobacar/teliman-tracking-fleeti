@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs'
 
 const serverSource = readFileSync(new URL('../server.js', import.meta.url), 'utf8')
 const mapSource = readFileSync(new URL('../src/pages/MapPage.jsx', import.meta.url), 'utf8')
+const fleetiSource = readFileSync(new URL('../src/lib/fleeti.js', import.meta.url), 'utf8')
+
+test('fetchSseToken envoie le Content-Type JSON (requis par le middleware 415)', () => {
+  assert.match(fleetiSource, /fetchSseToken/)
+  assert.match(fleetiSource, /'Content-Type': 'application\/json', \.\.\.getSessionHeaders\(\)/)
+})
 
 test('le serveur expose un flux SSE positions-live', () => {
   assert.match(serverSource, /app\.get\('\/api\/positions-live\/stream'/)
