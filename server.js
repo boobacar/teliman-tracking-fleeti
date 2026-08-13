@@ -3363,9 +3363,43 @@ async function buildFleetSituation(period = 'today') {
         : null
 
     const employee = employeesByTracker.get(trackerId)
-    const employeeName = employee
-      ? [employee.first_name, employee.last_name].filter(Boolean).join(' ').trim() || 'Non assigné'
-      : 'Non assigné'
+    // Priorité identique au dashboard (App.jsx) : override local > API employees
+    const overrides = loadDriverOverrides()
+    const overrideDriverByTrackerId = {}
+    const overrideNameByEmployeeId = {}
+    for (const [employeeId, data] of Object.entries(overrides)) {
+      if (data?.trackerId) {
+        const overrideName = [data.firstName || '', data.lastName || ''].filter(Boolean).join(' ').trim()
+        if (overrideName) {
+          overrideDriverByTrackerId[Number(data.trackerId)] = overrideName
+        } else {
+          const emp = employeesByTracker.get(Number(data.trackerId))
+          const empName = emp ? [emp.first_name, emp.last_name].filter(Boolean).join(' ').trim() : ''
+          if (empName) overrideDriverByTrackerId[Number(data.trackerId)] = empName
+        }
+      }
+      if (data.firstName || data.lastName) {
+        const name = [data.firstName || '', data.lastName || ''].filter(Boolean).join(' ').trim()
+        if (name) overrideNameByEmployeeId[employeeId] = { first: data.firstName || '', last: data.lastName || '', full: name }
+      }
+    }
+    const overrideName = overrideNameByEmployeeId[String(employee?.id || employee?.employee_id || employee?.tracker_id || '')]
+    const firstName = overrideName?.first || String(employee?.first_name || employee?.firstname || employee?.firstName || employee?.name || '').trim()
+    const lastName = overrideName?.last || String(employee?.last_name || employee?.lastname || employee?.lastName || '').trim()
+    const employeeNameFromApi = [firstName, lastName].filter(Boolean).join(' ').trim()
+    // Fallback métier : nom du chauffeur renseigné sur les bons de livraison du camion
+    let fallbackDriverName = ''
+    try {
+      const orders = readDeliveryOrders() || []
+      const match = orders.find((order) => String(order?.trackerId) === String(trackerId) && String(order?.driver || '').trim())
+      if (match) fallbackDriverName = String(match.driver).trim()
+    } catch {
+      // silencieux : fallback indisponible
+    }
+    const employeeName = overrideDriverByTrackerId[Number(trackerId)]
+      || employeeNameFromApi
+      || fallbackDriverName
+      || 'Non assigné'
 
     return {
       trackerId,
