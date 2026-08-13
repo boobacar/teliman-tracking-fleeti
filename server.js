@@ -29,6 +29,7 @@ import {
   initDatabase, closeDatabase,
   readDeliveryOrders, readDeliveryOrderById, insertDeliveryOrderAtomic, updateDeliveryOrderAtomic, deleteDeliveryOrder,
   readFuelVouchers, insertFuelVoucher, updateFuelVoucher, deleteFuelVoucher,
+  readOilChanges, insertOilChange, updateOilChange, deleteOilChange,
   readAuthUsers, createAuthUser, upsertAuthUser, deleteAuthUserAndSessions, createAuthSession, resolveAuthSession, revokeAuthSession, revokeUserSessions, purgeExpiredAuthSessions, checkDatabaseHealthFresh,
   readMasterData, writeMasterDataKey,
   readDriverOverrides, replaceDriverOverridesAtomic,
@@ -92,6 +93,10 @@ const SERVICE_SUSPENSION_MESSAGE = 'impossible de joindre le serveur'
 const PORT = Number(process.env.PORT || 8787)
 const AUTH_SESSION_TTL_MS = Math.max(60_000, Number(process.env.AUTH_SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000))
 const AUTH_SESSION_REFRESH_INTERVAL_MS = Math.max(0, Number(process.env.AUTH_SESSION_REFRESH_INTERVAL_MS || 24 * 60 * 60 * 1000))
+// Jeton éphémère à usage unique pour le flux SSE : évite de faire transiter le jeton
+// de session (30 j) dans l'URL de l'EventSource (fuite via logs proxy / historique).
+const SSE_TOKEN_TTL_MS = 60_000
+const sseTokenStore = new Map() // token -> { sessionToken, expiresAt }
 
 // ── Sanitization HTML : strip toute balise HTML/script des entrées texte ──
 function sanitizeHtml(value) {
@@ -131,6 +136,22 @@ const baileysWhatsAppClient = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provide
   : null
 
 validateRequiredEnv()
+
+// Import ponctuel : migrer les vidanges de l'ancien fichier JSON vers SQLite s'il reste des données
+// (défensif — le fichier n'est plus utilisé par le runtime après la migration de juin 2026).
+if (fs.existsSync(OIL_CHANGES_FILE) && readOilChanges().length === 0) {
+  try {
+    const legacy = JSON.parse(fs.readFileSync(OIL_CHANGES_FILE, 'utf8'))
+    if (Array.isArray(legacy) && legacy.length) {
+      for (const item of legacy) {
+        try { insertOilChange(item) } catch (error) { console.warn('[oil-changes] import ignoré:', error?.message || error) }
+      }
+      console.log(`[oil-changes] ${legacy.length} vidange(s) importée(s) depuis oil-changes.json`)
+    }
+  } catch (error) {
+    console.warn('[oil-changes] import JSON impossible:', error?.message || error)
+  }
+}
 
 const app = express()
 let dashboardCache = { data: null, ts: 0 }
@@ -374,7 +395,35 @@ function getSessionToken(req) {
 }
 
 function getSessionUser(req) {
-  return resolveAuthSession(getSessionToken(req), new Date(), AUTH_SESSION_TTL_MS, AUTH_SESSION_REFRESH_INTERVAL_MS)
+  const token = resolveSseToken(getSessionToken(req))
+  return resolveAuthSession(token, new Date(), AUTH_SESSION_TTL_MS, AUTH_SESSION_REFRESH_INTERVAL_MS)
+}
+
+// Émet un jeton SSE à courte durée de vie lié au jeton de session courant.
+// Le frontend l'utilise dans l'URL de l'EventSource au lieu du jeton de session 30 j.
+function issueSseToken(sessionToken) {
+  const now = Date.now()
+  // Nettoyage opportuniste des jetons expirés (évite la croissance non bornée)
+  for (const [key, entry] of sseTokenStore) {
+    if (entry.expiresAt < now) sseTokenStore.delete(key)
+  }
+  const token = crypto.randomBytes(24).toString('base64url')
+  sseTokenStore.set(token, { sessionToken, expiresAt: now + SSE_TOKEN_TTL_MS })
+  return { token, expiresInMs: SSE_TOKEN_TTL_MS }
+}
+
+// Résout un jeton SSE éphémère vers le jeton de session sous-jacent (valide le temps du TTL,
+// ce qui autorise la reconnexion automatique d'EventSource). Retourne le jeton d'origine
+// s'il ne s'agit pas d'un jeton SSE.
+function resolveSseToken(token) {
+  if (!token) return token
+  const entry = sseTokenStore.get(token)
+  if (!entry) return token
+  if (entry.expiresAt < Date.now()) {
+    sseTokenStore.delete(token)
+    return ''
+  }
+  return entry.sessionToken
 }
 
 function hasPermission(user, permission) {
@@ -447,7 +496,11 @@ function requiredRoutePermissions(req) {
   if (pathName.startsWith('/api/sensors-live')) return ['page_fleet', 'page_analytics']
   if (pathName.startsWith('/api/trackers') || pathName.startsWith('/api/drivers') || pathName.startsWith('/api/employees-detail') || pathName.startsWith('/api/vehicles') || pathName.startsWith('/api/vehicle') || pathName.startsWith('/api/cameras')) return ['page_fleet', 'manage_delivery_orders']
   if (pathName.startsWith('/api/dashboard') || pathName.startsWith('/api/fleet-situation') || pathName.startsWith('/api/fleeti/')) return ['page_dashboard', 'page_fleet', 'page_map', 'page_analytics', 'manage_delivery_orders', 'manage_fuel_vouchers']
-  return []
+  // Routes accessibles à tout utilisateur authentifié (aucune permission spécifique requise)
+  if (pathName.startsWith('/api/sse-token') || pathName.startsWith('/api/auth/')) return []
+  // Défaut : refuser toute route non explicitement mappée (default-deny) pour éviter qu'un
+  // nouvel endpoint ajouté sans garde devienne accessible à tout utilisateur connecté.
+  return null
 }
 
 function protectAppSession(req, res, next) {
@@ -457,6 +510,9 @@ function protectAppSession(req, res, next) {
   if (user) {
     req.authUser = user
     const permissions = requiredRoutePermissions(req)
+    if (permissions === null) {
+      return res.status(403).json({ ok: false, error: 'Accès refusé' })
+    }
     if (permissions.length && !permissions.some((permission) => hasPermission(user, permission))) {
       return res.status(403).json({ ok: false, error: 'Accès refusé' })
     }
@@ -554,17 +610,7 @@ function writeMasterData(data) {
   }
 }
 
-function readOilChanges() {
-  try {
-    return JSON.parse(fs.readFileSync(OIL_CHANGES_FILE, 'utf8'))
-  } catch {
-    return []
-  }
-}
-
-async function writeOilChanges(rows) {
-  await writeJSON(OIL_CHANGES_FILE, rows)
-}
+// (readOilChanges / writeOilChanges déplacés vers src/backend/database.js — SQLite)
 
 function sanitizeOilChangePayload(body = {}, current = null) {
   const now = new Date().toISOString()
@@ -3474,6 +3520,13 @@ app.post('/api/auth/logout', (req, res) => {
   return res.json({ ok: true })
 })
 
+app.post('/api/sse-token', (req, res) => {
+  const user = req.authUser || getSessionUser(req)
+  if (!user) return res.status(401).json({ ok: false, error: 'Session invalide. Merci de vous reconnecter.' })
+  const { token, expiresInMs } = issueSseToken(resolveSseToken(getSessionToken(req)))
+  return res.json({ ok: true, token, expiresInMs })
+})
+
 app.get('/api/admin/users', requirePermission('manage_users'), (_req, res) => {
   return res.json({ ok: true, items: AUTH_USERS.map(sanitizeUserOutput) })
 })
@@ -3540,8 +3593,17 @@ app.delete('/api/admin/users/:email', requirePermission('manage_users'), (req, r
   return res.json({ ok: true })
 })
 
-app.get('/api/master-data', (_req, res) => {
-  res.json(readMasterDataWrapper())
+app.get('/api/master-data', (req, res) => {
+  const payload = readMasterDataWrapper()
+  // Masquer les numéros de téléphone pour les rôles « flotte » sans droit de gestion
+  // (données personnelles : clientPhones, alertWhatsAppRecipients).
+  const user = req.authUser
+  const canReadPhones = hasPermission(user, 'manage_data') || hasPermission(user, 'manage_delivery_orders') || hasPermission(user, 'manage_fuel_vouchers')
+  if (!canReadPhones) {
+    payload.clientPhones = {}
+    payload.alertWhatsAppRecipients = {}
+  }
+  res.json(payload)
 })
 
 app.post('/api/master-data/:listName', requirePermission('manage_data'), (req, res) => {
@@ -3924,44 +3986,41 @@ app.get('/api/oil-changes', (_req, res) => {
   res.json({ items: readOilChanges() })
 })
 
-app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), async (req, res) => {
+app.post('/api/oil-changes', requirePermission('manage_delivery_orders'), (req, res) => {
   try {
     const validated = validateBody(oilChangeSchema, req.body)
-    const items = readOilChanges()
     const payload = sanitizeOilChangePayload(validated)
-    items.unshift(payload)
-    await writeOilChanges(items)
+    insertOilChange(payload)
     res.status(201).json({ ok: true, item: payload })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
+app.patch('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
   try {
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
     const validated = validateBody(oilChangeUpdateSchema, req.body)
-    const items = readOilChanges()
-    const current = items.find((item) => Number(item.id) === id)
+    const current = readOilChanges().find((item) => Number(item.id) === id)
     if (!current) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
     const updated = sanitizeOilChangePayload(validated, current)
-    const next = items.map((item) => Number(item.id) === id ? updated : item)
-    await writeOilChanges(next)
+    updateOilChange(id, updated)
     res.json({ ok: true, item: updated })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }
 })
 
-app.delete('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), async (req, res) => {
+app.delete('/api/oil-changes/:id', requirePermission('manage_delivery_orders'), (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
-  const items = readOilChanges()
-  const filtered = items.filter((item) => Number(item.id) !== id)
-  if (filtered.length === items.length) return res.status(404).json({ ok: false, error: 'Vidange introuvable' })
-  await writeOilChanges(filtered)
-  res.json({ ok: true })
+  try {
+    deleteOilChange(id)
+    res.json({ ok: true })
+  } catch (error) {
+    res.status(404).json({ ok: false, error: error.message })
+  }
 })
 
 function flattenTrackSegments(payload = null) {
@@ -4738,6 +4797,18 @@ app.get('/api/rules-detail', async (_req, res) => {
     }
     res.status(500).json({ ok: false, error: error?.message || 'Erreur /api/rules-detail' })
   }
+})
+
+// ── Gestionnaire d'erreur global ──
+// Attrape les exceptions non interceptées (sync + async rejetées en Express 5) et renvoie
+// toujours du JSON sans stack trace côté client (évite le HTML 500 et la fuite d'informations).
+app.use((err, _req, res, _next) => {
+  const status = err?.status || err?.statusCode || 500
+  const message = err?.message || 'Erreur interne du serveur'
+  if (status >= 500) {
+    console.error('[error-handler]', message, err?.stack ? `\n${err.stack}` : '')
+  }
+  res.status(status).json({ ok: false, error: message })
 })
 
 const httpServer = app.listen(PORT, () => {

@@ -23,8 +23,12 @@ export function DriversPage({ filteredTrackers }) {
   const [adding, setAdding] = useState(false)
   const [newDriver, setNewDriver] = useState({ firstName: '', lastName: '', trackerId: '', phone: '', email: '' })
 
-  const userRole = (() => { try { return localStorage.getItem('teliman_user_role') || '' } catch { return '' } })()
-  const isAdmin = userRole === 'admin'
+  const isAdmin = (() => {
+    try {
+      const permissions = JSON.parse(localStorage.getItem('teliman_user_permissions') || '[]')
+      return Array.isArray(permissions) && (permissions.includes('*') || permissions.includes('manage_drivers'))
+    } catch { return false }
+  })()
 
   useEffect(() => {
     let cancelled = false
@@ -229,8 +233,8 @@ export function DriversPage({ filteredTrackers }) {
         </td>
         {isAdmin && (
           <td style={{ whiteSpace: 'nowrap' }}>
-            <button type="button" onClick={handleSave} disabled={saving} style={{ ...iconBtn, color: '#22c55e' }} title="Enregistrer"><Save size={14} /></button>
-            <button type="button" onClick={() => setEditing(null)} style={{ ...iconBtn, color: '#94a3b8' }} title="Annuler"><X size={14} /></button>
+            <button type="button" onClick={handleSave} disabled={saving} style={{ ...iconBtn, color: '#22c55e' }} title="Enregistrer" aria-label="Enregistrer les modifications"><Save size={22} /></button>
+            <button type="button" onClick={() => setEditing(null)} style={{ ...iconBtn, color: '#94a3b8' }} title="Annuler" aria-label="Annuler l'édition"><X size={22} /></button>
           </td>
         )}
       </>
@@ -293,9 +297,9 @@ export function DriversPage({ filteredTrackers }) {
         </td>
         {isAdmin && (
           <td>
-            <button type="button" onClick={() => startEdit(emp)} style={{ ...iconBtn, color: '#38bdf8' }} title="Modifier"><Edit3 size={14} /></button>
+            <button type="button" onClick={() => startEdit(emp)} style={{ ...iconBtn, color: '#38bdf8' }} title="Modifier" aria-label="Modifier le chauffeur"><Edit3 size={22} /></button>
             {hasOverride && (
-              <button type="button" onClick={() => handleDelete(emp)} style={{ ...iconBtn, color: '#ef4444' }} title="Supprimer l'override"><Trash2 size={14} /></button>
+              <button type="button" onClick={() => handleDelete(emp)} style={{ ...iconBtn, color: '#ef4444' }} title="Supprimer l'override" aria-label="Supprimer l'override"><Trash2 size={22} /></button>
             )}
           </td>
         )}

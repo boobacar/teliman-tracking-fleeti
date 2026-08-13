@@ -863,7 +863,7 @@ export function ReportsPage() {
                 <span>Ajoute le numéro dans l’en-tête du PDF exporté</span>
               </div>
               <label className="ui-toggle-wrap">
-                <input className="ui-toggle-input" type="checkbox" checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} />
+                <input className="ui-toggle-input" type="checkbox" role="switch" aria-checked={includePurchaseOrder} checked={includePurchaseOrder} onChange={(e) => setIncludePurchaseOrder(e.target.checked)} />
                 <span className={`ui-toggle-track ${includePurchaseOrder ? 'is-checked' : ''}`}>
                   <span className={`ui-toggle-knob ${includePurchaseOrder ? 'is-checked' : ''}`} />
                 </span>

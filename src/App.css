@@ -1197,7 +1197,6 @@ textarea:focus-visible,
 }
 
 .stable-date-picker-trigger:focus-visible {
-  outline: none;
   border-color: rgba(59, 130, 246, 0.75);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 18px rgba(2, 6, 23, 0.25);
 }

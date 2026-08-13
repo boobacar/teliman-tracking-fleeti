@@ -23,7 +23,9 @@ export function TrackerDetailPage({ enrichedTrackers, deliveryOrders = [] }) {
     let cancelled = false
     loadVehicles().then((data) => {
       if (!cancelled) setVehicles(Array.isArray(data) ? data : data?.vehicles || data?.items || [])
-    }).catch(() => {})
+    }).catch((error) => {
+      if (!cancelled) console.warn('[TrackerDetail] Chargement des véhicules impossible:', error?.message || error)
+    })
     return () => { cancelled = true }
   }, [])
 

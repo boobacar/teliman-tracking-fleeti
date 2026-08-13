@@ -5,7 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Circle, CircleMarker, MapContainer, Marker, Popup, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { Crosshair, ExternalLink, Eye, EyeOff, LocateFixed, Maximize2, Minimize2, Navigation, Pause, Play, Search, SkipBack, SkipForward, X } from 'lucide-react'
-import { loadGeofences, loadLivePositions, loadTracksBatch } from '../lib/fleeti'
+import { fetchSseToken, loadGeofences, loadLivePositions, loadTracksBatch } from '../lib/fleeti'
 import {
   buildDirectionArrows,
   clusterTrackers,
@@ -310,9 +310,10 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
 
     // SSE temps réel (fallback polling automatique si le flux meurt)
     let eventSource = null
-    try {
-      const sessionToken = window.localStorage.getItem('teliman_session_token') || ''
-      eventSource = new EventSource(`/api/positions-live/stream${sessionToken ? `?token=${encodeURIComponent(sessionToken)}` : ''}`)
+    // Jeton SSE éphémère (60 s) au lieu du jeton de session 30 j dans l'URL
+    fetchSseToken().then((sseToken) => {
+      if (cancelled || !sseToken) return
+      eventSource = new EventSource(`/api/positions-live/stream?token=${encodeURIComponent(sseToken)}`)
       eventSource.onmessage = (event) => {
         if (cancelled) return
         try {
@@ -334,9 +335,9 @@ export function MapPage({ filteredTrackers, deliveryOrders = [] }) {
         // le polling prend le relais tant que le flux est muet
         lastSseAt.value = 0
       }
-    } catch {
+    }).catch(() => {
       /* pas de SSE (vieille origine) → polling seul */
-    }
+    })
 
     async function poll() {
       if (timerId) window.clearTimeout(timerId)

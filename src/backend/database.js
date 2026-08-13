@@ -81,7 +81,26 @@ function createTables() {
     
     CREATE INDEX IF NOT EXISTS idx_fuel_tracker ON fuel_vouchers(trackerId);
     CREATE INDEX IF NOT EXISTS idx_fuel_date ON fuel_vouchers(dateTime);
-    
+
+    CREATE TABLE IF NOT EXISTS oil_changes (
+      id INTEGER PRIMARY KEY,
+      trackerId TEXT NOT NULL DEFAULT '',
+      truckLabel TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL DEFAULT '',
+      odometerKm REAL NOT NULL DEFAULT 0,
+      oilType TEXT NOT NULL DEFAULT '',
+      oilQuantityL REAL NOT NULL DEFAULT 0,
+      filterChanged INTEGER NOT NULL DEFAULT 1,
+      nextChangeKm REAL NOT NULL DEFAULT 0,
+      nextChangeDate TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      receiptExpiryDate TEXT NOT NULL DEFAULT '',
+      createdAt TEXT NOT NULL DEFAULT '',
+      updatedAt TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_oil_tracker ON oil_changes(trackerId);
+    CREATE INDEX IF NOT EXISTS idx_oil_date ON oil_changes(date);
+
     CREATE TABLE IF NOT EXISTS auth_users (
       email TEXT PRIMARY KEY,
       role TEXT NOT NULL DEFAULT 'admin',
@@ -318,6 +337,54 @@ export function updateFuelVoucher(id, updates) {
 export function deleteFuelVoucher(id) {
   const result = getDatabase().prepare('DELETE FROM fuel_vouchers WHERE id = ?').run(id)
   if (result.changes !== 1) throw new Error('Bon carburant introuvable')
+}
+
+// ── Oil Changes (vidanges) ──
+
+export function readOilChanges() {
+  const rows = getDatabase().prepare('SELECT * FROM oil_changes ORDER BY id DESC').all()
+  return rows.map((row) => ({ ...row, filterChanged: Boolean(row.filterChanged) }))
+}
+
+export function insertOilChange(item) {
+  const result = getDatabase().prepare(`
+    INSERT INTO oil_changes (id, trackerId, truckLabel, date, odometerKm, oilType, oilQuantityL, filterChanged, nextChangeKm, nextChangeDate, notes, receiptExpiryDate, createdAt, updatedAt)
+    VALUES (@id, @trackerId, @truckLabel, @date, @odometerKm, @oilType, @oilQuantityL, @filterChanged, @nextChangeKm, @nextChangeDate, @notes, @receiptExpiryDate, @createdAt, @updatedAt)
+  `).run(toOilChangeRow(item))
+  if (result.changes !== 1) throw new Error('Insertion vidange impossible')
+  return item
+}
+
+export function updateOilChange(id, item) {
+  const result = getDatabase().prepare(`
+    UPDATE oil_changes SET trackerId=@trackerId, truckLabel=@truckLabel, date=@date, odometerKm=@odometerKm, oilType=@oilType, oilQuantityL=@oilQuantityL, filterChanged=@filterChanged, nextChangeKm=@nextChangeKm, nextChangeDate=@nextChangeDate, notes=@notes, receiptExpiryDate=@receiptExpiryDate, createdAt=@createdAt, updatedAt=@updatedAt
+    WHERE id=@id
+  `).run({ ...toOilChangeRow(item), id: Number(id) })
+  if (result.changes !== 1) throw new Error('Vidange introuvable')
+}
+
+export function deleteOilChange(id) {
+  const result = getDatabase().prepare('DELETE FROM oil_changes WHERE id = ?').run(Number(id))
+  if (result.changes !== 1) throw new Error('Vidange introuvable')
+}
+
+function toOilChangeRow(item) {
+  return {
+    id: Number(item.id),
+    trackerId: String(item.trackerId ?? ''),
+    truckLabel: String(item.truckLabel ?? ''),
+    date: String(item.date ?? ''),
+    odometerKm: Number(item.odometerKm) || 0,
+    oilType: String(item.oilType ?? ''),
+    oilQuantityL: Number(item.oilQuantityL) || 0,
+    filterChanged: item.filterChanged ? 1 : 0,
+    nextChangeKm: Number(item.nextChangeKm) || 0,
+    nextChangeDate: String(item.nextChangeDate ?? ''),
+    notes: String(item.notes ?? ''),
+    receiptExpiryDate: String(item.receiptExpiryDate ?? ''),
+    createdAt: String(item.createdAt ?? ''),
+    updatedAt: String(item.updatedAt ?? ''),
+  }
 }
 
 // ── Auth Users / Sessions ──

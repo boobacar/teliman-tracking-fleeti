@@ -78,7 +78,7 @@ test('App charge les domaines autorisés indépendamment et la suspension démon
 
 test('App applique aussi le filtre sans recherche et limite les états globaux au dashboard', () => {
   const source = read('src/App.jsx')
-  assert.match(source, /const searchFiltered = useMemo\(\(\) => filteredTrackers/)
+  assert.match(source, /const priorityTrackers = useMemo\(\(\) => \[\.\.\.filteredTrackers\]\.sort/)
   assert.match(source, /location\.pathname === '\/' && isEmptySearch/)
   assert.match(source, /serviceIssue \? null : error/)
 })

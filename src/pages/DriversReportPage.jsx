@@ -40,7 +40,9 @@ export function DriversReportPage({ deliveryOrders = [], filteredTrackers = [] }
     let cancelled = false
     loadEmployeesDetail().then((data) => {
       if (!cancelled) setEmployees(Array.isArray(data) ? data : data?.employees || data?.items || [])
-    }).catch(() => {})
+    }).catch((error) => {
+      if (!cancelled) console.warn('[DriversReport] Chargement des chauffeurs impossible:', error?.message || error)
+    })
     return () => { cancelled = true }
   }, [])
 

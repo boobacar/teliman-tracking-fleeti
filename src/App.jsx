@@ -385,16 +385,15 @@ function App() {
     totalMileage: Math.round(operationalTrackers.reduce((a, t) => a + (t.latestDayMileage || 0), 0)),
   }
 
-  const searchFiltered = useMemo(() => filteredTrackers, [filteredTrackers])
-  const priorityTrackers = useMemo(() => [...searchFiltered].sort((a, b) => {
+  const priorityTrackers = useMemo(() => [...filteredTrackers].sort((a, b) => {
     const leftScore = (a.eventCounts.speedup || 0) + (a.eventCounts.excessive_parking || 0)
     const rightScore = (b.eventCounts.speedup || 0) + (b.eventCounts.excessive_parking || 0)
     if (leftScore !== rightScore) return rightScore - leftScore
     return (b.events.length || 0) - (a.events.length || 0)
-  }), [searchFiltered])
-  const offlineTrackers = useMemo(() => searchFiltered.filter((tracker) => tracker.state.connection_status === 'offline'), [searchFiltered])
-  const anomalyTrackers = useMemo(() => [...searchFiltered].filter((tracker) => tracker.events.length > 3).sort((a, b) => b.events.length - a.events.length), [searchFiltered])
-  const topDrivers = useMemo(() => [...searchFiltered].sort((a, b) => b.latestDayMileage - a.latestDayMileage).slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, events: tracker.events.length })), [searchFiltered])
+  }), [filteredTrackers])
+  const offlineTrackers = useMemo(() => filteredTrackers.filter((tracker) => tracker.state.connection_status === 'offline'), [filteredTrackers])
+  const anomalyTrackers = useMemo(() => [...filteredTrackers].filter((tracker) => tracker.events.length > 3).sort((a, b) => b.events.length - a.events.length), [filteredTrackers])
+  const topDrivers = useMemo(() => [...filteredTrackers].sort((a, b) => b.latestDayMileage - a.latestDayMileage).slice(0, 5).map((tracker) => ({ name: tracker.employeeName, tracker: tracker.label, mileage: tracker.latestDayMileage, events: tracker.events.length })), [filteredTrackers])
   const connectionChart = [
     { name: 'Active', value: stats.active, color: '#22c55e' },
     { name: 'Offline', value: stats.offline, color: '#ef4444' },

@@ -20,8 +20,8 @@ test('un ticker serveur évalue les géofences et diffuse même sans navigateur'
 })
 
 test('MapPage consomme le SSE avec repli polling si le flux meurt', () => {
-  assert.match(mapSource, /new EventSource\(`\/api\/positions-live\/stream/)
-  assert.match(mapSource, /encodeURIComponent\(sessionToken\)/)
+  assert.match(mapSource, /new EventSource\(`\/api\/positions-live\/stream\?token=\$\{encodeURIComponent\(sseToken\)\}`/)
+  assert.match(mapSource, /fetchSseToken\(\)/)
   assert.match(mapSource, /eventSource\.onmessage/)
   assert.match(mapSource, /eventSource\.onerror/)
   assert.match(mapSource, /lastSseAt\.value < 9000/)

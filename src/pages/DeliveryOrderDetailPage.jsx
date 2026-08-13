@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, History, Loader2, MapPin, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, Circle, CircleDot, History, Loader2, MapPin, Plus, Printer, Trash2 } from 'lucide-react'
 import { StableDatePicker } from '../components/StableDatePicker'
 import { useNavigate, useParams } from 'react-router-dom'
 import { appendMissionTimeline, deleteDeliveryOrder, loadDeliveryOrder, loadMissionTimeline, updateDeliveryOrder } from '../lib/fleeti'
@@ -240,7 +240,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
               <option>Annulé</option>
             </select>
           </label>
-          <label className="toggle-row"><input type="checkbox" checked={!!(form?.active ?? order.active)} onChange={(e) => {
+          <label className="toggle-row"><input type="checkbox" role="switch" aria-checked={!!(form?.active ?? order.active)} checked={!!(form?.active ?? order.active)} onChange={(e) => {
             setForm(current => ({ ...current, active: e.target.checked }))
           }} disabled={saving} />Bon actif</label>
           <label className="field-stack">
@@ -337,7 +337,7 @@ export function DeliveryOrderDetailPage({ deliveryOrders, refreshData }) {
         <div className="mission-timeline-events" aria-label="Événements de la mission">
           {timeline.slice(0, 15).map((event) => (
             <div key={event.id} className={`timeline-row mission-event-row ${event.actor === 'auto' ? 'auto' : 'manual'}`}>
-              <div className="timeline-icon">{event.eventType === 'mission_arrived' ? '▲' : event.eventType === 'mission_at_depot' ? '⬤' : event.eventType === 'mission_left_site' || event.eventType === 'mission_left_depot' ? '▼' : '•'}</div>
+              <div className="timeline-icon">{event.eventType === 'mission_arrived' ? <ArrowUp size={14} /> : event.eventType === 'mission_at_depot' ? <CircleDot size={14} /> : (event.eventType === 'mission_left_site' || event.eventType === 'mission_left_depot') ? <ArrowDown size={14} /> : <Circle size={12} />}</div>
               <div>
                 <strong>{event.label || event.eventType}</strong>
                 <p>{event.at ? new Date(event.at).toLocaleString('fr-FR') : '-'}</p>

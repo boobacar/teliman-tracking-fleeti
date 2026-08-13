@@ -682,7 +682,7 @@ export function TripsReportPage({ filteredTrackers = [] }) {
           </div>
           <label className="field-stack">
             <span>Activité nulle</span>
-            <span><input type="checkbox" checked={showZeroActivity} onChange={(event) => setShowZeroActivity(event.target.checked)} /> Afficher les lignes sans activité</span>
+            <span><input type="checkbox" role="switch" aria-checked={showZeroActivity} checked={showZeroActivity} onChange={(event) => setShowZeroActivity(event.target.checked)} /> Afficher les lignes sans activité</span>
           </label>
         </div>
       </section>

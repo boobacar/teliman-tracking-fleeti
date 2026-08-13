@@ -260,8 +260,8 @@ export function AlertsPage({ importantEvents }) {
             const truckLabel = alert.label || alert.extra?.tracker_label || `Camion ${trackerId}`
             return (
               <article key={alert.key} className={`panel alert-lifecycle-card status-${alert.status} ${alert.escalated ? 'escalated' : ''}`}>
-                <div className="alert-card-main" role="button" tabIndex={0} onClick={() => toggleExpand(alert)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') toggleExpand(alert) }}>
-                  <div className="alert-status-badge"><span className={`status-dot status-${alert.status}`}></span><strong>{STATUS_LABELS[alert.status] || alert.status}</strong>{alert.escalated && <em className="alert-escalated-badge" title="Non traitée depuis plus de 24 h">⚠ Escaladée</em>}</div>
+                <div className="alert-card-main" role="button" tabIndex={0} aria-expanded={expanded} onClick={() => toggleExpand(alert)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') toggleExpand(alert) }}>
+                  <div className="alert-status-badge"><span className={`status-dot status-${alert.status}`}></span><strong>{STATUS_LABELS[alert.status] || alert.status}</strong>{alert.escalated && <em className="alert-escalated-badge" title="Non traitée depuis plus de 24 h"><AlertTriangle size={13} /> Escaladée</em>}</div>
                   <div className="alert-type-cell"><strong>{getAlertTypeLabel(alert.event)}</strong><small>{alert.message || ''}</small></div>
                   <div className="alert-driver-cell"><strong>{truckLabel}</strong><small>{alert.chauffeur || alert.extra?.employee_full_name || 'N/A'}</small></div>
                   <div className="alert-priority-cell"><span className={`priority-chip priority-${alert.effectivePriority}`}>{PRIORITY_LABELS[alert.effectivePriority] || alert.effectivePriority}</span></div>
