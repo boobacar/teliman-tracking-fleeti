@@ -5,6 +5,7 @@ import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, Layo
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
   { id: '/map', label: 'Live Map', icon: Map, permission: 'page_map' },
+  { id: '/geofences', label: 'Géofences & Alertes', icon: MapPinned, permission: 'manage_data' },
   { id: '/fleet', label: 'Flotte', icon: Car, permission: 'page_fleet' },
   { id: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, permission: 'page_whatsapp' },
   { id: '/alerts', label: 'Alertes', icon: Siren, permission: 'page_alerts' },
@@ -16,7 +17,6 @@ export const APP_VIEWS = [
   { id: '/fuel-vouchers', label: 'Bons Carburant', icon: Fuel, permission: 'manage_fuel_vouchers' },
   { id: '/oil-changes', label: 'Vidanges', icon: Droplet, permission: 'manage_delivery_orders' },
   { id: '/data', label: 'Données', icon: Database, permission: 'manage_data' },
-  { id: '/geofences', label: 'Géofences & Alertes', icon: MapPinned, permission: 'manage_data' },
   { id: '/admin-users', label: 'Utilisateurs', icon: Shield, permission: 'manage_users' },
 ]
 

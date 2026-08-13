@@ -640,11 +640,18 @@ export function deleteAlertRecipient(id) {
 
 // ── Geofence Events ──
 
-export function readGeofenceEvents(limit = 50) {
+export function readGeofenceEvents(limit = 50, offset = 0) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 500))
+  const safeOffset = Math.max(0, Number(offset) || 0)
   const rows = getDatabase()
-    .prepare('SELECT * FROM geofence_events ORDER BY id DESC LIMIT ?')
-    .all(Math.max(1, Math.min(Number(limit) || 50, 500)))
+    .prepare('SELECT * FROM geofence_events ORDER BY id DESC LIMIT ? OFFSET ?')
+    .all(safeLimit, safeOffset)
   return rows
+}
+
+export function countGeofenceEvents() {
+  const row = getDatabase().prepare('SELECT COUNT(*) AS total FROM geofence_events').get()
+  return Number(row?.total) || 0
 }
 
 export function insertGeofenceEvent(item) {

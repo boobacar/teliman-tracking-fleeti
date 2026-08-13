@@ -37,7 +37,7 @@ import {
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
   readMissionTimeline, appendMissionTimelineEvent,
   touchWhatsAppInbound, isWhatsAppWindowOpen, bumpWhatsAppOutbound, countWhatsAppContactsActiveSince,
-  readGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
+  readGeofenceEvents, countGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
 } from './src/backend/database.js'
 
 dotenv.config()
@@ -3056,7 +3056,8 @@ app.delete('/api/geofences/:id', requirePermission('manage_data'), (req, res) =>
 app.get('/api/geofence-events', (req, res) => {
   try {
     const limit = Number(req.query.limit) || 50
-    res.json({ ok: true, events: readGeofenceEvents(limit) })
+    const offset = Number(req.query.offset) || 0
+    res.json({ ok: true, events: readGeofenceEvents(limit, offset), total: countGeofenceEvents() })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
   }

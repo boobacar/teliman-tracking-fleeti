@@ -291,7 +291,7 @@ export const updateGeofence = (id, payload) => fetchJson(`/api/geofences/${id}`,
   body: JSON.stringify(payload),
 })
 export const deleteGeofence = (id) => fetchJson(`/api/geofences/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
-export const loadGeofenceEvents = (limit = 50) => getJson(`/api/geofence-events?limit=${limit}`)
+export const loadGeofenceEvents = ({ limit = 50, offset = 0 } = {}) => getJson(`/api/geofence-events?limit=${limit}&offset=${offset}`)
 export const loadAlertRecipients = () => getJson('/api/alert-recipients')
 export const createAlertRecipient = (payload) => postJson('/api/alert-recipients', payload)
 export const updateAlertRecipient = (id, payload) => fetchJson(`/api/alert-recipients/${id}`, {

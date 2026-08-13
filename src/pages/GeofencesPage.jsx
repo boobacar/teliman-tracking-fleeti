@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { Bell, BellOff, CirclePlus, MapPin, Phone, Plus, Save, Trash2, X } from 'lucide-react'
 import { ErrorBanner, EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
+import { Pagination } from '../components/Pagination'
 import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 import {
   createAlertRecipient,
@@ -30,6 +31,8 @@ const GEOFENCE_TYPES = [
 const TYPE_LABELS = Object.fromEntries(GEOFENCE_TYPES.map((item) => [item.value, item.label]))
 
 const GEOFENCE_COLORS = ['#946239', '#22c55e', '#f59e0b', '#38bdf8', '#ef4444', '#a855f7']
+
+const EVENTS_PAGE_SIZE = 10
 
 const EMPTY_FORM = {
   id: null,
@@ -182,17 +185,31 @@ export function GeofencesPage() {
   const [recipientForm, setRecipientForm] = useState({ name: '', phone: '', active: true })
   const [recipientSaving, setRecipientSaving] = useState(false)
 
+  const [eventsPage, setEventsPage] = useState(1)
+  const [eventsTotal, setEventsTotal] = useState(0)
+
+  const loadEvents = useCallback(async (page) => {
+    const safePage = Math.max(1, Number(page) || 1)
+    try {
+      const payload = await loadGeofenceEvents({ limit: EVENTS_PAGE_SIZE, offset: (safePage - 1) * EVENTS_PAGE_SIZE })
+      setEvents(payload.events || [])
+      setEventsTotal(payload.total || 0)
+    } catch (err) {
+      setEvents([])
+      setEventsTotal(0)
+      setError(err.message || 'Impossible de charger les événements.')
+    }
+  }, [])
+
   const refresh = useCallback(async () => {
     setError('')
     try {
-      const [geofencePayload, recipientPayload, eventsPayload] = await Promise.all([
+      const [geofencePayload, recipientPayload] = await Promise.all([
         loadGeofences(),
         loadAlertRecipients(),
-        loadGeofenceEvents(50),
       ])
       setGeofences(geofencePayload.geofences || [])
       setRecipients(recipientPayload.recipients || [])
-      setEvents(eventsPayload.events || [])
     } catch (err) {
       setError(err.message || 'Impossible de charger les géofences.')
     } finally {
@@ -204,8 +221,14 @@ export function GeofencesPage() {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    void loadEvents(eventsPage)
+  }, [eventsPage, loadEvents])
+
   const activeCount = useMemo(() => geofences.filter((zone) => zone.active).length, [geofences])
   const activeRecipientCount = useMemo(() => recipients.filter((recipient) => recipient.active).length, [recipients])
+  const eventsTotalPages = Math.max(1, Math.ceil(eventsTotal / EVENTS_PAGE_SIZE))
+  const safeEventsPage = Math.min(eventsPage, eventsTotalPages)
 
   function startCreate() {
     setForm(EMPTY_FORM)
@@ -368,7 +391,7 @@ export function GeofencesPage() {
           <div className="ui-kpi-row">
             <div className="mini-kpi"><span>Zones actives</span><strong>{activeCount}</strong></div>
             <div className="mini-kpi"><span>Numéros d’alerte</span><strong>{activeRecipientCount}</strong></div>
-            <div className="mini-kpi"><span>Événements récents</span><strong>{events.length}</strong></div>
+            <div className="mini-kpi"><span>Événements récents</span><strong>{eventsTotal}</strong></div>
           </div>
         }
       />
@@ -543,7 +566,7 @@ export function GeofencesPage() {
         <SectionHeader
           title="Derniers événements de zone"
           description="Entrées et sorties détectées automatiquement sur les positions live."
-          right={<button type="button" className="ghost-btn" onClick={refresh}><CirclePlus size={18} />Actualiser</button>}
+          right={<button type="button" className="ghost-btn" onClick={() => loadEvents(eventsPage)}><CirclePlus size={18} />Actualiser</button>}
         />
         {events.length === 0 && !loading && <EmptyBanner message="Aucun événement pour l’instant. Les franchissements seront listés ici." />}
         {events.length > 0 && (
@@ -570,6 +593,7 @@ export function GeofencesPage() {
             </table>
           </div>
         )}
+        <Pagination page={safeEventsPage} totalPages={eventsTotalPages} total={eventsTotal} onPageChange={setEventsPage} />
       </section>
 
       {confirmationDialog}
