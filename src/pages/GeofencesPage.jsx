@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Bell, BellOff, CirclePlus, MapPin, Phone, Plus, Save, Trash2, X } from 'lucide-react'
+import { Bell, BellOff, MapPin, Phone, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
 import { ErrorBanner, EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { Pagination } from '../components/Pagination'
@@ -566,7 +566,7 @@ export function GeofencesPage() {
         <SectionHeader
           title="Derniers événements de zone"
           description="Entrées et sorties détectées automatiquement sur les positions live."
-          right={<button type="button" className="ghost-btn" onClick={() => loadEvents(eventsPage)}><CirclePlus size={18} />Actualiser</button>}
+          right={<button type="button" className="ghost-btn" onClick={() => loadEvents(eventsPage)}><RefreshCw size={18} /> Actualiser</button>}
         />
         {events.length === 0 && !loading && <EmptyBanner message="Aucun événement pour l’instant. Les franchissements seront listés ici." />}
         {events.length > 0 && (

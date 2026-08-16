@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Trash2, AlertCircle, Clock } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Gauge, Droplet, Wrench, Trash2, AlertCircle, Clock, RefreshCw } from 'lucide-react'
 import { EmptyBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { SkeletonTable } from '../components/Skeleton'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
@@ -290,7 +290,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {odometerError && <span style={{ color: '#ef4444', fontSize: 12 }}>{odometerError}</span>}
               <button type="button" className="ghost-btn small-btn" onClick={reloadOdometer} disabled={odometerLoading}>
-                {odometerLoading ? 'Actualisation…' : 'Actualiser'}
+                <RefreshCw size={16} className={odometerLoading ? 'spin' : ''} /> {odometerLoading ? 'Actualisation…' : 'Actualiser'}
               </button>
             </div>
           }
