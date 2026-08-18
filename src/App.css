@@ -4231,6 +4231,31 @@ body {
   margin-top: auto;
 }
 
+/* Sidebar desktop : en-tête fixe (logo/refresh/utilisateur), nav scrollable, pied (déconnexion/version) toujours visible */
+@media (min-width: 1101px) {
+  .sidebar.premium-sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar.premium-sidebar > * {
+    flex: 0 0 auto;
+  }
+  .sidebar.premium-sidebar .view-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .sidebar.premium-sidebar .view-nav::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar.premium-sidebar .view-nav::-webkit-scrollbar-thumb {
+    background: rgba(35, 81, 31, 0.35);
+    border-radius: 999px;
+  }
+}
+
 .dashboard-page {
   gap: 12px;
 }
