@@ -4232,60 +4232,110 @@ body {
 }
 
 .dashboard-page {
-  gap: 16px;
+  gap: 12px;
 }
 
 /* ── Dashboard compact (sections resserrées) ── */
 .dashboard-page .panel {
-  padding: 16px;
-  border-radius: 18px;
+  padding: 14px;
+  border-radius: 16px;
 }
 
 .dashboard-page .panel-large {
-  padding: 18px;
+  padding: 16px;
 }
 
 .dashboard-page .ui-section-header {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .dashboard-page .dashboard-watch-list,
 .dashboard-page .driver-ranking {
-  gap: 8px;
+  gap: 6px;
 }
 
 .dashboard-page .dashboard-watch-row,
 .dashboard-page .driver-rank-row--dashboard {
-  padding: 10px 12px;
+  padding: 8px 10px;
   gap: 10px;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .dashboard-page .dashboard-watch-row__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
 }
 
 .dashboard-page .dashboard-card-grid {
   gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .dashboard-page .dashboard-vehicle-card,
 .dashboard-page .dashboard-sensor-card {
-  padding: 12px;
-  gap: 8px;
+  padding: 10px 12px;
+  gap: 6px;
   border-radius: 12px;
+}
+
+.dashboard-page .dashboard-vehicle-card {
+  grid-template-columns: 1fr 1fr;
+  column-gap: 14px;
+}
+
+.dashboard-page .dashboard-vehicle-card > div:first-child {
+  grid-column: 1 / -1;
+}
+
+.dashboard-page .dashboard-sensor-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dashboard-page .dashboard-sensor-card__head strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.dashboard-page .dashboard-sensor-card__head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.dashboard-page .dashboard-sensor-card__head .is-online {
+  color: #4ade80;
+}
+
+.dashboard-page .dashboard-sensor-card__head .is-offline {
+  color: var(--ops-muted);
+}
+
+.dashboard-page .dashboard-sensor-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--ops-muted);
 }
 
 .dashboard-page .fleet-situation-table th,
 .dashboard-page .fleet-situation-table td {
-  padding: 8px 10px;
+  padding: 7px 10px;
 }
 
 .dashboard-page .dashboard-inline-stats {
-  margin-top: 10px;
-  gap: 8px;
+  margin-top: 8px;
+  gap: 6px;
 }
 
 .panel {
@@ -4526,9 +4576,12 @@ body {
 }
 
 .dashboard-grid--primary,
-.dashboard-grid--secondary,
-.dashboard-grid--tertiary {
+.dashboard-grid--secondary {
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+}
+
+.dashboard-grid--tertiary {
+  grid-template-columns: 1fr 1fr;
 }
 
 .dashboard-chart-panel .recharts-wrapper {

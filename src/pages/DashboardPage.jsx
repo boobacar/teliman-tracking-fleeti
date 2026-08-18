@@ -46,8 +46,7 @@ function WatchList({ items, icon, emptyMessage, renderMeta }) {
           <div className="dashboard-watch-row__icon">{icon}</div>
           <div className="dashboard-watch-row__body">
             <strong>{tracker.label}</strong>
-            <p>{tracker.employeeName}</p>
-            <span>{renderMeta(tracker)}</span>
+            <p>{[tracker.employeeName, renderMeta(tracker)].filter(Boolean).join(' · ')}</p>
           </div>
         </article>
       ))}
@@ -428,7 +427,7 @@ export function DashboardPage({
             right={<span className="data-phase-chip">Vue exploit.</span>}
           />
 
-          <ResponsiveContainer width="100%" height={210}>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={mileageData}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
               <XAxis dataKey="name" stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
@@ -448,9 +447,9 @@ export function DashboardPage({
 
         <div className="panel dashboard-pie-panel">
           <SectionHeader title="Répartition flotte" description="Connectivité live" />
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={130}>
             <PieChart>
-              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={52} outerRadius={80} paddingAngle={4}>
+              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={42} outerRadius={60} paddingAngle={4}>
                 {dashboardConnectionChart.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
@@ -599,14 +598,17 @@ export function DashboardPage({
             <div className="dashboard-card-grid">
               {filteredOdo.map((entry) => (
                 <article key={entry.trackerId || entry.id} className="dashboard-sensor-card">
-                  <strong>{entry.truckLabel || entry.label || '-'}</strong>
-                  <span>Km: {entry.odometer != null ? `${Number(entry.odometer).toLocaleString('fr-FR')} km` : '-'}</span>
-                  <span>Vitesse: {entry.speed != null ? `${entry.speed} km/h` : '-'}</span>
-                  <span>
-                    <Radio size={12} />{' '}
-                    {entry.isOnline ? 'En ligne' : 'Hors ligne'}
-                  </span>
-                  <span>MàJ: {entry.lastUpdate ? new Date(entry.lastUpdate).toLocaleTimeString('fr-FR') : '-'}</span>
+                  <div className="dashboard-sensor-card__head">
+                    <strong>{entry.truckLabel || entry.label || '-'}</strong>
+                    <span className={entry.isOnline ? 'is-online' : 'is-offline'}>
+                      <Radio size={12} /> {entry.isOnline ? 'En ligne' : 'Hors ligne'}
+                    </span>
+                  </div>
+                  <div className="dashboard-sensor-card__meta">
+                    <span>Km: {entry.odometer != null ? `${Number(entry.odometer).toLocaleString('fr-FR')} km` : '-'}</span>
+                    <span>{entry.speed != null ? `${entry.speed} km/h` : '-'}</span>
+                    <span>{entry.lastUpdate ? new Date(entry.lastUpdate).toLocaleTimeString('fr-FR') : '—'}</span>
+                  </div>
                 </article>
               ))}
             </div>
