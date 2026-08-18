@@ -36,7 +36,7 @@ export const fuelVoucherSchema = z.object({
   dateTime: z.string().trim().min(1, 'Date requise'),
   quantityLiters: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Quantité ≥ 0')),
   unitPrice: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().min(0, 'Prix ≥ 0')),
-  amount: z.union([z.string(), z.number()]).transform((v) => Number(v)).pipe(z.number().optional()),
+  amount: z.union([z.string(), z.number()]).transform((v) => Number(v)).optional(),
   proofPhotoDataUrl: z.string().max(7_000_000).optional(),
   proofPhotoDataUrls: z.array(z.string().max(7_000_000)).max(10).optional(),
   notes: z.string().trim().optional(),

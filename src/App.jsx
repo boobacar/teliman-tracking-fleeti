@@ -446,7 +446,7 @@ function App() {
   }
 
   return (
-    <Layout loading={loading} refreshData={refreshData} currentUser={currentUser} onLogout={handleLogout}>
+    <Layout currentUser={currentUser} onLogout={handleLogout}>
       {(serviceIssue ? null : error) && <div className="error-banner" role="alert">{error}</div>}
       {refreshToastVisible && <div className={`refresh-toast${loading ? ' is-loading' : ''}`} role="status" aria-live="polite">Actualisation des données flotte en cours...</div>}
       {location.pathname === '/' && isEmptySearch && <div className="empty-banner">Aucun résultat trouvé. Essaie un autre tracker, chauffeur ou filtre.</div>}

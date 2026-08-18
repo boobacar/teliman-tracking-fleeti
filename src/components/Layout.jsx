@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, MapPinned, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, MapPinned, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, ReceiptText, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
 
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
@@ -20,7 +20,7 @@ export const APP_VIEWS = [
   { id: '/admin-users', label: 'Utilisateurs', icon: Shield, permission: 'manage_users' },
 ]
 
-export function Layout({ children, loading, refreshData, currentUser, onLogout }) {
+export function Layout({ children, currentUser, onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const menuButtonRef = useRef(null)
@@ -72,11 +72,6 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
             </button>
           </div>
         </div>
-
-        <button type="button" className="primary-btn" onClick={refreshData} disabled={loading}>
-          <RefreshCw size={16} className={loading ? 'spin' : ''} />
-          {loading ? 'Actualisation...' : 'Rafraîchir'}
-        </button>
 
         <div className="sidebar-user-card">
           <strong>Connecté</strong>
