@@ -4232,7 +4232,60 @@ body {
 }
 
 .dashboard-page {
-  gap: 22px;
+  gap: 16px;
+}
+
+/* ── Dashboard compact (sections resserrées) ── */
+.dashboard-page .panel {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.dashboard-page .panel-large {
+  padding: 18px;
+}
+
+.dashboard-page .ui-section-header {
+  margin-bottom: 10px;
+}
+
+.dashboard-page .dashboard-watch-list,
+.dashboard-page .driver-ranking {
+  gap: 8px;
+}
+
+.dashboard-page .dashboard-watch-row,
+.dashboard-page .driver-rank-row--dashboard {
+  padding: 10px 12px;
+  gap: 10px;
+  border-radius: 12px;
+}
+
+.dashboard-page .dashboard-watch-row__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.dashboard-page .dashboard-card-grid {
+  gap: 8px;
+}
+
+.dashboard-page .dashboard-vehicle-card,
+.dashboard-page .dashboard-sensor-card {
+  padding: 12px;
+  gap: 8px;
+  border-radius: 12px;
+}
+
+.dashboard-page .fleet-situation-table th,
+.dashboard-page .fleet-situation-table td {
+  padding: 8px 10px;
+}
+
+.dashboard-page .dashboard-inline-stats {
+  margin-top: 10px;
+  gap: 8px;
 }
 
 .panel {

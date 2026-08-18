@@ -348,94 +348,6 @@ export function DashboardPage({
         </section>
       )}
 
-      <section className="dashboard-grid dashboard-grid--primary">
-        <div className="panel panel-large dashboard-chart-panel">
-          <SectionHeader
-            title="Kilométrage du jour"
-            description="Classement des unités les plus actives"
-            right={<span className="data-phase-chip">Vue exploit.</span>}
-          />
-
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={mileageData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="name" stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
-              <YAxis stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
-              <Tooltip
-                contentStyle={{
-                  background: '#0b1220',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  borderRadius: 16,
-                  color: '#e2e8f0',
-                }}
-              />
-              <Bar dataKey="mileage" fill="#946239" radius={[10, 10, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="panel dashboard-pie-panel">
-          <SectionHeader title="Répartition flotte" description="Connectivité live" />
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={72} outerRadius={102} paddingAngle={4}>
-                {dashboardConnectionChart.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: '#0b1220',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  borderRadius: 16,
-                  color: '#e2e8f0',
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="dashboard-inline-stats">
-            <span><CheckCircle size={14} /> {dashboardStats.active} actifs</span>
-            <span><WifiOff size={14} /> {dashboardStats.offline} offline</span>
-            <span><Signal size={14} /> {dashboardStats.total - dashboardStats.active - dashboardStats.offline} autres</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="dashboard-grid dashboard-grid--secondary">
-        <div className="panel panel-large">
-          <SectionHeader
-            title="Camions à surveiller en priorité"
-            description="Classement par nombre d’alertes détectées"
-          />
-          <WatchList
-            items={dashboardPriorityTrackers.slice(0, 5)}
-            icon={<ShieldAlert size={16} />}
-            emptyMessage="Aucun camion prioritaire pour le moment."
-            renderMeta={(tracker) => `${tracker.events.length} événements · ${tracker.eventCounts.speedup || 0} excès de vitesse`}
-          />
-        </div>
-
-        <div className="panel">
-          <SectionHeader title="Chauffeurs les plus actifs" description="Classement par kilométrage du jour" />
-          <div className="driver-ranking">
-            {dashboardTopDrivers.map((driver, index) => (
-              <div key={`${driver.name}-${index}`} className="driver-rank-row driver-rank-row--dashboard">
-                <strong>#{index + 1}</strong>
-                <div>
-                  <span>{driver.name}</span>
-                  <small>{driver.tracker}</small>
-                </div>
-                <div>
-                  <span>{driver.mileage} km</span>
-                  <small>{driver.events} événements</small>
-                </div>
-              </div>
-            ))}
-            {!dashboardTopDrivers.length && <EmptyBanner message="Aucune donnée chauffeur disponible." />}
-          </div>
-        </div>
-      </section>
-
       <section className="panel fleet-situation-panel" aria-label="Situation flotte">
         <SectionHeader
           title="Situation flotte"
@@ -506,6 +418,94 @@ export function DashboardPage({
             </table>
           </div>
         )}
+      </section>
+
+      <section className="dashboard-grid dashboard-grid--primary">
+        <div className="panel panel-large dashboard-chart-panel">
+          <SectionHeader
+            title="Kilométrage du jour"
+            description="Classement des unités les plus actives"
+            right={<span className="data-phase-chip">Vue exploit.</span>}
+          />
+
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={mileageData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="name" stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
+              <YAxis stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={{
+                  background: '#0b1220',
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  borderRadius: 16,
+                  color: '#e2e8f0',
+                }}
+              />
+              <Bar dataKey="mileage" fill="#946239" radius={[10, 10, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="panel dashboard-pie-panel">
+          <SectionHeader title="Répartition flotte" description="Connectivité live" />
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={52} outerRadius={80} paddingAngle={4}>
+                {dashboardConnectionChart.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  background: '#0b1220',
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  borderRadius: 16,
+                  color: '#e2e8f0',
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="dashboard-inline-stats">
+            <span><CheckCircle size={14} /> {dashboardStats.active} actifs</span>
+            <span><WifiOff size={14} /> {dashboardStats.offline} offline</span>
+            <span><Signal size={14} /> {dashboardStats.total - dashboardStats.active - dashboardStats.offline} autres</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="dashboard-grid dashboard-grid--secondary">
+        <div className="panel panel-large">
+          <SectionHeader
+            title="Camions à surveiller en priorité"
+            description="Classement par nombre d’alertes détectées"
+          />
+          <WatchList
+            items={dashboardPriorityTrackers.slice(0, 5)}
+            icon={<ShieldAlert size={16} />}
+            emptyMessage="Aucun camion prioritaire pour le moment."
+            renderMeta={(tracker) => `${tracker.events.length} événements · ${tracker.eventCounts.speedup || 0} excès de vitesse`}
+          />
+        </div>
+
+        <div className="panel">
+          <SectionHeader title="Chauffeurs les plus actifs" description="Classement par kilométrage du jour" />
+          <div className="driver-ranking">
+            {dashboardTopDrivers.map((driver, index) => (
+              <div key={`${driver.name}-${index}`} className="driver-rank-row driver-rank-row--dashboard">
+                <strong>#{index + 1}</strong>
+                <div>
+                  <span>{driver.name}</span>
+                  <small>{driver.tracker}</small>
+                </div>
+                <div>
+                  <span>{driver.mileage} km</span>
+                  <small>{driver.events} événements</small>
+                </div>
+              </div>
+            ))}
+            {!dashboardTopDrivers.length && <EmptyBanner message="Aucune donnée chauffeur disponible." />}
+          </div>
+        </div>
       </section>
 
       <section className="dashboard-grid dashboard-grid--tertiary">
