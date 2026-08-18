@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createWhatsAppQueue, dayKey } from '../src/backend/whatsappQueue.js'
+import { createWhatsAppQueue, dayKey, makeWarmupDailyLimit } from '../src/backend/whatsappQueue.js'
 import { buildWhatsAppConfigFromEnv, sendWhatsAppTextMessage } from '../src/backend/whatsappNotifications.js'
 
 test('dayKey bascule à minuit', () => {
@@ -123,4 +123,63 @@ test('sendWhatsAppTextMessage bascule sur template quand Meta rejette le texte h
   assert.deepEqual(calls, ['text', 'template'])
   assert.equal(result.sent, true)
   assert.equal(result.messageId, 'wamid-fallback')
+})
+
+test('la file applique un jitter quand minIntervalMs est une plage', async () => {
+  const sentAt = []
+  const queue = createWhatsAppQueue({
+    sendFn: async () => { sentAt.push(Date.now()); return { sent: true } },
+    minIntervalMs: { min: 30, max: 60 },
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  queue.enqueue({ to: 'c' })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  queue.stop()
+  assert.equal(sentAt.length, 3)
+  assert.ok(sentAt[1] - sentAt[0] >= 25, `écart 1-2=${sentAt[1] - sentAt[0]}ms`)
+  assert.ok(sentAt[2] - sentAt[1] >= 25, `écart 2-3=${sentAt[2] - sentAt[1]}ms`)
+})
+
+test('la file applique un warm-up progressif via une fonction dailyLimit', async () => {
+  const queue = createWhatsAppQueue({
+    sendFn: async () => ({ sent: true }),
+    minIntervalMs: 5,
+    dailyLimit: makeWarmupDailyLimit({ start: 2, rampPerDay: 1, max: 10 }),
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  queue.enqueue({ to: 'c' })
+  queue.enqueue({ to: 'd' })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  queue.stop()
+  const status = queue.status()
+  assert.equal(status.sentToday, 2, 'jour 0 : plafond = start (2)')
+  assert.equal(status.queued, 2, 'les 2 suivants restent en file')
+})
+
+test('le circuit-breaker met la file en pause après trop d’échecs consécutifs puis reprend', async () => {
+  let attempts = 0
+  const queue = createWhatsAppQueue({
+    sendFn: async () => { attempts += 1; return { sent: false, skipped: false, reason: '5xx' } },
+    minIntervalMs: 10,
+    maxRetries: 0,
+    circuitBreaker: { maxConsecutiveFailures: 2, cooldownMs: 150 },
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  let status = queue.status()
+  assert.equal(attempts, 2)
+  assert.equal(status.paused, true, 'pause déclenchée après 2 échecs consécutifs')
+  assert.ok(status.pausedUntil > Date.now(), 'pausedUntil dans le futur')
+
+  // Après le cooldown, la file reprend
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  queue.enqueue({ to: 'c' })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  queue.stop()
+  status = queue.status()
+  assert.equal(status.paused, false, 'pause levée après cooldown')
+  assert.equal(attempts, 3, 'le 3e job part après le cooldown')
 })

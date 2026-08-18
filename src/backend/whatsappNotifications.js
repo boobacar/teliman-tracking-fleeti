@@ -226,6 +226,7 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
     queueEnabled: String(env.WHATSAPP_QUEUE_ENABLED ?? 'true').toLowerCase() !== 'false',
     // Injectés au démarrage du serveur (pas depuis l'environnement)
     queue: null,
+    baileysQueue: null,
     windowCheck: null,
   }
 }
@@ -237,6 +238,12 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   if (config.enabled === false) return { sent: false, skipped: true, reason: 'Notifications WhatsApp désactivées.' }
   if (config.provider === 'baileys') {
     if (!baileysClient) return { sent: false, skipped: true, reason: 'Client Baileys non démarré.' }
+    // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker (protection anti-ban)
+    if (config.baileysQueue) {
+      const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context }
+      config.baileysQueue.enqueue(job)
+      return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient }
+    }
     return baileysClient.sendText(recipient, message)
   }
   if (!config.accessToken || !config.phoneNumberId) {

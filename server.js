@@ -15,7 +15,7 @@ import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { isWebhookChallengeValid, normalizeWhatsAppPhone as normalizeWhatsAppApiPhone, parseWhatsAppWebhook } from './src/backend/whatsappApi.js'
-import { createWhatsAppQueue } from './src/backend/whatsappQueue.js'
+import { createWhatsAppQueue, makeWarmupDailyLimit } from './src/backend/whatsappQueue.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
 import { buildMissionTimelineEvent, planMissionStatusChange } from './src/backend/missionWorkflow.js'
@@ -684,28 +684,50 @@ async function appendWhatsAppHistory(entries) {
   return writeWhatsAppHistory([...newEntries, ...readWhatsAppHistory()])
 }
 
-// ── File d'attente WhatsApp (throttle ~1 msg/s, retry, quotas journaliers) ──
+// ── Files d'attente WhatsApp ──
+// File Meta : throttle ~1 msg/s, retry, quotas journaliers.
+// File Baileys : jitter 3-6 s, warm-up progressif, circuit-breaker (protection anti-ban).
+async function whatsAppQueueOnResult(result, job) {
+  if (!result || result.queued) return
+  const context = job.context || {}
+  await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+    result: { ...result, recipient: job.to, eventType: context.eventType || '' },
+    order: context.order || { id: '', reference: job.to, client: context.eventType || '' },
+    message: job.message,
+    source: context.source || 'whatsapp_queue',
+    senderPhone: '',
+  }))
+  if (result.sent) console.log(`[whatsapp] envoyé à ${job.to} (${context.source || 'file'})`)
+  else if (result.errorKind === 'reachout_timelock') console.warn(`[whatsapp] 463 ${job.to}: ${result.reason || 'contact sans historique récent'}`)
+  else console.warn(`[whatsapp] échec ${job.to}: ${result.reason || 'raison inconnue'}`)
+}
+
 const whatsappSendQueue = createWhatsAppQueue({
   sendFn: async (job) => {
     const result = await sendWhatsAppTextMessage({ to: job.to, message: job.message, config: job.config, fetchImpl: job.fetchImpl })
     if (result.sent && job.to) bumpWhatsAppOutbound(job.to)
     return result
   },
-  onResult: async (result, job) => {
-    if (!result || result.queued) return
-    const context = job.context || {}
-    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
-      result: { ...result, recipient: job.to, eventType: context.eventType || '' },
-      order: context.order || { id: '', reference: job.to, client: context.eventType || '' },
-      message: job.message,
-      source: context.source || 'whatsapp_queue',
-      senderPhone: '',
-    }))
-    if (result.sent) console.log(`[whatsapp] envoyé à ${job.to} (${context.source || 'file'})`)
-    else console.warn(`[whatsapp] échec ${job.to}: ${result.reason || 'raison inconnue'}`)
-  },
+  onResult: whatsAppQueueOnResult,
 })
 WHATSAPP_CONFIG.queue = WHATSAPP_CONFIG.queueEnabled ? whatsappSendQueue : null
+
+// File dédiée Baileys : protections anti-ban actives uniquement en provider baileys.
+const whatsappBaileysQueue = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys' && WHATSAPP_CONFIG.queueEnabled && baileysWhatsAppClient
+  ? createWhatsAppQueue({
+      sendFn: async (job) => {
+        const result = await sendWhatsAppTextMessage({ to: job.to, message: job.message, config: job.config, baileysClient: baileysWhatsAppClient, fetchImpl: job.fetchImpl })
+        if (result.sent && job.to) bumpWhatsAppOutbound(job.to)
+        return result
+      },
+      onResult: whatsAppQueueOnResult,
+      minIntervalMs: { min: 3000, max: 6000 },
+      maxRetries: 1,
+      dailyLimit: makeWarmupDailyLimit({ start: 30, rampPerDay: 20, max: 150 }),
+      circuitBreaker: { maxConsecutiveFailures: 5, cooldownMs: 10 * 60 * 1000 },
+    })
+  : null
+WHATSAPP_CONFIG.baileysQueue = whatsappBaileysQueue
 WHATSAPP_CONFIG.windowCheck = isWhatsAppWindowOpen
 
 async function notifyDeliveryOrderWhatsApp(previousOrder, order) {

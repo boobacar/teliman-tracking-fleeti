@@ -217,6 +217,7 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
     webhookVerifyToken: '',
     queueEnabled: true,
     queue: null,
+    baileysQueue: null,
     windowCheck: null,
   })
 })
@@ -388,4 +389,76 @@ test('createWhatsAppHistoryEntry construit une ligne historique sans secrets et 
   assert.equal(entry.sentAt, '2026-05-06T15:00:00.000Z')
   assert.ok(entry.messagePreview.length <= 180)
   assert.equal(entry.accessToken, undefined)
+})
+
+test('sendWhatsAppTextMessage route Baileys via la file dédiée quand config.baileysQueue est présent', async () => {
+  const jobs = []
+  const baileysClient = { sendText: async () => ({ sent: true }) }
+  const config = buildWhatsAppConfigFromEnv({ WHATSAPP_PROVIDER: 'baileys' })
+  const result = await sendWhatsAppTextMessage({
+    to: '+225 07 01 02 03 04',
+    message: 'Alerte via Baileys',
+    config: { ...config, baileysQueue: { enqueue: (job) => jobs.push(job) } },
+    baileysClient,
+  })
+  assert.equal(result.queued, true)
+  assert.equal(jobs.length, 1)
+  assert.equal(jobs[0].to, '2250701020304')
+  assert.equal(jobs[0].config.baileysQueue, null) // pas de récursion
+})
+
+test('createBaileysWhatsAppClient détecte l’erreur 463 (Reachout Timelock) sans la retenter', async () => {
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async () => {
+        const error = new Error('NackCallerReachoutTimelocked')
+        error.output = { statusCode: 463 }
+        throw error
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async (qr) => `data:image/png;base64,${Buffer.from(qr).toString('base64')}`,
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+225 07 01 02 03 04', 'Message bloqué')
+  assert.equal(result.sent, false)
+  assert.equal(result.skipped, false)
+  assert.equal(result.errorKind, 'reachout_timelock')
+  assert.equal(result.statusCode, 463)
+  assert.match(result.reason, /463/)
+})
+
+test('createBaileysWhatsAppClient arrête la reconnexion sur session révoquée (403)', async () => {
+  const handlers = {}
+  let socketCreations = 0
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => {
+      socketCreations += 1
+      return {
+        ev: { on: (name, handler) => { handlers[name] = handler } },
+        onWhatsApp: async (jid) => [{ jid, exists: true }],
+        sendMessage: async () => ({ key: { id: 'MSG' } }),
+      }
+    },
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async (qr) => `data:image/png;base64,${Buffer.from(qr).toString('base64')}`,
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  await handlers['connection.update']({ connection: 'close', lastDisconnect: { error: { output: { statusCode: 403 }, message: 'logged out' } } })
+
+  assert.equal(client.getStatus().state, 'loggedOut')
+  assert.match(client.getStatus().lastError, /révoquée|403/)
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  assert.equal(socketCreations, 1, 'aucun socket recréé après un 403')
 })

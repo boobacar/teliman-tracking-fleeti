@@ -65,6 +65,20 @@ export function createBaileysWhatsAppClient({
       return { sent: true, messageId: result?.key?.id || '' }
     } catch (error) {
       lastError = error?.message || 'Erreur envoi Baileys.'
+      const statusCode = error?.output?.statusCode ?? error?.statusCode ?? error?.data?.statusCode ?? error?.data?.error
+      const isReachoutTimelock = statusCode === 463 || /(^|[^0-9])463([^0-9]|$)|reachout|timelock/i.test(lastError)
+      // Erreur 463 (Reachout Timelock) : contact sans historique récent. Ne JAMAIS réessayer
+      // (le retry aggrave le risque) → marqué errorKind pour que la file ne le retente pas.
+      if (isReachoutTimelock) {
+        logger.warn?.(`[baileys] Erreur 463 (Reachout Timelock) pour ${jid} — envoi interrompu.`)
+        return {
+          sent: false,
+          skipped: false,
+          errorKind: 'reachout_timelock',
+          statusCode: 463,
+          reason: 'Contact sans historique récent (erreur 463 Reachout Timelock). Envoi interrompu pour protéger le numéro.',
+        }
+      }
       return { sent: false, skipped: false, reason: lastError }
     }
   }
@@ -121,6 +135,19 @@ export function createBaileysWhatsAppClient({
       state = 'disconnected'
       connectedAt = null
       lastError = update.lastDisconnect?.error?.message || ''
+      const disconnectError = update.lastDisconnect?.error
+      const statusCode = disconnectError?.output?.statusCode ?? disconnectError?.statusCode ?? disconnectError?.data?.statusCode
+      const isLoggedOut = statusCode === 403 || /logged.?out|session.*terminated/i.test(String(disconnectError?.message || ''))
+      // Session révoquée (403) : se reconnecter en boucle est inutile et suspect → arrêt, re-scan QR requis.
+      if (isLoggedOut) {
+        state = 'loggedOut'
+        lastError = 'Session WhatsApp révoquée ou expirée (403). Re-scannez le QR code pour reconnecter.'
+        started = false
+        socket = null
+        reconnectAttempts = 0
+        logger.warn?.(`[baileys] Session WhatsApp révoquée (403) — reconnexion automatique arrêtée. Re-scan QR requis.`)
+        return
+      }
       reconnectAttempts += 1
       if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
         logger.error?.(`[baileys] WhatsApp: ${MAX_RECONNECT_ATTEMPTS} tentatives échouées. Abandon de la reconnexion automatique. Redémarrez le serveur ou scannez le QR manuellement.`)
@@ -231,14 +258,14 @@ function resolveSocketFactory(socketFactory) {
 
 function createSilentBaileysLogger() {
   const logger = {
-    level: 'silent',
+    level: 'warn',
     child: () => logger,
     trace: () => {},
     debug: () => {},
     info: () => {},
-    warn: () => {},
-    error: () => {},
-    fatal: () => {},
+    warn: (...args) => console.warn('[baileys]', ...args),
+    error: (...args) => console.error('[baileys]', ...args),
+    fatal: (...args) => console.error('[baileys]', ...args),
   }
   return logger
 }
