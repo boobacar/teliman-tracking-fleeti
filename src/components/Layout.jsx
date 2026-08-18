@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, MapPinned, Menu, MessageCircle, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
+import { BarChart3, ChevronRight, Database, Droplet, FileSpreadsheet, Fuel, LayoutDashboard, LogOut, Map, MapPinned, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, ReceiptText, RefreshCw, Route, Shield, Siren, Users, X, Car } from 'lucide-react'
 
 export const APP_VIEWS = [
   { id: '/', label: 'Dashboard', icon: LayoutDashboard, permission: 'page_dashboard' },
@@ -22,6 +22,7 @@ export const APP_VIEWS = [
 
 export function Layout({ children, loading, refreshData, currentUser, onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const menuButtonRef = useRef(null)
   const closeButtonRef = useRef(null)
   const permissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : []
@@ -48,7 +49,7 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
   }, [mobileNavOpen])
 
   return (
-    <div className="app-shell premium-shell">
+    <div className={`app-shell premium-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <a className="skip-link" href="#main-content">Aller au contenu principal</a>
       <button ref={menuButtonRef} type="button" className="mobile-nav-toggle" onClick={() => setMobileNavOpen(true)} aria-expanded={mobileNavOpen} aria-controls="mobile-navigation">
         <span className="mobile-nav-toggle__icon"><Menu size={18} /></span>
@@ -60,6 +61,9 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
       </button>
 
       <aside id="mobile-navigation" className={`sidebar premium-sidebar ${mobileNavOpen ? 'mobile-open' : ''}`} aria-label="Navigation principale">
+        <button type="button" className="sidebar-toggle" onClick={() => setSidebarCollapsed(true)} aria-label="Masquer le menu latéral" title="Masquer le menu">
+          <PanelLeftClose size={18} />
+        </button>
         <div className="sidebar-brand-block">
           <div className="mobile-sidebar-header">
             <img src="/teliman-logistique-logo.jpg" alt="Teliman Logistique" className="sidebar-brand__logo" />
@@ -109,6 +113,12 @@ export function Layout({ children, loading, refreshData, currentUser, onLogout }
           <code>{__APP_COMMIT__}</code>
         </div>
       </aside>
+
+      {sidebarCollapsed && (
+        <button type="button" className="sidebar-toggle sidebar-toggle--floating" onClick={() => setSidebarCollapsed(false)} aria-label="Afficher le menu latéral" title="Afficher le menu">
+          <PanelLeftOpen size={18} />
+        </button>
+      )}
 
       <main id="main-content" tabIndex={-1} className="main-content premium-main">
         {children}
