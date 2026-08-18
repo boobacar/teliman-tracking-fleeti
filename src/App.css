@@ -4272,20 +4272,36 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+/* Les cartes assurances (dates RC/Libre) ont besoin de plus de largeur pour ne pas déborder */
+.dashboard-page .dashboard-card-grid:has(.dashboard-vehicle-card) {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
 .dashboard-page .dashboard-vehicle-card,
 .dashboard-page .dashboard-sensor-card {
   padding: 10px 12px;
   gap: 6px;
   border-radius: 12px;
-}
-
-.dashboard-page .dashboard-vehicle-card {
-  grid-template-columns: 1fr 1fr;
-  column-gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .dashboard-page .dashboard-vehicle-card > div:first-child {
-  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dashboard-page .dashboard-vehicle-card > div:first-child strong,
+.dashboard-page .dashboard-vehicle-card > div:first-child small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-page .dashboard-vehicle-card > div:first-child small {
+  flex: 1 1 auto;
 }
 
 .dashboard-page .dashboard-sensor-card__head {
@@ -4293,10 +4309,12 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .dashboard-page .dashboard-sensor-card__head strong {
   display: block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4305,6 +4323,7 @@ body {
 }
 
 .dashboard-page .dashboard-sensor-card__head span {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
