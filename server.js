@@ -179,10 +179,12 @@ app.use(cors(buildCorsOptions()))
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'same-origin' },
   contentSecurityPolicy: {
+    useDefaults: false,
     directives: {
       defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://server.arcgisonline.com', 'https://unpkg.com'],
       connectSrc: ["'self'", 'https://api.fleeti.co'], fontSrc: ["'self'", 'data:'], objectSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'self'"],
+      formAction: ["'self'"], scriptSrcAttr: ["'none'"],
     },
   },
 }))
