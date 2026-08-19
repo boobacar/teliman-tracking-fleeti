@@ -36,9 +36,27 @@ WHATSAPP_DEFAULT_TEMPLATE_NAME=teliman_notification
 WHATSAPP_TEMPLATE_LANGUAGE=fr
 WHATSAPP_WEBHOOK_VERIFY_TOKEN=<phrase secrète au choix, ex. teliman-wa-2026>
 WHATSAPP_QUEUE_ENABLED=true
+WHATSAPP_SEND_HOURS_START=7
+WHATSAPP_SEND_HOURS_END=21
 ```
 
 Puis : `pm2 restart teliman-tracking-fleeti --silent`
+
+## 3bis. Protections anti-ban Baileys (mode actuel)
+
+Le mode `WHATSAPP_PROVIDER=baileys` (transitoire) applique toutes les mitigations :
+
+| Protection | Paramètre | Valeur actuelle |
+|---|---|---|
+| Jitter « humain » entre messages | `minIntervalMs` de la file Baileys | 3-6 s aléatoire (~13 msg/min) |
+| Échauffement numéro (warm-up) | `makeWarmupDailyLimit` | 30/j → +20/j → plafond 150/j |
+| Circuit-breaker | `circuitBreaker` | pause 10 min après 5 échecs consécutifs |
+| Erreur 463 (Reachout Timelock) | `sendText` | **jamais retentée** + cooldown 24 h par destinataire |
+| Cooldown 463 | `WHATSAPP_BAILEYS_463_COOLDOWN_HOURS` | 24 h (défaut) |
+| Simulation de frappe | `WHATSAPP_BAILEYS_TYPING` | true — presence `composing` + délai 400-1200 ms avant envoi |
+| Fenêtre horaire naturelle | `WHATSAPP_SEND_HOURS_START/END` | 7 h → 21 h (heure serveur = Africa/Abidjan). Les notifications BL hors fenêtre attendent l'ouverture ; les **alertes flotte/géofence passent toujours** (`deferrable: false`). |
+| Session révoquée (403) | `connection.update` | arrêt de la reconnexion, re-scan QR requis |
+| Reconnexion | backoff exponentiel | 5 s → ×2 → max 5 min, 10 tentatives max |
 
 ## 4. Webhook (réponses + fenêtre 24 h + accusés)
 
