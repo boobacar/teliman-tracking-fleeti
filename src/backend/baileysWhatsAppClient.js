@@ -289,12 +289,12 @@ function resolveSocketFactory(socketFactory) {
   return async ({ auth }) => {
     const baileys = await import('@whiskeysockets/baileys')
     const makeWASocket = baileys.default || baileys.makeWASocket
-    const { version } = baileys.fetchLatestBaileysVersion
-      ? await baileys.fetchLatestBaileysVersion()
-      : { version: undefined }
+    // Ne PAS surcharger `version` avec fetchLatestBaileysVersion() : le package installé
+    // est une release candidate (7.0.0-rc13) et mélanger une version stable récupérée
+    // en ligne avec le code RC casse le handshake (« QR refs attempts ended », erreur 515).
+    // Sans `version`, makeWASocket utilise la version du package installé (cohérente).
     return makeWASocket({
       auth,
-      version,
       logger: createSilentBaileysLogger(),
       printQRInTerminal: false,
       browser: ['Teliman Logistique', 'Chrome', '1.0.0'],
