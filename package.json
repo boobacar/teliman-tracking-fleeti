@@ -26,6 +26,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "leaflet": "^1.9.4",
+    "link-preview-js": "^3.2.0",
     "lucide-react": "^1.7.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
