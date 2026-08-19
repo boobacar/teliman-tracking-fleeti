@@ -289,12 +289,16 @@ function resolveSocketFactory(socketFactory) {
   return async ({ auth }) => {
     const baileys = await import('@whiskeysockets/baileys')
     const makeWASocket = baileys.default || baileys.makeWASocket
-    // Ne PAS surcharger `version` avec fetchLatestBaileysVersion() : le package installé
-    // est une release candidate (7.0.0-rc13) et mélanger une version stable récupérée
-    // en ligne avec le code RC casse le handshake (« QR refs attempts ended », erreur 515).
-    // Sans `version`, makeWASocket utilise la version du package installé (cohérente).
+    // IMPORTANT : surcharger `version` avec fetchLatestBaileysVersion() est OBLIGATOIRE.
+    // La version embarquée du package 7.0.0-rc13 ([2,3000,1035194821]) est obsolète :
+    // WhatsApp rejette le handshake → « Connection Failure » sans QR, même en appairage.
+    // La version récupérée ([2,3000,1043857760]) est acceptée. (Vérifié empiriquement.)
+    const { version } = baileys.fetchLatestBaileysVersion
+      ? await baileys.fetchLatestBaileysVersion()
+      : { version: undefined }
     return makeWASocket({
       auth,
+      version,
       logger: createSilentBaileysLogger(),
       printQRInTerminal: false,
       browser: ['Teliman Logistique', 'Chrome', '1.0.0'],
