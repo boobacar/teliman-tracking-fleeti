@@ -212,6 +212,9 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
     phoneNumberId: '',
     apiVersion: 'v20.0',
     baileysAuthDir: '/tmp/teliman-wa-auth',
+    baileysTyping: true,
+    baileys463CooldownHours: 24,
+    sendHours: null,
     defaultTemplateName: '',
     templateLanguage: 'fr',
     webhookVerifyToken: '',
@@ -220,6 +223,24 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
     baileysQueue: null,
     windowCheck: null,
   })
+})
+
+test('buildWhatsAppConfigFromEnv lit la fenêtre horaire, la frappe simulée et le cooldown 463', () => {
+  const config = buildWhatsAppConfigFromEnv({
+    WHATSAPP_SEND_HOURS_START: '7',
+    WHATSAPP_SEND_HOURS_END: '21',
+    WHATSAPP_BAILEYS_TYPING: 'false',
+    WHATSAPP_BAILEYS_463_COOLDOWN_HOURS: '48',
+  })
+  assert.deepEqual(config.sendHours, { start: 7, end: 21 })
+  assert.equal(config.baileysTyping, false)
+  assert.equal(config.baileys463CooldownHours, 48)
+})
+
+test('buildWhatsAppConfigFromEnv ignore une fenêtre horaire invalide', () => {
+  assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_SEND_HOURS_START: '7' }).sendHours, null)
+  assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_SEND_HOURS_START: '25', WHATSAPP_SEND_HOURS_END: '21' }).sendHours, null)
+  assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_SEND_HOURS_START: '22', WHATSAPP_SEND_HOURS_END: '6' }).sendHours ? 'ok' : 'null', 'ok') // fenêtre nocturne enveloppée
 })
 
 test('buildWhatsAppConfigFromEnv lit le template par défaut et le token de webhook', () => {
@@ -319,6 +340,88 @@ test('createBaileysWhatsAppClient vérifie le compte WhatsApp réel avant envoi 
   assert.equal(result.messageId, 'MSG-CI')
   assert.deepEqual(checked, ['2250769289304@s.whatsapp.net'])
   assert.deepEqual(sent, [{ jid: '2250769289304@s.whatsapp.net', payload: { text: 'Message Côte d’Ivoire' } }])
+})
+
+test('createBaileysWhatsAppClient simule la frappe (composing) avant l’envoi', async () => {
+  const events = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendPresenceUpdate: async (type, jid) => { events.push(`presence:${type}:${jid.split('@')[0]}`) },
+      sendMessage: async (jid, payload) => { events.push(`send:${jid.split('@')[0]}`); return { key: { id: 'MSG-TYPING' } } },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+    typingDelayMs: { min: 1, max: 2 },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+225 07 01 02 03 04', 'Bonjour')
+
+  assert.equal(result.sent, true)
+  assert.deepEqual(events, [
+    'presence:composing:2250701020304',
+    'send:2250701020304',
+    'presence:paused:2250701020304',
+  ])
+  assert.equal(client.getStatus().typingSimulation, true)
+})
+
+test('createBaileysWhatsAppClient ne re-tente pas un contact en erreur 463 pendant le cooldown', async () => {
+  let sendAttempts = 0
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async () => {
+        sendAttempts += 1
+        const error = new Error('(#463) reachout timelock')
+        throw error
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+    typingSimulation: false,
+    reachoutCooldownHours: 24,
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+
+  const first = await client.sendText('+225 07 01 02 03 04', 'Premier essai')
+  assert.equal(first.errorKind, 'reachout_timelock')
+  assert.equal(first.statusCode, 463)
+
+  const second = await client.sendText('+225 07 01 02 03 04', 'Second essai')
+  assert.equal(second.errorKind, 'reachout_timelock')
+  assert.match(second.reason, /cooldown 463/i)
+
+  assert.equal(sendAttempts, 1, 'une seule tentative réelle malgré 2 appels')
+  assert.equal(client.getStatus().reachoutCooldownCount, 1)
+})
+
+test('sendWhatsAppTextMessage marque deferrable les jobs selon la source (Baileys)', async () => {
+  const jobs = []
+  const baileysQueue = { enqueue: (job) => jobs.push(job) }
+  const config = { enabled: true, provider: 'baileys', baileysQueue }
+  const baileysClient = { sendText: async () => ({ sent: true }) }
+
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'BL créé', config, baileysClient, context: { source: 'delivery_order' } })
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'ALERTE vitesse', config, baileysClient, context: { source: 'fleet_alert' } })
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Sortie zone', config, baileysClient, context: { source: 'geofence' } })
+
+  assert.equal(jobs.length, 3)
+  assert.equal(jobs[0].deferrable, true, 'BL différé hors fenêtre horaire')
+  assert.equal(jobs[1].deferrable, false, 'alerte flotte jamais différée')
+  assert.equal(jobs[2].deferrable, false, 'alerte géofence jamais différée')
 })
 
 test('createBaileysWhatsAppClient expose le vrai numéro connecté et peut se déconnecter puis redémarrer', async () => {

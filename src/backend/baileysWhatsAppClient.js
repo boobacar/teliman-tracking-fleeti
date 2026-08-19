@@ -16,6 +16,9 @@ export function createBaileysWhatsAppClient({
   qrCodeFactory,
   sessionCleaner,
   logger = console,
+  typingSimulation = true,
+  typingDelayMs = { min: 400, max: 1200 },
+  reachoutCooldownHours = 24,
 } = {}) {
   let socket = null
   let started = false
@@ -28,6 +31,10 @@ export function createBaileysWhatsAppClient({
   let reconnectAttempts = 0
   const MAX_RECONNECT_ATTEMPTS = 10
   const RECONNECT_BASE_DELAY_MS = 5_000
+  // Cooldown 463 par destinataire : après une erreur Reachout Timelock, on ne
+  // re-tente PAS ce contact pendant N heures (marteler un contact sans historique
+  // est le chemin le plus rapide vers un ban).
+  const reachoutCooldowns = new Map()
 
   async function start() {
     if (started) return getStatus()
@@ -58,10 +65,37 @@ export function createBaileysWhatsAppClient({
       return { sent: false, skipped: true, reason: 'Baileys non connecté. Scanner le QR code WhatsApp.' }
     }
 
+    pruneReachoutCooldowns()
+
+    // Cooldown 463 : contact récemment en erreur Reachout Timelock → ne pas re-tenter
+    // (même résultat que l'erreur réelle, la file ne le retente jamais).
+    const cooldownExpiry = reachoutCooldowns.get(jid)
+    if (cooldownExpiry && cooldownExpiry > Date.now()) {
+      const hoursLeft = Math.ceil((cooldownExpiry - Date.now()) / 3600_000)
+      return {
+        sent: false,
+        skipped: false,
+        errorKind: 'reachout_timelock',
+        statusCode: 463,
+        reason: `Contact en cooldown 463 (réessai dans ~${hoursLeft}h) — envoi interrompu pour protéger le numéro.`,
+      }
+    }
+
     try {
       const recipientJid = await resolveWhatsAppAccountJid(socket, jid)
       if (!recipientJid) return { sent: false, skipped: false, reason: 'Aucun compte WhatsApp trouvé pour ce numéro.' }
+      // Simulation de frappe : presence "composing" + délai humain avant l'envoi.
+      // Best-effort — si le socket ne la supporte pas, on envoie quand même.
+      if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
+        try {
+          await socket.sendPresenceUpdate('composing', recipientJid)
+          await sleep(resolveTypingDelay(typingDelayMs))
+        } catch { /* presence best-effort */ }
+      }
       const result = await socket.sendMessage(recipientJid, { text: message })
+      if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
+        try { await socket.sendPresenceUpdate('paused', recipientJid) } catch { /* best-effort */ }
+      }
       return { sent: true, messageId: result?.key?.id || '' }
     } catch (error) {
       lastError = error?.message || 'Erreur envoi Baileys.'
@@ -70,7 +104,8 @@ export function createBaileysWhatsAppClient({
       // Erreur 463 (Reachout Timelock) : contact sans historique récent. Ne JAMAIS réessayer
       // (le retry aggrave le risque) → marqué errorKind pour que la file ne le retente pas.
       if (isReachoutTimelock) {
-        logger.warn?.(`[baileys] Erreur 463 (Reachout Timelock) pour ${jid} — envoi interrompu.`)
+        reachoutCooldowns.set(jid, Date.now() + Math.max(1, Number(reachoutCooldownHours) || 24) * 3600_000)
+        logger.warn?.(`[baileys] Erreur 463 (Reachout Timelock) pour ${jid} — envoi interrompu, contact en cooldown ~${reachoutCooldownHours}h.`)
         return {
           sent: false,
           skipped: false,
@@ -83,7 +118,15 @@ export function createBaileysWhatsAppClient({
     }
   }
 
+  function pruneReachoutCooldowns() {
+    const now = Date.now()
+    for (const [entryJid, expiry] of reachoutCooldowns) {
+      if (expiry <= now) reachoutCooldowns.delete(entryJid)
+    }
+  }
+
   function getStatus() {
+    pruneReachoutCooldowns()
     return {
       provider: 'baileys',
       state,
@@ -95,6 +138,9 @@ export function createBaileysWhatsAppClient({
       user,
       connectedPhone: user?.phone || '',
       connectedName: user?.name || '',
+      reachoutCooldownCount: reachoutCooldowns.size,
+      typingSimulation: Boolean(typingSimulation),
+      reachoutCooldownHours: Math.max(1, Number(reachoutCooldownHours) || 24),
     }
   }
 
@@ -276,4 +322,15 @@ function resolveQrCodeFactory(qrCodeFactory) {
     const qrcode = await import('qrcode')
     return qrcode.toDataURL(qr, { margin: 1, scale: 8 })
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)))
+}
+
+// Délai "humain" de frappe : jitter entre min et max (défaut 400-1200 ms).
+function resolveTypingDelay(delay) {
+  const min = Number(delay?.min) || 400
+  const max = Number(delay?.max) || min
+  return min + Math.random() * Math.max(0, max - min)
 }

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createWhatsAppQueue, dayKey, makeWarmupDailyLimit } from '../src/backend/whatsappQueue.js'
+import { createWhatsAppQueue, dayKey, isWithinSendHours, makeWarmupDailyLimit } from '../src/backend/whatsappQueue.js'
 import { buildWhatsAppConfigFromEnv, sendWhatsAppTextMessage } from '../src/backend/whatsappNotifications.js'
 
 test('dayKey bascule à minuit', () => {
@@ -57,6 +57,53 @@ test('la file respecte le plafond journalier', async () => {
   assert.equal(status.sentToday, 2)
   assert.ok(status.queued >= 1, 'le 3e reste en file')
   assert.equal(queue.status().queued, 1)
+})
+
+test('hors fenêtre horaire : les jobs deferrable restent en file, les alertes passent', async () => {
+  // Heure serveur fixée à 03:00 — fenêtre 7-21 fermée
+  const nowMs = Date.UTC(2026, 7, 19, 3, 0)
+  const sent = []
+  const queue = createWhatsAppQueue({
+    sendFn: async (job) => { sent.push(job.to); return { sent: true } },
+    minIntervalMs: 10,
+    sendHours: { start: 7, end: 21 },
+    now: () => nowMs,
+  })
+  queue.enqueue({ to: 'bl-client' }) // deferrable par défaut
+  queue.enqueue({ to: 'alerte-vitesse', deferrable: false })
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  queue.stop()
+
+  assert.deepEqual(sent, ['alerte-vitesse'], 'seule l’alerte part hors fenêtre')
+  assert.equal(queue.status().queued, 1, 'le BL reste en file')
+  assert.equal(queue.status().outsideSendHours, true)
+})
+
+test('dans la fenêtre horaire : tous les jobs partent, deferrable compris', async () => {
+  const sent = []
+  const queue = createWhatsAppQueue({
+    sendFn: async (job) => { sent.push(job.to); return { sent: true } },
+    minIntervalMs: 5,
+    sendHours: { start: 0, end: 24 }, // toujours ouvert
+  })
+  queue.enqueue({ to: 'bl-client' })
+  queue.enqueue({ to: 'alerte-vitesse', deferrable: false })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  queue.stop()
+
+  assert.equal(sent.length, 2)
+  assert.equal(queue.status().outsideSendHours, false)
+})
+
+test('isWithinSendHours gère les fenêtres enveloppées (21-7)', () => {
+  const night = { start: 21, end: 7 }
+  assert.equal(isWithinSendHours(22, night), true)
+  assert.equal(isWithinSendHours(3, night), true)
+  assert.equal(isWithinSendHours(12, night), false)
+  assert.equal(isWithinSendHours(8, night), false)
+  assert.equal(isWithinSendHours(21, night), true)
+  assert.equal(isWithinSendHours(7, night), false, 'end exclusif')
+  assert.equal(isWithinSendHours(12, null), true, 'sans fenêtre configurée : toujours ouvert')
 })
 
 test('sendWhatsAppTextMessage passe par la file quand config.queue est présent', async () => {

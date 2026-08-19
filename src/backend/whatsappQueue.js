@@ -1,6 +1,7 @@
 // File d'attente WhatsApp : throttle (fixe ou jitter), retry avec backoff,
-// plafond journalier (fixe ou warm-up progressif) et circuit-breaker
-// anti-tempête d'erreurs (pause automatique avant ban).
+// plafond journalier (fixe ou warm-up progressif), circuit-breaker
+// anti-tempête d'erreurs (pause automatique avant ban) et fenêtre horaire
+// naturelle (pas d'envoi en rafale la nuit ; les alertes passent quand même).
 
 const DEFAULT_MIN_INTERVAL_MS = 1100
 const DEFAULT_MAX_RETRIES = 2
@@ -33,12 +34,36 @@ function resolveDailyLimit(dailyLimit, daysActive) {
   return Math.max(1, Number(dailyLimit) || DEFAULT_DAILY_LIMIT)
 }
 
+// Fenêtre horaire d'envoi (heure serveur locale = UTC sur le Pi, soit Africa/Abidjan).
+// start <= end : fenêtre normale (ex. 7-21). start > end : fenêtre nocturne enveloppée (ex. 21-7).
+export function isWithinSendHours(hour, sendHours) {
+  if (!sendHours) return true
+  const start = Number(sendHours.start)
+  const end = Number(sendHours.end)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return true
+  return start <= end ? (hour >= start && hour < end) : (hour >= start || hour < end)
+}
+
+// Millisecondes avant la prochaine ouverture de la fenêtre (0 si déjà ouverte).
+export function msUntilSendHoursOpen(nowMs, sendHours) {
+  if (!sendHours) return 0
+  const date = new Date(nowMs)
+  const hour = date.getHours()
+  if (isWithinSendHours(hour, sendHours)) return 0
+  const nowMinutes = hour * 60 + date.getMinutes()
+  const startMinutes = Number(sendHours.start) * 60
+  let waitMinutes = startMinutes - nowMinutes
+  if (waitMinutes <= 0) waitMinutes += 24 * 60
+  return waitMinutes * 60_000
+}
+
 export function createWhatsAppQueue({
   sendFn,
   minIntervalMs = DEFAULT_MIN_INTERVAL_MS,
   maxRetries = DEFAULT_MAX_RETRIES,
   dailyLimit = DEFAULT_DAILY_LIMIT,
   circuitBreaker = DEFAULT_CIRCUIT_BREAKER,
+  sendHours = null,
   now = () => Date.now(),
 } = {}) {
   if (typeof sendFn !== 'function') throw new Error('createWhatsAppQueue: sendFn requis')
@@ -93,7 +118,13 @@ export function createWhatsAppQueue({
 
   function status() {
     rollDayIfNeeded()
-    return { queued: pending.length + (current ? 1 : 0), ...stats }
+    const sendHoursOpen = isWithinSendHours(new Date(now()).getHours(), sendHours)
+    return {
+      queued: pending.length + (current ? 1 : 0),
+      ...stats,
+      sendHours: sendHours ? { start: sendHours.start, end: sendHours.end } : null,
+      outsideSendHours: Boolean(sendHours) && !sendHoursOpen,
+    }
   }
 
   async function flush() {
@@ -127,7 +158,24 @@ export function createWhatsAppQueue({
       timer = setTimeout(flush, interval)
       return
     }
-    const job = pending.shift()
+    const inHours = isWithinSendHours(new Date(now()).getHours(), sendHours)
+    let job = pending.shift()
+    if (!inHours) {
+      // Hors fenêtre d'envoi : les jobs deferrable (BL, notifications) attendent
+      // l'ouverture ; seules les alertes (deferrable: false) partent immédiatement.
+      if (job && job.deferrable !== false) {
+        pending.unshift(job)
+        job = null
+      }
+      if (!job) {
+        const alertIndex = pending.findIndex((entry) => entry.deferrable === false)
+        if (alertIndex >= 0) job = pending.splice(alertIndex, 1)[0]
+      }
+      if (!job) {
+        timer = setTimeout(flush, Math.min(msUntilSendHoursOpen(now(), sendHours) || 60_000, 3600_000))
+        return
+      }
+    }
     if (!job) return
     current = job
     try {

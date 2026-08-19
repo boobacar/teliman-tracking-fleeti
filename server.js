@@ -132,7 +132,11 @@ const TRACKS_SOURCE = resolveTracksSource(process.env.FLEETI_TRACKS_SOURCE)
 const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
 const WHATSAPP_CONFIG = buildWhatsAppConfigFromEnv(process.env)
 const baileysWhatsAppClient = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys'
-  ? createBaileysWhatsAppClient({ authDir: WHATSAPP_CONFIG.baileysAuthDir || path.join(DATA_DIR, 'whatsapp-auth') })
+  ? createBaileysWhatsAppClient({
+      authDir: WHATSAPP_CONFIG.baileysAuthDir || path.join(DATA_DIR, 'whatsapp-auth'),
+      typingSimulation: WHATSAPP_CONFIG.baileysTyping,
+      reachoutCooldownHours: WHATSAPP_CONFIG.baileys463CooldownHours,
+    })
   : null
 
 validateRequiredEnv()
@@ -709,6 +713,7 @@ const whatsappSendQueue = createWhatsAppQueue({
     return result
   },
   onResult: whatsAppQueueOnResult,
+  ...(WHATSAPP_CONFIG.sendHours ? { sendHours: WHATSAPP_CONFIG.sendHours } : {}),
 })
 WHATSAPP_CONFIG.queue = WHATSAPP_CONFIG.queueEnabled ? whatsappSendQueue : null
 
@@ -725,6 +730,7 @@ const whatsappBaileysQueue = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider
       maxRetries: 1,
       dailyLimit: makeWarmupDailyLimit({ start: 30, rampPerDay: 20, max: 150 }),
       circuitBreaker: { maxConsecutiveFailures: 5, cooldownMs: 10 * 60 * 1000 },
+      ...(WHATSAPP_CONFIG.sendHours ? { sendHours: WHATSAPP_CONFIG.sendHours } : {}),
     })
   : null
 WHATSAPP_CONFIG.baileysQueue = whatsappBaileysQueue
@@ -2778,6 +2784,7 @@ app.get('/api/service-status', (_req, res) => {
 
 app.get('/api/whatsapp/status', (_req, res) => {
   const queueStatus = whatsappSendQueue ? whatsappSendQueue.status() : { queued: 0, sentToday: 0, failedToday: 0 }
+  const baileysQueueStatus = whatsappBaileysQueue ? whatsappBaileysQueue.status() : null
   const sinceMidnight = new Date().toISOString().slice(0, 10)
   const contactsToday = countWhatsAppContactsActiveSince(`${sinceMidnight}T00:00:00Z`)
   res.json({
@@ -2787,7 +2794,9 @@ app.get('/api/whatsapp/status', (_req, res) => {
     defaultTemplateName: WHATSAPP_CONFIG.defaultTemplateName || '',
     webhookConfigured: Boolean(WHATSAPP_CONFIG.webhookVerifyToken),
     webhookPath: '/api/whatsapp/webhook',
+    sendHours: WHATSAPP_CONFIG.sendHours,
     queue: queueStatus,
+    baileysQueue: baileysQueueStatus,
     contactsToday,
     ...(baileysWhatsAppClient ? baileysWhatsAppClient.getStatus() : {}),
   })

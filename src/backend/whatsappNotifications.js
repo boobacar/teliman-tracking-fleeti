@@ -219,6 +219,12 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
     phoneNumberId: String(env.WHATSAPP_PHONE_NUMBER_ID || env.META_WHATSAPP_PHONE_NUMBER_ID || '').trim(),
     apiVersion: String(env.WHATSAPP_API_VERSION || DEFAULT_WHATSAPP_API_VERSION).trim() || DEFAULT_WHATSAPP_API_VERSION,
     baileysAuthDir: String(env.WHATSAPP_BAILEYS_AUTH_DIR || '').trim(),
+    // Simulation de frappe Baileys (composing + délai humain) — protection anti-ban
+    baileysTyping: String(env.WHATSAPP_BAILEYS_TYPING ?? 'true').toLowerCase() !== 'false',
+    // Cooldown 463 par destinataire (heures) : ne pas re-tenter un contact en Reachout Timelock
+    baileys463CooldownHours: Math.max(0, Number(env.WHATSAPP_BAILEYS_463_COOLDOWN_HOURS) || 24),
+    // Fenêtre horaire d'envoi (heure serveur locale) : pas d'envoi en rafale la nuit
+    sendHours: parseSendHours(env.WHATSAPP_SEND_HOURS_START, env.WHATSAPP_SEND_HOURS_END),
     // Template générique (1 variable : le message complet) — requis pour les envois hors fenêtre 24 h
     defaultTemplateName: String(env.WHATSAPP_DEFAULT_TEMPLATE_NAME || '').trim(),
     templateLanguage: String(env.WHATSAPP_TEMPLATE_LANGUAGE || 'fr').trim() || 'fr',
@@ -240,7 +246,7 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
     if (!baileysClient) return { sent: false, skipped: true, reason: 'Client Baileys non démarré.' }
     // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker (protection anti-ban)
     if (config.baileysQueue) {
-      const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context }
+      const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
       config.baileysQueue.enqueue(job)
       return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient }
     }
@@ -252,7 +258,7 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
 
   // File d'attente : throttle + retry (la file envoie sans queue pour éviter la récursion)
   if (config.queue) {
-    const job = { to: recipient, message, config: { ...config, queue: null }, fetchImpl, context }
+    const job = { to: recipient, message, config: { ...config, queue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
     config.queue.enqueue(job)
     return { sent: false, queued: true, reason: 'En file d’attente WhatsApp.', recipient }
   }
@@ -401,4 +407,23 @@ function isUnassignedDriver(value) {
 function display(value) {
   const text = String(value ?? '').trim()
   return text || '-'
+}
+
+// Les notifications transactionnelles (BL, test manuel) peuvent attendre l'ouverture
+// de la fenêtre horaire ; les alertes (flotte, géofence) sont critiques → jamais différées.
+function isDeferrableJob(context = null) {
+  const source = String(context?.source || '').trim()
+  return !['fleet_alert', 'geofence'].includes(source)
+}
+
+// Fenêtre horaire d'envoi : {start, end} valides (0-23 pour start, 0-24 pour end) ou null.
+function parseSendHours(startValue, endValue) {
+  const startText = String(startValue ?? '').trim()
+  const endText = String(endValue ?? '').trim()
+  if (!startText || !endText) return null
+  const start = Number(startText)
+  const end = Number(endText)
+  if (!Number.isInteger(start) || start < 0 || start > 23) return null
+  if (!Number.isInteger(end) || end < 0 || end > 24) return null
+  return { start, end }
 }
