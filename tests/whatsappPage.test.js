@@ -41,12 +41,13 @@ test('l’historique WhatsApp est filtré et paginé pour éviter une longue lis
   assert.match(pageSource, /Suivant/)
 })
 
-test('la page WhatsApp affiche le panneau Cloud API officielle (Meta)', () => {
+test('la page WhatsApp ne montre plus le panneau Cloud API Meta', () => {
   const source = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
-  assert.match(source, /Cloud API officielle \(Meta\)/)
-  assert.match(source, /cloudApiConfigured/)
-  assert.match(source, /defaultTemplateName/)
-  assert.match(source, /webhookConfigured/)
-  assert.match(source, /File d'attente/)
-  assert.match(source, /template à créer dans WhatsApp Manager/i)
+  assert.doesNotMatch(source, /Cloud API officielle \\(Meta\\)/)
+  assert.doesNotMatch(source, /cloudApiConfigured/)
+  assert.doesNotMatch(source, /webhookConfigured/)
+  assert.doesNotMatch(source, /WhatsApp Manager/)
+  // Le canal Baileys reste : connexion QR, test d'envoi, templates BL, historique
+  assert.match(source, /whatsapp-connection-panel/)
+  assert.match(source, /Envoyer un message test WhatsApp/)
 })

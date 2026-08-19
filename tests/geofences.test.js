@@ -116,11 +116,12 @@ test('sendGeofenceAlertWhatsAppNotifications envoie aux destinataires actifs', a
   const results = await sendGeofenceAlertWhatsAppNotifications({
     event: { eventType: 'enter', geofenceName: 'Fadyadougou, mine', truckLabel: 'CI-5678 CD' },
     recipients: ['+2250700112233', '07 08 99 88 77'],
-    config: { enabled: true, provider: 'meta', accessToken: 'token', phoneNumberId: '123' },
-    fetchImpl: async (url, options) => {
-      const body = JSON.parse(options.body)
-      sent.push(body.to)
-      return { ok: true, json: async () => ({ messages: [{ id: 'wamid-1' }] }) }
+    config: { enabled: true, provider: 'baileys' },
+    baileysClient: {
+      sendText: async (to, message) => {
+        sent.push(to)
+        return { sent: true, messageId: `MSG-${to}` }
+      },
     },
   })
   assert.equal(results.length, 2)

@@ -152,52 +152,16 @@ test('buildDeliveryOrderWhatsAppMessage inclut tous les détails importants du B
   assert.match(message, /Contact gardien/)
 })
 
-test('sendWhatsAppTextMessage utilise WhatsApp Cloud API quand la configuration est complète', async () => {
-  const calls = []
+test('sendWhatsAppTextMessage ne bloque pas les BL quand le canal WhatsApp est indisponible', async () => {
   const result = await sendWhatsAppTextMessage({
     to: '2250701020304',
     message: 'Bonjour Teliman',
-    config: {
-      enabled: true,
-      accessToken: 'token-test',
-      phoneNumberId: '123456789',
-      apiVersion: 'v20.0',
-    },
-    fetchImpl: async (url, options) => {
-      calls.push({ url, options })
-      return {
-        ok: true,
-        json: async () => ({ messages: [{ id: 'wamid.TEST' }] }),
-      }
-    },
-  })
-
-  assert.equal(result.sent, true)
-  assert.equal(result.messageId, 'wamid.TEST')
-  assert.equal(calls[0].url, 'https://graph.facebook.com/v20.0/123456789/messages')
-  assert.equal(calls[0].options.headers.Authorization, 'Bearer token-test')
-  assert.deepEqual(JSON.parse(calls[0].options.body), {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to: '2250701020304',
-    type: 'text',
-    text: { preview_url: false, body: 'Bonjour Teliman' },
-  })
-})
-
-test('sendWhatsAppTextMessage ne bloque pas les BL quand WhatsApp API est désactivée ou incomplète', async () => {
-  const result = await sendWhatsAppTextMessage({
-    to: '2250701020304',
-    message: 'Bonjour Teliman',
-    config: { enabled: true, accessToken: '', phoneNumberId: '' },
-    fetchImpl: async () => {
-      throw new Error('ne doit pas appeler fetch')
-    },
+    config: { enabled: true, provider: 'meta' },
   })
 
   assert.equal(result.sent, false)
   assert.equal(result.skipped, true)
-  assert.match(result.reason, /non configurée/i)
+  assert.match(result.reason, /Meta désactivé/i)
 })
 
 test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth persistant', () => {
@@ -208,20 +172,12 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
   }), {
     enabled: true,
     provider: 'baileys',
-    accessToken: '',
-    phoneNumberId: '',
-    apiVersion: 'v20.0',
     baileysAuthDir: '/tmp/teliman-wa-auth',
     baileysTyping: true,
     baileys463CooldownHours: 24,
     sendHours: null,
-    defaultTemplateName: '',
-    templateLanguage: 'fr',
-    webhookVerifyToken: '',
     queueEnabled: true,
-    queue: null,
     baileysQueue: null,
-    windowCheck: null,
   })
 })
 
@@ -243,17 +199,8 @@ test('buildWhatsAppConfigFromEnv ignore une fenêtre horaire invalide', () => {
   assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_SEND_HOURS_START: '22', WHATSAPP_SEND_HOURS_END: '6' }).sendHours ? 'ok' : 'null', 'ok') // fenêtre nocturne enveloppée
 })
 
-test('buildWhatsAppConfigFromEnv lit le template par défaut et le token de webhook', () => {
-  const config = buildWhatsAppConfigFromEnv({
-    WHATSAPP_DEFAULT_TEMPLATE_NAME: 'teliman_notification',
-    WHATSAPP_TEMPLATE_LANGUAGE: 'en',
-    WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'secret-123',
-    WHATSAPP_QUEUE_ENABLED: 'false',
-  })
-  assert.equal(config.defaultTemplateName, 'teliman_notification')
-  assert.equal(config.templateLanguage, 'en')
-  assert.equal(config.webhookVerifyToken, 'secret-123')
-  assert.equal(config.queueEnabled, false)
+test('buildWhatsAppConfigFromEnv lit le flag de file d’attente', () => {
+  assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_QUEUE_ENABLED: 'false' }).queueEnabled, false)
 })
 
 test('toBaileysJid transforme un numéro international en identifiant WhatsApp', () => {

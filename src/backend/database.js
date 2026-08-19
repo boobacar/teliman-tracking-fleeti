@@ -189,14 +189,6 @@ function createTables() {
       actor TEXT DEFAULT 'auto'
     );
     CREATE INDEX IF NOT EXISTS idx_mission_timeline_order ON mission_timeline(deliveryOrderId, at);
-
-    CREATE TABLE IF NOT EXISTS whatsapp_contacts (
-      phone TEXT PRIMARY KEY,
-      lastInboundAt TEXT,
-      lastOutboundAt TEXT,
-      inboundCount INTEGER NOT NULL DEFAULT 0,
-      outboundCount INTEGER NOT NULL DEFAULT 0
-    );
   `)
 }
 
@@ -949,53 +941,3 @@ export function importDriverOverridesFromJSON(items) {
   transaction(items)
 }
 
-// ── Contacts WhatsApp (fenêtre de conversation 24 h) ──
-
-const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000
-
-export function readWhatsAppContact(phone) {
-  const row = getDatabase().prepare('SELECT * FROM whatsapp_contacts WHERE phone = ?').get(String(phone || ''))
-  return row || null
-}
-
-export function touchWhatsAppInbound(phone) {
-  if (!phone) return null
-  const db = getDatabase()
-  const now = new Date().toISOString()
-  const existing = readWhatsAppContact(phone)
-  if (existing) {
-    db.prepare('UPDATE whatsapp_contacts SET lastInboundAt = ?, inboundCount = inboundCount + 1 WHERE phone = ?').run(now, phone)
-  } else {
-    db.prepare('INSERT INTO whatsapp_contacts (phone, lastInboundAt, inboundCount) VALUES (?, ?, 1)').run(phone, now)
-  }
-  return readWhatsAppContact(phone)
-}
-
-export function bumpWhatsAppOutbound(phone) {
-  if (!phone) return null
-  const db = getDatabase()
-  const now = new Date().toISOString()
-  const existing = readWhatsAppContact(phone)
-  if (existing) {
-    db.prepare('UPDATE whatsapp_contacts SET lastOutboundAt = ?, outboundCount = outboundCount + 1 WHERE phone = ?').run(now, phone)
-  } else {
-    db.prepare('INSERT INTO whatsapp_contacts (phone, lastOutboundAt, outboundCount) VALUES (?, ?, 1)').run(phone, now)
-  }
-  return readWhatsAppContact(phone)
-}
-
-// Fenêtre de conversation ouverte (le contact a écrit au business < 24 h) → texte libre autorisé
-export function isWhatsAppWindowOpen(phone, now = Date.now()) {
-  const contact = readWhatsAppContact(phone)
-  if (!contact?.lastInboundAt) return false
-  const lastInbound = Date.parse(contact.lastInboundAt)
-  if (!Number.isFinite(lastInbound)) return false
-  return now - lastInbound < WHATSAPP_WINDOW_MS
-}
-
-export function countWhatsAppContactsActiveSince(sinceIso) {
-  const row = getDatabase()
-    .prepare('SELECT COUNT(*) AS n FROM whatsapp_contacts WHERE lastInboundAt >= ? OR lastOutboundAt >= ?')
-    .get(sinceIso, sinceIso)
-  return row?.n || 0
-}

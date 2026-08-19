@@ -1,7 +1,5 @@
-import { buildTemplateBodyComponents, normalizeWhatsAppPhone as normalizePhone, sendWhatsAppFreeFormText, sendWhatsAppTemplateMessage } from './whatsappApi.js'
-
-const DEFAULT_WHATSAPP_API_VERSION = 'v20.0'
-
+// Notifications WhatsApp — canal Baileys uniquement (le canal Meta Cloud API a été retiré).
+// Envois : BL (création / arrivée), alertes flotte (vitesse, stationnement), alertes géofence.
 const EVENT_TITLES = {
   created: 'Création de BL',
   status_changed: 'Changement de statut',
@@ -214,10 +212,7 @@ export function createWhatsAppHistoryEntry({ result = {}, order = {}, message = 
 export function buildWhatsAppConfigFromEnv(env = {}) {
   return {
     enabled: String(env.WHATSAPP_NOTIFICATIONS_ENABLED ?? 'true').toLowerCase() !== 'false',
-    provider: String(env.WHATSAPP_PROVIDER || 'meta').trim().toLowerCase() || 'meta',
-    accessToken: String(env.WHATSAPP_ACCESS_TOKEN || env.META_WHATSAPP_ACCESS_TOKEN || '').trim(),
-    phoneNumberId: String(env.WHATSAPP_PHONE_NUMBER_ID || env.META_WHATSAPP_PHONE_NUMBER_ID || '').trim(),
-    apiVersion: String(env.WHATSAPP_API_VERSION || DEFAULT_WHATSAPP_API_VERSION).trim() || DEFAULT_WHATSAPP_API_VERSION,
+    provider: String(env.WHATSAPP_PROVIDER || 'baileys').trim().toLowerCase() || 'baileys',
     baileysAuthDir: String(env.WHATSAPP_BAILEYS_AUTH_DIR || '').trim(),
     // Simulation de frappe Baileys (composing + délai humain) — protection anti-ban
     baileysTyping: String(env.WHATSAPP_BAILEYS_TYPING ?? 'true').toLowerCase() !== 'false',
@@ -225,15 +220,9 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
     baileys463CooldownHours: Math.max(0, Number(env.WHATSAPP_BAILEYS_463_COOLDOWN_HOURS) || 24),
     // Fenêtre horaire d'envoi (heure serveur locale) : pas d'envoi en rafale la nuit
     sendHours: parseSendHours(env.WHATSAPP_SEND_HOURS_START, env.WHATSAPP_SEND_HOURS_END),
-    // Template générique (1 variable : le message complet) — requis pour les envois hors fenêtre 24 h
-    defaultTemplateName: String(env.WHATSAPP_DEFAULT_TEMPLATE_NAME || '').trim(),
-    templateLanguage: String(env.WHATSAPP_TEMPLATE_LANGUAGE || 'fr').trim() || 'fr',
-    webhookVerifyToken: String(env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || '').trim(),
     queueEnabled: String(env.WHATSAPP_QUEUE_ENABLED ?? 'true').toLowerCase() !== 'false',
-    // Injectés au démarrage du serveur (pas depuis l'environnement)
-    queue: null,
+    // Injecté au démarrage du serveur (pas depuis l'environnement)
     baileysQueue: null,
-    windowCheck: null,
   }
 }
 
@@ -242,68 +231,18 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   if (!recipient) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
   if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
   if (config.enabled === false) return { sent: false, skipped: true, reason: 'Notifications WhatsApp désactivées.' }
-  if (config.provider === 'baileys') {
-    if (!baileysClient) return { sent: false, skipped: true, reason: 'Client Baileys non démarré.' }
-    // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker (protection anti-ban)
-    if (config.baileysQueue) {
-      const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
-      config.baileysQueue.enqueue(job)
-      return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient }
-    }
-    return baileysClient.sendText(recipient, message)
+  // Canal Meta Cloud API retiré : seul le client Baileys (numéro connecté par QR) est actif.
+  if (config.provider !== 'baileys' || !baileysClient) {
+    return { sent: false, skipped: true, reason: 'Canal Meta désactivé — connectez un numéro via Baileys (QR).' }
   }
-  if (!config.accessToken || !config.phoneNumberId) {
-    return { sent: false, skipped: true, reason: 'WhatsApp Cloud API non configurée.' }
+  // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker, fenêtre
+  // horaire (protection anti-ban). La file envoie sans baileysQueue pour éviter la récursion.
+  if (config.baileysQueue) {
+    const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
+    config.baileysQueue.enqueue(job)
+    return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient }
   }
-
-  // File d'attente : throttle + retry (la file envoie sans queue pour éviter la récursion)
-  if (config.queue) {
-    const job = { to: recipient, message, config: { ...config, queue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
-    config.queue.enqueue(job)
-    return { sent: false, queued: true, reason: 'En file d’attente WhatsApp.', recipient }
-  }
-
-  // Fenêtre de conversation ouverte (contact < 24 h) → texte libre autorisé
-  const windowOpen = typeof config.windowCheck === 'function' && config.windowCheck(recipient)
-  const templateName = config.defaultTemplateName || ''
-
-  if (windowOpen) {
-    const result = await sendWhatsAppFreeFormText({ to: recipient, body: message, config, fetchImpl })
-    // Hors fenêtre détectée côté API (race) → bascule sur le template générique si configuré
-    if (!result.sent && result.errorKind === 'requires_template' && templateName) {
-      return sendWhatsAppTemplateMessage({
-        to: recipient,
-        templateName,
-        languageCode: config.templateLanguage,
-        components: buildTemplateBodyComponents([message]),
-        config,
-        fetchImpl,
-      })
-    }
-    return result
-  }
-
-  // Hors fenêtre : un template approuvé est OBLIGATOIRE (erreur Meta 131047 sinon)
-  if (templateName) {
-    const result = await sendWhatsAppTemplateMessage({
-      to: recipient,
-      templateName,
-      languageCode: config.templateLanguage,
-      components: buildTemplateBodyComponents([message]),
-      config,
-      fetchImpl,
-    })
-    if (!result.sent && result.errorKind === 'template_not_found') {
-      return {
-        ...result,
-        reason: `${result.reason} — créez le template « ${templateName} » (1 variable texte) dans WhatsApp Manager.`,
-      }
-    }
-    return result
-  }
-
-  // Pas de template configuré : tentative texte (échouera hors fenêtre, erreur documentée)
-  return sendWhatsAppFreeFormText({ to: recipient, body: message, config, fetchImpl })
+  return baileysClient.sendText(recipient, message)
 }
 
 export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES, context = null } = {}) {
