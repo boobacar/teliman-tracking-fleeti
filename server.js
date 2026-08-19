@@ -190,9 +190,13 @@ app.use(helmet({
     },
   },
 }))
+// Limiteur global généreux : l'app est un dashboard temps réel qui poll régulièrement
+// (dashboard 60 s, WhatsApp 10 s × 4 endpoints, cartes) — 300 req/15 min était trop bas
+// (la page WhatsApp seule = ~360/15 min → 429 sur tout, y compris /api/auth/me).
+// La protection anti-bruteforce du login reste stricte (loginRateLimiter, 10/15 min).
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
 }))
