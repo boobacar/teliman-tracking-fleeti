@@ -184,20 +184,50 @@ export function createBaileysWhatsAppClient({
       const disconnectError = update.lastDisconnect?.error
       const statusCode = disconnectError?.output?.statusCode ?? disconnectError?.statusCode ?? disconnectError?.data?.statusCode
       const isLoggedOut = statusCode === 403 || /logged.?out|session.*terminated/i.test(String(disconnectError?.message || ''))
-      // Session révoquée (403) : se reconnecter en boucle est inutile et suspect → arrêt, re-scan QR requis.
       if (isLoggedOut) {
         state = 'loggedOut'
         lastError = 'Session WhatsApp révoquée ou expirée (403). Re-scannez le QR code pour reconnecter.'
+        lastQr = ''
+        lastQrDataUrl = ''
         started = false
         socket = null
         reconnectAttempts = 0
         logger.warn?.(`[baileys] Session WhatsApp révoquée (403) — reconnexion automatique arrêtée. Re-scan QR requis.`)
         return
       }
+      // Session invalide (401) : les creds sauvegardés sont rejetés par WhatsApp
+      // (pairing jamais finalisé, device révoqué…). Purger le dossier de session
+      // et repartir sur un QR neuf, sinon Baileys boucle sur une session morte.
+      const isInvalidSession = statusCode === 401 || /unauthorized|connection failure/i.test(String(disconnectError?.message || ''))
+      if (isInvalidSession) {
+        lastQr = ''
+        lastQrDataUrl = ''
+        lastError = 'Session WhatsApp invalide (401) — nettoyage de la session, scannez le nouveau QR.'
+        reconnectAttempts = 0
+        started = false
+        socket = null
+        logger.warn?.(`[baileys] Session invalide (401) — purge des creds, nouveau QR généré.`)
+        try { await resolveSessionCleaner(sessionCleaner)(authDir) } catch { /* best-effort */ }
+        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 1500)
+        return
+      }
+      // Refs QR épuisées : les QRs Baileys vivent ~20-60 s puis la socket se ferme
+      // (« QR refs attempts ended »). Relance rapide pour servir un QR toujours
+      // frais, sans consommer le quota de tentatives (aucun échec réel).
+      if (/QR refs attempts ended/i.test(String(disconnectError?.message || ''))) {
+        lastQr = ''
+        lastQrDataUrl = ''
+        started = false
+        socket = null
+        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 3000)
+        return
+      }
       reconnectAttempts += 1
       if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
         logger.error?.(`[baileys] WhatsApp: ${MAX_RECONNECT_ATTEMPTS} tentatives échouées. Abandon de la reconnexion automatique. Redémarrez le serveur ou scannez le QR manuellement.`)
         state = 'error'
+        lastQr = ''
+        lastQrDataUrl = ''
         started = false
         socket = null
         return
