@@ -10,8 +10,8 @@ WorkingDirectory=/home/pi/teliman-tracking-fleeti
 UMask=0077
 ExecStartPre=/usr/bin/mkdir -p /home/pi/.local/state/teliman-backup
 ExecStartPre=/home/pi/.hermes/node/bin/node /home/pi/teliman-tracking-fleeti/scripts/check-storage.js
-Environment=TELIMAN_DATA_DIR=/mnt/netac-storage/teliman-data
-Environment=TELIMAN_BACKUP_ROOT=/home/pi/backups/teliman
+Environment=TELIMAN_DATA_DIR=/home/pi/teliman-data
+Environment=TELIMAN_BACKUP_ROOT=/mnt/netac-storage/teliman-backups
 Environment=TELIMAN_BACKUP_RETENTION_DAYS=14
 EnvironmentFile=-/home/pi/teliman-tracking-fleeti/.env
 ExecStart=/home/pi/.hermes/node/bin/node /home/pi/teliman-tracking-fleeti/scripts/backup-teliman.js

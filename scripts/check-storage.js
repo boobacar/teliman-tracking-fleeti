@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export const DEFAULT_STORAGE_UUID = '8966697c-0fb2-467c-8496-acbe858b6a7e'
+export const DEFAULT_STORAGE_UUID = '8abab6b9-ef90-4fee-ae3d-91079bfae7c1' // SD root (mmcblk0p2) depuis le 20/08/2026 : données actives sur SD, SSD=backup
 
 export function evaluateStorage({ uuid, expectedUuid, options, mountpoint }) {
   if (!uuid || uuid !== expectedUuid) throw new Error(`UUID inattendu pour ${mountpoint}: ${uuid || 'absent'}`)
@@ -13,7 +13,7 @@ export function evaluateStorage({ uuid, expectedUuid, options, mountpoint }) {
   return { mountpoint, uuid, readWrite: true }
 }
 
-export function inspectStorage({ mountpoint = '/mnt/netac-storage', expectedUuid = process.env.TELIMAN_STORAGE_UUID || DEFAULT_STORAGE_UUID, dataDir = process.env.TELIMAN_DATA_DIR || '/mnt/netac-storage/teliman-data' } = {}) {
+export function inspectStorage({ mountpoint = '/', expectedUuid = process.env.TELIMAN_STORAGE_UUID || DEFAULT_STORAGE_UUID, dataDir = process.env.TELIMAN_DATA_DIR || '/home/pi/teliman-data' } = {}) {
   const fields = execFileSync('findmnt', ['-J', '-o', 'TARGET,UUID,OPTIONS', '--target', mountpoint], { encoding: 'utf8' })
   const parsed = JSON.parse(fields)
   const filesystem = parsed.filesystems?.[0]
@@ -35,9 +35,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       return index === -1 ? fallback : process.argv[index + 1]
     }
     console.log(JSON.stringify(inspectStorage({
-      mountpoint: get('mountpoint', '/mnt/netac-storage'),
+      mountpoint: get('mountpoint', '/'),
       expectedUuid: get('expected-uuid', process.env.TELIMAN_STORAGE_UUID || DEFAULT_STORAGE_UUID),
-      dataDir: get('data-dir', process.env.TELIMAN_DATA_DIR || '/mnt/netac-storage/teliman-data'),
+      dataDir: get('data-dir', process.env.TELIMAN_DATA_DIR || '/home/pi/teliman-data'),
     }), null, 2))
   } catch (error) {
     console.error(`STORAGE NOT READY: ${error.message}`)
