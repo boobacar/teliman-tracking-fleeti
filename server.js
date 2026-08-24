@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import dns from 'dns'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -40,6 +41,13 @@ import {
 } from './src/backend/database.js'
 
 dotenv.config()
+
+// Le Raspberry Pi n'a aucune connectivité IPv6 publique (pas de route par défaut,
+// seul un ULA Tailscale). En favorisant l'IPv4 à la résolution DNS, on évite que
+// les connexions sortantes (dont le WebSocket Baileys → web.whatsapp.com) ne
+// tombent sur la route IPv6 morte et n'échouent en « WebSocket Error () ».
+// dns.setDefaultResultOrder('ipv4first') est dispos depuis Node 17.2.
+dns.setDefaultResultOrder('ipv4first')
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
