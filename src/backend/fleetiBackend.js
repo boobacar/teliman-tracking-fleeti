@@ -105,7 +105,7 @@ export function normalizeTrackPoint(point = {}) {
     lng,
     speed: firstFiniteNumber(point?.speed, point?.gps?.speed, point?.position?.speed) ?? 0,
     heading: firstFiniteNumber(point?.heading, point?.course, point?.bearing, point?.position?.heading) ?? 0,
-    time: point?.time || point?.timestamp || point?.updatedAt || point?.updated_at || point?.date || null,
+    time: point?.time || point?.timestamp || point?.updatedAt || point?.updated_at || point?.date || point?.get_time || point?.getTime || point?.getAt || null,
   }
 }
 
@@ -120,7 +120,7 @@ export function normalizeTrackEvent(event = {}) {
     lng,
     location: Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : event?.location,
     speed: firstFiniteNumber(event?.speed, event?.gps?.speed, event?.position?.speed) ?? event?.speed,
-    time: event?.time || event?.timestamp || event?.updatedAt || event?.updated_at || event?.date || null,
+    time: event?.time || event?.timestamp || event?.updatedAt || event?.updated_at || event?.date || event?.get_time || event?.getTime || event?.getAt || null,
   }
 }
 

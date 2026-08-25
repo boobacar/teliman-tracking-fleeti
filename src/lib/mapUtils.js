@@ -37,7 +37,7 @@ export function formatPositionAge(timestamp, now = Date.now()) {
 
 export function parsePointTime(point) {
   if (!point) return null
-  const raw = point.time ?? point.timestamp ?? point.date ?? null
+  const raw = point.time ?? point.timestamp ?? point.date ?? point.get_time ?? point.getAt ?? point.getTime ?? null
   if (raw == null || raw === '') return null
   const value = Number(raw)
   if (Number.isFinite(value)) {
