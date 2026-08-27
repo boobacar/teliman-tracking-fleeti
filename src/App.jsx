@@ -30,7 +30,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ def
 const statusColor = (status) => status === 'active' ? '#22c55e' : status === 'idle' ? '#f59e0b' : status === 'offline' ? '#ef4444' : '#64748b'
 function GlobalServerMessageBanner({ kind = 'serverError', loading = false, onRetry, onLogout }) {
   const copy = {
-    suspended: ['Service temporairement suspendu', 'Les données opérationnelles restent indisponibles jusqu’à la réactivation du service.'],
+    suspended: ['impossible de joindre le serveur', ''],
     offline: ['Connexion indisponible', 'Vérifiez le réseau puis réessayez. Les données affichées peuvent être anciennes.'],
     timeout: ['Le serveur tarde à répondre', 'La demande a expiré. Réessayez dans un instant.'],
     sessionExpired: ['Session expirée', 'Reconnectez-vous pour continuer.'],
@@ -42,7 +42,7 @@ function GlobalServerMessageBanner({ kind = 'serverError', loading = false, onRe
         <AlertTriangle size={22} />
         <div>
           <strong>{copy[0]}</strong>
-          <p>{loading ? 'Vérification en cours…' : copy[1]}</p>
+          {copy[1] ? <p>{loading ? 'Vérification en cours…' : copy[1]}</p> : null}
           <div className="table-actions server-state-actions">
             {kind !== 'sessionExpired' && <button type="button" className="primary-btn" onClick={onRetry} disabled={loading}>Réessayer</button>}
             <button type="button" className="ghost-btn" onClick={onLogout}>Déconnexion</button>

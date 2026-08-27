@@ -20,7 +20,7 @@ test('le frontend distingue suspension, panne réseau, timeout et session expir�
   assert.match(FLEETI_SOURCE, /window\.dispatchEvent\(new CustomEvent\(SERVICE_SUSPENSION_EVENT/)
   assert.doesNotMatch(APP_SOURCE, /FORCE_GLOBAL_SERVER_MESSAGE/)
   assert.match(APP_SOURCE, /const \[serviceIssue, setServiceIssue\]/)
-  assert.match(APP_SOURCE, /suspended: \['Service temporairement suspendu'/)
+  assert.match(APP_SOURCE, /suspended: \['impossible de joindre le serveur'/)
   assert.match(APP_SOURCE, /offline: \['Connexion indisponible'/)
   assert.match(APP_SOURCE, /timeout: \['Le serveur tarde à répondre'/)
   assert.match(APP_SOURCE, /sessionExpired: \['Session expirée'/)
