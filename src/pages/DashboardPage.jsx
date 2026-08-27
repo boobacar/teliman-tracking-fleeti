@@ -1,18 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Car, CheckCircle, ClipboardList, Clock, Fuel, Gauge, MapPin, Radio, Route, ShieldAlert, Signal, Wifi, WifiOff, X } from 'lucide-react'
+import { Activity, AlertTriangle, Car, CheckCircle, ClipboardList, Clock, Fuel, Gauge, MapPin, Radio, Route, ShieldAlert, Wifi, WifiOff, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+
 import { EmptyBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import { useAutoRefresh } from '../hooks'
@@ -94,7 +83,6 @@ const FLEET_SITUATION_STATUS_LABELS = {
 export function DashboardPage({
   filteredTrackers,
   stats: _stats,
-  connectionChart,
   priorityTrackers,
   topDrivers,
   executiveCards: _executiveCards,
@@ -197,10 +185,6 @@ export function DashboardPage({
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [])
 
-  const mileageData = useMemo(
-    () => filteredTrackers.slice(0, 12).map((tracker) => ({ name: tracker.label, mileage: tracker.latestDayMileage })),
-    [filteredTrackers],
-  )
   const filteredVehicles = useMemo(() => {
     if (!searchQuery) return vehicles
     const q = searchQuery.toLowerCase()
@@ -229,10 +213,6 @@ export function DashboardPage({
     moving: filteredTrackers.filter((tracker) => tracker.state?.movement_status === 'moving').length,
     avgSpeed: filteredTrackers.length ? Math.round(filteredTrackers.reduce((sum, tracker) => sum + Number(tracker.state?.gps?.speed || 0), 0) / filteredTrackers.length) : 0,
   }), [filteredTrackers])
-  const dashboardConnectionChart = useMemo(() => connectionChart.map((entry) => ({
-    ...entry,
-    value: entry.name === 'Actifs' ? dashboardStats.active : entry.name === 'Offline' ? dashboardStats.offline : Math.max(0, dashboardStats.total - dashboardStats.active - dashboardStats.offline),
-  })), [connectionChart, dashboardStats])
   const kpis = useMemo(() => {
     const withSpeedup = filteredTrackers.filter((t) => (t.eventCounts?.speedup || 0) > 0)
     const withParking = filteredTrackers.filter((t) => (t.eventCounts?.excessive_parking || 0) > 0)
@@ -417,59 +397,6 @@ export function DashboardPage({
             </table>
           </div>
         )}
-      </section>
-
-      <section className="dashboard-grid dashboard-grid--primary">
-        <div className="panel panel-large dashboard-chart-panel">
-          <SectionHeader
-            title="Kilométrage du jour"
-            description="Classement des unités les plus actives"
-            right={<span className="data-phase-chip">Vue exploit.</span>}
-          />
-
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={mileageData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="name" stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
-              <YAxis stroke="rgba(226,232,240,0.6)" tickLine={false} axisLine={false} />
-              <Tooltip
-                contentStyle={{
-                  background: '#0b1220',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  borderRadius: 16,
-                  color: '#e2e8f0',
-                }}
-              />
-              <Bar dataKey="mileage" fill="#946239" radius={[10, 10, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="panel dashboard-pie-panel">
-          <SectionHeader title="Répartition flotte" description="Connectivité live" />
-          <ResponsiveContainer width="100%" height={130}>
-            <PieChart>
-              <Pie data={dashboardConnectionChart} dataKey="value" innerRadius={42} outerRadius={60} paddingAngle={4}>
-                {dashboardConnectionChart.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  background: '#0b1220',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  borderRadius: 16,
-                  color: '#e2e8f0',
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="dashboard-inline-stats">
-            <span><CheckCircle size={14} /> {dashboardStats.active} actifs</span>
-            <span><WifiOff size={14} /> {dashboardStats.offline} offline</span>
-            <span><Signal size={14} /> {dashboardStats.total - dashboardStats.active - dashboardStats.offline} autres</span>
-          </div>
-        </div>
       </section>
 
       <section className="dashboard-grid dashboard-grid--secondary">
