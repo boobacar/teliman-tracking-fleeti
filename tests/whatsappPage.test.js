@@ -51,3 +51,19 @@ test('la page WhatsApp ne montre plus le panneau Cloud API Meta', () => {
   assert.match(source, /whatsapp-connection-panel/)
   assert.match(source, /Envoyer un message test WhatsApp/)
 })
+
+test('l’historique WhatsApp peut être effacé via un bouton dédié et un endpoint protégé', () => {
+  const pageSource = readFileSync(new URL('../src/pages/WhatsAppPage.jsx', import.meta.url), 'utf8')
+  const libSource = readFileSync(new URL('../src/lib/fleeti.js', import.meta.url), 'utf8')
+
+  // Frontend : bouton d'effacement confirmé qui appelle clearWhatsAppHistory
+  assert.match(pageSource, /Effacer l’historique/)
+  assert.match(pageSource, /clearWhatsAppHistory/)
+  assert.match(pageSource, /confirmAndRun/)
+  assert.match(pageSource, /irréversible/)
+  assert.match(libSource, /clearWhatsAppHistory = .*\/api\/whatsapp\/history\/clear/)
+
+  // Backend : endpoint POST protégé par la permission manage_whatsapp qui vide l'historique
+  assert.match(serverSource, /app\.post\('\/api\/whatsapp\/history\/clear', requirePermission\('manage_whatsapp'\)/)
+  assert.match(serverSource, /writeWhatsAppHistory\(\[\]\)/)
+})

@@ -201,6 +201,7 @@ export const loadReportProjects = (query = '') => getJson(`/api/reports/projects
 export const loadWhatsAppStatus = () => getJson('/api/whatsapp/status')
 export const loadWhatsAppQr = () => getJson('/api/whatsapp/qr')
 export const loadWhatsAppHistory = () => getJson('/api/whatsapp/history?limit=100')
+export const clearWhatsAppHistory = () => postJson('/api/whatsapp/history/clear', {})
 export const reconnectWhatsApp = (clearSession = false) => postJson('/api/whatsapp/reconnect', { clearSession })
 export const disconnectWhatsApp = (clearSession = true) => postJson('/api/whatsapp/disconnect', { clearSession })
 export const sendWhatsAppTestMessage = (payload) => postJson('/api/whatsapp/test-message', payload)

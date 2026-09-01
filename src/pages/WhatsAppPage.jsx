@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Copy, MessageCircle, Power, QrCode, RefreshCcw, RotateCcw, Save, Send, ShieldCheck, Smartphone, Webhook } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Copy, MessageCircle, Power, QrCode, RefreshCcw, RotateCcw, Save, Send, ShieldCheck, Smartphone, Trash2, Webhook } from 'lucide-react'
 import {
+  clearWhatsAppHistory,
   disconnectWhatsApp,
   loadWhatsAppHistory,
   loadWhatsAppQr,
@@ -299,6 +300,16 @@ export function WhatsAppPage() {
           </div>
           <div className="whatsapp-history-header-actions">
             {filteredHistory.length > 0 && <span className="whatsapp-history-count">{filteredHistory.length} notification{filteredHistory.length > 1 ? 's' : ''}</span>}
+            {filteredHistory.length > 0 && (
+              <button
+                type="button"
+                className="ghost-btn small-btn whatsapp-history-clear"
+                disabled={Boolean(busyAction)}
+                onClick={() => confirmAndRun('Effacer tout l’historique WhatsApp ? Cette action est irréversible.', 'clear-history', clearWhatsAppHistory)}
+              >
+                <Trash2 size={16} /> Effacer l’historique
+              </button>
+            )}
             <button type="button" className="ghost-btn small-btn" onClick={refreshWhatsAppConnection}><RefreshCcw size={16} /> Actualiser</button>
           </div>
         </div>

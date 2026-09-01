@@ -2808,6 +2808,11 @@ app.get('/api/whatsapp/history', (req, res) => {
   res.json({ ok: true, history: readWhatsAppHistory().slice(0, limit) })
 })
 
+app.post('/api/whatsapp/history/clear', requirePermission('manage_whatsapp'), async (_req, res) => {
+  await writeWhatsAppHistory([])
+  res.json({ ok: true, cleared: true, history: [] })
+})
+
 app.post('/api/whatsapp/test-message', requirePermission('manage_whatsapp'), async (req, res) => {
   const validated = validateBody(whatsappTestMessageSchema, req.body)
   const result = await sendWhatsAppTextMessage({
