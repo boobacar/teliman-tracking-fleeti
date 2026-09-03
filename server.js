@@ -850,6 +850,8 @@ async function notifyGeofenceAlertWhatsApp(event, eventId) {
     }))
     if (result.sent) {
       console.log(`[whatsapp] Géofence ${event?.geofenceName || '-'} (${event?.eventType}) envoyée à ${result.recipient}`)
+    } else if (result.queued) {
+      console.log(`[whatsapp] Géofence ${event?.geofenceName || '-'} (${event?.eventType}) en file pour ${result.recipient}`)
     } else if (!result.skipped || result.reason) {
       console.warn(`[whatsapp] Géofence ${event?.geofenceName || '-'} non envoyée: ${result.reason || 'raison inconnue'}`)
     }

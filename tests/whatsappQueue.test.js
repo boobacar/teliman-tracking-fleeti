@@ -94,6 +94,25 @@ test('dans la fenêtre horaire : tous les jobs partent, deferrable compris', asy
   assert.equal(queue.status().outsideSendHours, false)
 })
 
+test('en fenêtre : une alerte passe DEVANT les BL (livraison temps réel)', async () => {
+  const sentOrder = []
+  const queue = createWhatsAppQueue({
+    sendFn: async (job) => { sentOrder.push(job.to); return { sent: true } },
+    minIntervalMs: { min: 25, max: 25 },
+    sendHours: { start: 0, end: 24 }, // toujours ouvert
+  })
+  queue.enqueue({ to: 'bl-1' })
+  queue.enqueue({ to: 'bl-2' })
+  // L'alerte arrive APRÈS les deux BL mais doit passer devant (deferrable:false)
+  queue.enqueue({ to: 'alerte-geofence', deferrable: false })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  queue.stop()
+
+  assert.equal(sentOrder[0], 'alerte-geofence', 'l’alerte part en premier (temps réel)')
+  assert.equal(sentOrder.length, 3)
+  assert.deepEqual(sentOrder.slice(1), ['bl-1', 'bl-2'], 'les BL suivent l’alerte')
+})
+
 test('isWithinSendHours gère les fenêtres enveloppées (21-7)', () => {
   const night = { start: 21, end: 7 }
   assert.equal(isWithinSendHours(22, night), true)

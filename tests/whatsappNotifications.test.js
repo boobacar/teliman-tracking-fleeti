@@ -441,6 +441,19 @@ test('createWhatsAppHistoryEntry construit une ligne historique sans secrets et 
   assert.equal(entry.accessToken, undefined)
 })
 
+test('createWhatsAppHistoryEntry marque `queued` (et non `failed`) un message mis en file', () => {
+  const entry = createWhatsAppHistoryEntry({
+    result: { eventType: 'exit', recipient: '22177000000', sent: false, queued: true, reason: 'En file d’attente WhatsApp (Baileys).' },
+    order: { id: '3537766', reference: '4400WWCI01', client: 'Géofence Bouaké, ville' },
+    message: 'ALERTE GÉOFENCE 🚧 …',
+    source: 'geofence',
+    now: () => '2026-09-03T12:11:58.000Z',
+  })
+  assert.equal(entry.status, 'queued', 'un job en file ne doit pas être étiqueté failed')
+  assert.equal(entry.source, 'geofence')
+  assert.equal(entry.reason, 'En file d’attente WhatsApp (Baileys).')
+})
+
 test('sendWhatsAppTextMessage route Baileys via la file dédiée quand config.baileysQueue est présent', async () => {
   const jobs = []
   const baileysClient = { sendText: async () => ({ sent: true }) }

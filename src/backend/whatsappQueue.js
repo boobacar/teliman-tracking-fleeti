@@ -226,7 +226,14 @@ export function createWhatsAppQueue({
   }
 
   function enqueue(job) {
-    pending.push({ ...job })
+    const entry = { ...job }
+    // Les alertes (flotte/géofence) sont critiques et à faible volume : elles
+    // passent DEVANT les BL/notifications pour être livrées en temps réel,
+    // afin que l'heure affichée dans l'alerte ≈ l'heure de réception.
+    // (Hors fenêtre horaire, `flush` les fait déjà passer ; en fenêtre, ce
+    // unshift évite qu'elles attendent derrière une rafale de BL.)
+    if (entry.deferrable === false) pending.unshift(entry)
+    else pending.push(entry)
     if (!current && !timer) {
       timer = setTimeout(flush, 0)
     }

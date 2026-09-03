@@ -191,7 +191,7 @@ export function buildLegacyDeliveryOrderWhatsAppMessage(eventType, order = {}) {
 }
 
 export function createWhatsAppHistoryEntry({ result = {}, order = {}, message = '', source = 'delivery_order', senderPhone = '', now = () => new Date().toISOString() } = {}) {
-  const status = result.sent ? 'sent' : result.skipped ? 'skipped' : 'failed'
+  const status = result.sent ? 'sent' : result.queued ? 'queued' : result.skipped ? 'skipped' : 'failed'
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     sentAt: now(),
