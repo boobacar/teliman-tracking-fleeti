@@ -113,6 +113,45 @@ test('en fenêtre : une alerte passe DEVANT les BL (livraison temps réel)', asy
   assert.deepEqual(sentOrder.slice(1), ['bl-1', 'bl-2'], 'les BL suivent l’alerte')
 })
 
+test('au plafond journalier : les alertes passent, les BL attendent', async () => {
+  const sent = []
+  const queue = createWhatsAppQueue({
+    sendFn: async (job) => { sent.push(job.to); return { sent: true } },
+    minIntervalMs: 10,
+    dailyLimit: 1, // plafond très bas pour tester l’exemption
+  })
+  queue.enqueue({ to: 'bl-1' }) // consomme le seul slot du quota
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  assert.equal(sent.length, 1, 'bl-1 consomme le quota journalier')
+  assert.equal(queue.status().sentToday, 1)
+
+  // Au plafond : l’alerte doit quand même partir, le BL-2 doit rester bloqué.
+  queue.enqueue({ to: 'alerte', deferrable: false })
+  queue.enqueue({ to: 'bl-2' })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  queue.stop()
+  assert.ok(sent.includes('alerte'), 'l’alerte passe malgré le plafond journalier')
+  assert.ok(!sent.includes('bl-2'), 'le BL-2 reste bloqué par le plafond')
+  assert.equal(queue.status().queued, 1, 'bl-2 reste en file')
+})
+
+test('la file appelle onResult (résultat réel) pour chaque job', async () => {
+  const results = []
+  const queue = createWhatsAppQueue({
+    sendFn: async () => ({ sent: true, messageId: 'M-1' }),
+    minIntervalMs: 5,
+    onResult: (result, job) => { results.push({ result, to: job.to }) },
+  })
+  queue.enqueue({ to: 'a' })
+  queue.enqueue({ to: 'b' })
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  queue.stop()
+  assert.equal(results.length, 2, 'onResult appelé pour chaque envoi')
+  assert.equal(results[0].to, 'a')
+  assert.equal(results[1].to, 'b')
+  assert.deepEqual(results.map((r) => r.result.sent), [true, true])
+})
+
 test('isWithinSendHours gère les fenêtres enveloppées (21-7)', () => {
   const night = { start: 21, end: 7 }
   assert.equal(isWithinSendHours(22, night), true)

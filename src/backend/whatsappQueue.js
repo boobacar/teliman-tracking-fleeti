@@ -65,6 +65,7 @@ export function createWhatsAppQueue({
   circuitBreaker = DEFAULT_CIRCUIT_BREAKER,
   sendHours = null,
   now = () => Date.now(),
+  onResult = null,
 } = {}) {
   if (typeof sendFn !== 'function') throw new Error('createWhatsAppQueue: sendFn requis')
 
@@ -142,8 +143,13 @@ export function createWhatsAppQueue({
       return
     }
     if (stats.sentToday >= limit) {
-      timer = setTimeout(flush, 60_000)
-      return
+      // Même au plafond journalier, les alertes critiques (deferrable:false)
+      // passent : on ne bloque pas une alerte géofence/flotte derrière un quota
+      // anti-ban. Le reste (BL/notifs) attend l'ouverture suivante (00:00).
+      if (pending.findIndex((entry) => entry.deferrable === false) < 0) {
+        timer = setTimeout(flush, 60_000)
+        return
+      }
     }
     if (stats.paused && (stats.pausedUntil || 0) > now()) {
       timer = setTimeout(flush, Math.max(1, Math.min(60_000, (stats.pausedUntil || now()) - now())))
@@ -159,22 +165,23 @@ export function createWhatsAppQueue({
       return
     }
     const inHours = isWithinSendHours(new Date(now()).getHours(), sendHours)
-    let job = pending.shift()
-    if (!inHours) {
-      // Hors fenêtre d'envoi : les jobs deferrable (BL, notifications) attendent
-      // l'ouverture ; seules les alertes (deferrable: false) partent immédiatement.
-      if (job && job.deferrable !== false) {
-        pending.unshift(job)
-        job = null
-      }
-      if (!job) {
-        const alertIndex = pending.findIndex((entry) => entry.deferrable === false)
-        if (alertIndex >= 0) job = pending.splice(alertIndex, 1)[0]
-      }
-      if (!job) {
-        timer = setTimeout(flush, Math.min(msUntilSendHoursOpen(now(), sendHours) || 60_000, 3600_000))
+    // Critiques (flotte/géofence, deferrable:false) : à faible volume, elles
+    // passent TOUJOURS — hors fenêtre horaire ET au plafond journalier.
+    const criticalIndex = pending.findIndex((entry) => entry.deferrable === false)
+    let job = null
+    if (!inHours || stats.sentToday >= limit) {
+      // Fenêtre fermée OU quota quotidien atteint : seules les alertes partent.
+      if (criticalIndex >= 0) {
+        job = pending.splice(criticalIndex, 1)[0]
+      } else {
+        const delay = inHours ? 60_000 : Math.min(msUntilSendHoursOpen(now(), sendHours) || 60_000, 3600_000)
+        timer = setTimeout(flush, delay)
         return
       }
+    } else {
+      // Fenêtre ouverte et sous quota : FIFO. Les alertes, priorisées à
+      // l'enqueue, sont en tête et partent en premier.
+      job = pending.shift()
     }
     if (!job) return
     current = job
@@ -207,6 +214,13 @@ export function createWhatsAppQueue({
       if (typeof job.onResult === 'function') {
         try { await job.onResult(result) } catch { /* journalisation best-effort */ }
       }
+      if (typeof onResult === 'function') {
+        // onResult de la file (ex. whatsAppQueueOnResult) : enregistrement réel
+        // de l'envoi (sent/failed) + log « envoyé à ». C'est ce qui manquait —
+        // sans lui, l'historique ne montrait que « queued/failed » et jamais
+        // la confirmation d'envoi.
+        try { await onResult(result, job) } catch { /* journalisation best-effort */ }
+      }
     } catch (error) {
       stats.failedToday += 1
       stats.consecutiveFailures += 1
@@ -216,6 +230,9 @@ export function createWhatsAppQueue({
       if (stats.consecutiveFailures >= maxFails) triggerPause()
       if (typeof job.onResult === 'function') {
         try { await job.onResult({ sent: false, skipped: false, reason: stats.lastError }) } catch { /* ignore */ }
+      }
+      if (typeof onResult === 'function') {
+        try { await onResult({ sent: false, skipped: false, reason: stats.lastError }, job) } catch { /* ignore */ }
       }
     } finally {
       current = null
@@ -227,15 +244,19 @@ export function createWhatsAppQueue({
 
   function enqueue(job) {
     const entry = { ...job }
-    // Les alertes (flotte/géofence) sont critiques et à faible volume : elles
-    // passent DEVANT les BL/notifications pour être livrées en temps réel,
-    // afin que l'heure affichée dans l'alerte ≈ l'heure de réception.
-    // (Hors fenêtre horaire, `flush` les fait déjà passer ; en fenêtre, ce
-    // unshift évite qu'elles attendent derrière une rafale de BL.)
-    if (entry.deferrable === false) pending.unshift(entry)
+    const isAlert = entry.deferrable === false
+    if (isAlert) pending.unshift(entry)
     else pending.push(entry)
-    if (!current && !timer) {
-      timer = setTimeout(flush, 0)
+    // Une alerte critique doit RÉVEILLER la file immédiatement : elle passe
+    // toujours (même en pause quota/fenêtre), sans quoi elle attendrait le
+    // timer en cours (60 s au plafond, jusqu'à 1 h hors fenêtre).
+    if (!current) {
+      if (isAlert) {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(flush, 0)
+      } else if (!timer) {
+        timer = setTimeout(flush, 0)
+      }
     }
   }
 
