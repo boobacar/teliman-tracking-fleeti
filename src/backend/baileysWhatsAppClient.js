@@ -4,6 +4,21 @@ import { normalizeWhatsAppPhone } from './whatsappNotifications.js'
 const DEFAULT_AUTH_DIR = 'whatsapp-auth'
 const WHATSAPP_JID_SUFFIX = '@s.whatsapp.net'
 
+export function resolveReconnectDelay({
+  attempts,
+  maxAttempts,
+  baseMs = 5_000,
+  maxMs = 5 * 60_000,
+}) {
+  if (attempts <= maxAttempts) {
+    return Math.min(baseMs * Math.pow(2, Math.max(0, attempts - 1)), maxMs)
+  }
+  // NE JAMAIS donner « up » : au-delà du burst exponentiel, on garde un retry lent
+  // permanent (maxMs, ex. 5 min) pour que le client récupère seul après une
+  // coupure transitoire. Renvoie toujours un délai fini (>0) pour tout attempt.
+  return maxMs
+}
+
 export function toBaileysJid(phone) {
   const recipient = normalizeWhatsAppPhone(phone)
   return recipient ? `${recipient}${WHATSAPP_JID_SUFFIX}` : ''
@@ -53,6 +68,13 @@ export function createBaileysWhatsAppClient({
       state = 'error'
       lastError = error?.message || 'Impossible de démarrer Baileys.'
       logger.error?.(`[baileys] ${lastError}`)
+      // Réarmer le client : sans ça `started` reste `true` et plus aucun start()
+      // ne peut être relancé (verrou permanent après un échec de démarrage).
+      started = false
+      socket = null
+      reconnectAttempts += 1
+      const delay = resolveReconnectDelay({ attempts: reconnectAttempts, maxAttempts: MAX_RECONNECT_ATTEMPTS, baseMs: RECONNECT_BASE_DELAY_MS, maxMs: 5 * 60_000 })
+      setTimeout(() => start().catch((err) => logger.error?.(`[baileys] relance impossible: ${err?.message || err}`)), delay)
       return getStatus()
     }
   }
@@ -223,19 +245,25 @@ export function createBaileysWhatsAppClient({
         return
       }
       reconnectAttempts += 1
-      if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-        logger.error?.(`[baileys] WhatsApp: ${MAX_RECONNECT_ATTEMPTS} tentatives échouées. Abandon de la reconnexion automatique. Redémarrez le serveur ou scannez le QR manuellement.`)
-        state = 'error'
-        lastQr = ''
-        lastQrDataUrl = ''
-        started = false
-        socket = null
-        return
-      }
-      const delay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempts - 1), 5 * 60_000)
-      logger.warn?.(`[baileys] WhatsApp déconnecté${lastError ? `: ${lastError}` : ''} — tentative ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} dans ${Math.round(delay / 1000)}s`)
       started = false
       socket = null
+      // NE JAMAIS abandonner définitivement. WhatsApp ferme la socket des sessions
+      // longues après ~1-2 jours (recyclage, coupure réseau, téléphone brièvement
+      // hors-ligne) et la reconnexion peut échouer plusieurs fois de suite. Si on
+      // s'arrête là, l'état reste 'error' pour toujours → le « WebSocket Error () »
+      // récurrent, plus aucune alerte sans redémarrage manuel. On bascule donc sur
+      // un retry lent PERMANENT (toutes les 5 min) pour que le client récupère seul.
+      const exceeded = reconnectAttempts > MAX_RECONNECT_ATTEMPTS
+      const delay = resolveReconnectDelay({ attempts: reconnectAttempts, maxAttempts: MAX_RECONNECT_ATTEMPTS, baseMs: RECONNECT_BASE_DELAY_MS, maxMs: 5 * 60_000 })
+      if (exceeded) {
+        lastQr = ''
+        lastQrDataUrl = ''
+        logger.warn?.(`[baileys] WhatsApp: ${MAX_RECONNECT_ATTEMPTS} tentatives rapides échouées${lastError ? ` (${lastError})` : ''} — retry lent permanent (${Math.round(delay / 60_000)} min).`)
+        state = 'error'
+      } else {
+        logger.warn?.(`[baileys] WhatsApp déconnecté${lastError ? `: ${lastError}` : ''} — tentative ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} dans ${Math.round(delay / 1000)}s`)
+        state = 'disconnected'
+      }
       setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), delay)
     }
   }
