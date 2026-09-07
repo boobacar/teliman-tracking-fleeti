@@ -278,15 +278,33 @@ export function createBaileysWhatsAppClient({
     connectedAt = null
     user = null
 
+    // Détacher le device côté WhatsApp en best-effort. Si la socket est déjà morte
+    // (coupure réseau, restart, crash) ou que le logout échoue, on NE doit PAS
+    // abandonner le nettoyage local — sinon des creds périmés survivent et la
+    // reconnexion suivante repart sur une session morte (401), ce qui casse le
+    // cycle « je veux connecter/déconnecter autant de fois que je veux ».
+    let remoteUnlinkOk = true
     try {
       if (currentSocket?.logout) await currentSocket.logout()
       else currentSocket?.end?.()
-      if (clearSession) await resolveSessionCleaner(sessionCleaner)(authDir)
-      return { ok: true, state }
     } catch (error) {
-      lastError = error?.message || 'Erreur déconnexion Baileys.'
-      return { ok: false, error: lastError, state }
+      remoteUnlinkOk = false
+      logger.warn?.(`[baileys] Détachement distant échoué (on force quand même le nettoyage local) : ${error?.message || error}`)
     }
+    // TOUJOURS purger la session locale si demandé, même si le logout distant a
+    // échoué. C'est ce qui garantit un état « déconnecté » propre et re-appairable.
+    if (clearSession) {
+      try {
+        await resolveSessionCleaner(sessionCleaner)(authDir)
+      } catch (error) {
+        remoteUnlinkOk = false
+        logger.warn?.(`[baileys] Nettoyage local de session échoué : ${error?.message || error}`)
+      }
+    }
+    if (!remoteUnlinkOk) {
+      lastError = 'Session WhatsApp déconnectée, mais le détachement distant a échoué (session locale purgée).'
+    }
+    return { ok: true, state, remoteUnlinkOk }
   }
 
   async function reconnect({ clearSession = false } = {}) {
