@@ -72,16 +72,16 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
     address: '5.34500, -4.02400',
   })
 
-  assert.match(message, /^🚨 Excès de vitesse — Teliman Logistique/)
-  assert.match(message, /Excès de vitesse/)
+  assert.match(message, /^Teliman Logistique/)
+  assert.match(message, /vient de dépasser la limite de vitesse/)
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
   assert.match(message, /96 km\/h/)
-  assert.match(message, /5\.34500, -4\.02400/)
   assert.match(message, /maps\.google\.com/)
   assert.match(message, /07\/05\/2026/)
   assert.doesNotMatch(message, /TELIMAN LOGISTIQUE/)
   assert.doesNotMatch(message, /Alerte générée automatiquement/)
+  assert.doesNotMatch(message, /Position :/)
   assert.match(message, /L'équipe Teliman Logistique$/)
 })
 
@@ -95,8 +95,8 @@ test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assign
     lng: -3.1890516,
   })
 
-  assert.match(message, /^🚨 Stationnement prolongé — Teliman Logistique/)
-  assert.match(message, /Stationnement prolongé/)
+  assert.match(message, /^Teliman Logistique/)
+  assert.match(message, /est à l'arrêt/)
   assert.match(message, /3100WWCI01/)
   assert.doesNotMatch(message, /Chauffeur:/)
   assert.doesNotMatch(message, /Non assigné/)
@@ -150,13 +150,14 @@ test('buildGeofenceAlertWhatsAppMessage inclut action, zone, position, heure et 
     mission: { reference: 'BL-2026-002', client: 'Société Y', destination: 'Korhogo', goods: 'Arachides' },
   })
 
-  assert.match(message, /^🚧 Entrée en zone — Teliman Logistique/)
+  assert.match(message, /^Teliman Logistique/)
   assert.match(message, /vient d'entrer dans la zone « Korhogo client »/)
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
   assert.match(message, /35 km\/h/)
   assert.match(message, /Korhogo/)
   assert.match(message, /maps\.google\.com/)
+  assert.doesNotMatch(message, /Position :/)
   assert.match(message, /Mission en cours/)
   assert.match(message, /Bon n°BL-2026-002/)
   assert.match(message, /L'équipe Teliman Logistique$/)
@@ -173,7 +174,7 @@ test('buildGeofenceAlertWhatsAppMessage gère la sortie de zone', () => {
     lng: -5.0303,
   })
 
-  assert.match(message, /^🚧 Sortie de zone — Teliman Logistique/)
+  assert.match(message, /^Teliman Logistique/)
   assert.match(message, /vient de sortir de la zone « Bouaké carrière »/)
 })
 
@@ -199,7 +200,7 @@ test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinatair
 
   assert.equal(results.length, 2)
   assert.deepEqual(calls.map((call) => call.to), ['221776260020', '2250700000000'])
-  assert.ok(calls.every((call) => call.message.includes('Stationnement prolongé')))
+  assert.ok(calls.every((call) => call.message.includes("est à l'arrêt")))
   assert.ok(results.every((result) => result.sent && result.source === 'fleet_alert'))
 })
 

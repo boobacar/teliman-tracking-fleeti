@@ -47,13 +47,11 @@ export function resolveAlertWhatsAppRecipients(eventType, masterData = {}) {
 
 export function buildFleetAlertWhatsAppMessage(event = {}) {
   const eventType = normalizeFleetAlertEventType(event.event || event.eventType)
-  const label = fleetAlertLabel(eventType)
   const truckLabel = display(event.truckLabel || event.trackerLabel || event.label || event.registration || event.plate || event.tracker_id)
   const driver = display(event.driver || event.driverName || event.employeeName)
   const time = formatDateTime(event.time || event.createdAt || event.sentAt)
   const speed = Number(event.speed)
   const speedLine = Number.isFinite(speed) && speed > 0 ? ` à ${speed} km/h` : ''
-  const position = display(event.address || buildAlertCoordinates(event))
   const mapsUrl = buildGoogleMapsUrl(event)
   const driverText = isUnassignedDriver(driver) ? '' : ` (${driver})`
 
@@ -62,11 +60,10 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
     : `Le véhicule ${truckLabel}${driverText} est à l'arrêt depuis un moment. Vérifiez qu'aucun imprévu ne bloque la mission.`
 
   const lines = [
-    `🚨 ${label} — Teliman Logistique`,
+    'Teliman Logistique',
     '',
     opening,
     '',
-    `📍 Position : ${position}`,
     `🕒 Heure : ${time}`,
     mapsUrl ? `🗺️ Carte : ${mapsUrl}` : '',
     ...buildMissionContextBlock(event.mission),
@@ -104,14 +101,12 @@ export async function sendFleetAlertWhatsAppNotifications({ event, masterData = 
 export function buildGeofenceAlertWhatsAppMessage(event = {}) {
   const eventType = String(event.eventType || '').trim()
   const isExit = eventType === 'exit'
-  const headerAction = isExit ? 'Sortie de zone' : 'Entrée en zone'
   const zoneName = display(event.geofenceName || event.zoneName)
   const truckLabel = display(event.truckLabel || event.trackerLabel || event.label || event.tracker_id)
   const driver = display(event.driver || event.driverName || event.employeeName)
   const time = formatDateTime(event.time || event.createdAt || event.sentAt)
   const speed = Number(event.speed)
   const speedLine = Number.isFinite(speed) && speed > 0 ? ` à ${speed} km/h` : ''
-  const position = display(event.address || buildAlertCoordinates(event))
   const mapsUrl = buildGoogleMapsUrl(event)
   const driverText = isUnassignedDriver(driver) ? '' : ` (${driver})`
 
@@ -120,11 +115,10 @@ export function buildGeofenceAlertWhatsAppMessage(event = {}) {
   const actionPhrase = isExit ? 'vient de sortir' : "vient d'entrer"
 
   const lines = [
-    `🚧 ${headerAction} — Teliman Logistique`,
+    'Teliman Logistique',
     '',
     `Le véhicule ${truckLabel}${driverText} ${actionPhrase} ${preposition} ${zoneLabel}${speedLine}.`,
     '',
-    `📍 Position : ${position}`,
     `🕒 Heure : ${time}`,
     mapsUrl ? `🗺️ Carte : ${mapsUrl}` : '',
     ...buildMissionContextBlock(event.mission),
@@ -301,13 +295,6 @@ function fleetAlertLabel(eventType) {
   if (eventType === 'speedup') return 'Excès de vitesse'
   if (eventType === 'excessive_parking') return 'Stationnement prolongé'
   return 'Alerte flotte'
-}
-
-function buildAlertCoordinates(event = {}) {
-  const lat = Number(event.lat ?? event.location?.lat)
-  const lng = Number(event.lng ?? event.location?.lng)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
-  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
 }
 
 function buildGoogleMapsUrl(event = {}) {
