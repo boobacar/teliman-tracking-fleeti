@@ -10,6 +10,7 @@ import {
   detectDeliveryOrderWhatsAppEvents,
   resolveAlertWhatsAppRecipients,
   buildFleetAlertWhatsAppMessage,
+  buildGeofenceAlertWhatsAppMessage,
   sendFleetAlertWhatsAppNotifications,
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
@@ -71,7 +72,7 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
     address: '5.34500, -4.02400',
   })
 
-  assert.match(message, /^ALERTE 🚨/)
+  assert.match(message, /^🚨 Excès de vitesse — Teliman Logistique/)
   assert.match(message, /Excès de vitesse/)
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
@@ -80,7 +81,8 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
   assert.match(message, /maps\.google\.com/)
   assert.match(message, /07\/05\/2026/)
   assert.doesNotMatch(message, /TELIMAN LOGISTIQUE/)
-  assert.match(message, /\nAlerte générée automatiquement par Teliman Tracking\.$/)
+  assert.doesNotMatch(message, /Alerte générée automatiquement/)
+  assert.match(message, /L'équipe Teliman Logistique$/)
 })
 
 test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assigné', () => {
@@ -93,12 +95,86 @@ test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assign
     lng: -3.1890516,
   })
 
-  assert.match(message, /^ALERTE 🚨/)
+  assert.match(message, /^🚨 Stationnement prolongé — Teliman Logistique/)
   assert.match(message, /Stationnement prolongé/)
   assert.match(message, /3100WWCI01/)
   assert.doesNotMatch(message, /Chauffeur:/)
   assert.doesNotMatch(message, /Non assigné/)
-  assert.match(message, /\nAlerte générée automatiquement par Teliman Tracking\.$/)
+  assert.match(message, /L'équipe Teliman Logistique$/)
+})
+
+test('buildFleetAlertWhatsAppMessage ajoute le bloc Mission en cours quand une mission est active', () => {
+  const message = buildFleetAlertWhatsAppMessage({
+    event: 'speedup',
+    truckLabel: 'TG 1234 AB',
+    driver: 'Kouadio Jean',
+    speed: 88,
+    time: '2026-05-07T12:34:00.000Z',
+    lat: 5.345,
+    lng: -4.024,
+    address: 'Abidjan',
+    mission: { reference: 'BL-2026-001', client: 'Société X', destination: 'Abidjan', goods: 'Ciment' },
+  })
+
+  assert.match(message, /Mission en cours/)
+  assert.match(message, /Bon n°BL-2026-001/)
+  assert.match(message, /Client : Société X/)
+  assert.match(message, /Destination : Abidjan/)
+  assert.match(message, /Marchandise : Ciment/)
+})
+
+test('buildFleetAlertWhatsAppMessage n’affiche pas de bloc mission sans mission active', () => {
+  const message = buildFleetAlertWhatsAppMessage({
+    event: 'excessive_parking',
+    truckLabel: '3100WWCI01',
+    time: '2026-05-08T09:09:00.000Z',
+    lat: 5.5774149,
+    lng: -3.1890516,
+  })
+
+  assert.doesNotMatch(message, /Mission en cours/)
+})
+
+test('buildGeofenceAlertWhatsAppMessage inclut action, zone, position, heure et mission', () => {
+  const message = buildGeofenceAlertWhatsAppMessage({
+    eventType: 'enter',
+    geofenceName: 'Korhogo client',
+    trackerId: 42,
+    truckLabel: 'TG 1234 AB',
+    driver: 'Kouadio Jean',
+    speed: 35,
+    time: '2026-05-08T10:15:00.000Z',
+    lat: 5.2662133,
+    lng: -4.0027433,
+    address: 'Korhogo',
+    mission: { reference: 'BL-2026-002', client: 'Société Y', destination: 'Korhogo', goods: 'Arachides' },
+  })
+
+  assert.match(message, /^🚧 Entrée en zone — Teliman Logistique/)
+  assert.match(message, /vient d'entrer dans la zone « Korhogo client »/)
+  assert.match(message, /TG 1234 AB/)
+  assert.match(message, /Kouadio Jean/)
+  assert.match(message, /35 km\/h/)
+  assert.match(message, /Korhogo/)
+  assert.match(message, /maps\.google\.com/)
+  assert.match(message, /Mission en cours/)
+  assert.match(message, /Bon n°BL-2026-002/)
+  assert.match(message, /L'équipe Teliman Logistique$/)
+})
+
+test('buildGeofenceAlertWhatsAppMessage gère la sortie de zone', () => {
+  const message = buildGeofenceAlertWhatsAppMessage({
+    eventType: 'exit',
+    geofenceName: 'Bouaké carrière',
+    trackerId: 7,
+    truckLabel: 'CI-2026-TL',
+    time: '2026-05-08T11:00:00.000Z',
+    lat: 7.6938,
+    lng: -5.0303,
+  })
+
+  assert.match(message, /^🚧 Sortie de zone — Teliman Logistique/)
+  assert.match(message, /vient de sortir de la zone « Bouaké carrière »/)
 })
 
 test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinataires du type d’alerte', async () => {

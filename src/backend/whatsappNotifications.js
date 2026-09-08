@@ -52,22 +52,27 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
   const driver = display(event.driver || event.driverName || event.employeeName)
   const time = formatDateTime(event.time || event.createdAt || event.sentAt)
   const speed = Number(event.speed)
-  const speedLine = Number.isFinite(speed) && speed > 0 ? `Vitesse: ${speed} km/h` : ''
+  const speedLine = Number.isFinite(speed) && speed > 0 ? ` à ${speed} km/h` : ''
   const position = display(event.address || buildAlertCoordinates(event))
   const mapsUrl = buildGoogleMapsUrl(event)
-  const driverLine = isUnassignedDriver(driver) ? '' : `Chauffeur: ${driver}`
+  const driverText = isUnassignedDriver(driver) ? '' : ` (${driver})`
+
+  const opening = eventType === 'speedup'
+    ? `Le véhicule ${truckLabel}${driverText} vient de dépasser la limite de vitesse${speedLine}. Merci de surveiller la conduite.`
+    : `Le véhicule ${truckLabel}${driverText} est à l'arrêt depuis un moment. Vérifiez qu'aucun imprévu ne bloque la mission.`
+
   const lines = [
-    'ALERTE 🚨',
+    `🚨 ${label} — Teliman Logistique`,
     '',
-    `Véhicule: ${truckLabel}`,
-    driverLine,
-    `Type d’alerte: ${label}`,
-    speedLine,
-    `Position: ${position}`,
-    mapsUrl ? `Carte: ${mapsUrl}` : '',
-    `Heure: ${time}`,
+    opening,
     '',
-    'Alerte générée automatiquement par Teliman Tracking.',
+    `📍 Position : ${position}`,
+    `🕒 Heure : ${time}`,
+    mapsUrl ? `🗺️ Carte : ${mapsUrl}` : '',
+    ...buildMissionContextBlock(event.mission),
+    '',
+    'Cordialement,',
+    "L'équipe Teliman Logistique",
   ]
   return lines.filter((line) => line !== '').join('\n')
 }
@@ -98,28 +103,34 @@ export async function sendFleetAlertWhatsAppNotifications({ event, masterData = 
 
 export function buildGeofenceAlertWhatsAppMessage(event = {}) {
   const eventType = String(event.eventType || '').trim()
-  const action = eventType === 'exit' ? 'SORTIE de zone' : 'ENTRÉE en zone'
+  const isExit = eventType === 'exit'
+  const headerAction = isExit ? 'Sortie de zone' : 'Entrée en zone'
   const zoneName = display(event.geofenceName || event.zoneName)
   const truckLabel = display(event.truckLabel || event.trackerLabel || event.label || event.tracker_id)
   const driver = display(event.driver || event.driverName || event.employeeName)
   const time = formatDateTime(event.time || event.createdAt || event.sentAt)
   const speed = Number(event.speed)
-  const speedLine = Number.isFinite(speed) && speed > 0 ? `Vitesse: ${speed} km/h` : ''
+  const speedLine = Number.isFinite(speed) && speed > 0 ? ` à ${speed} km/h` : ''
   const position = display(event.address || buildAlertCoordinates(event))
   const mapsUrl = buildGoogleMapsUrl(event)
-  const driverLine = isUnassignedDriver(driver) ? '' : `Chauffeur: ${driver}`
+  const driverText = isUnassignedDriver(driver) ? '' : ` (${driver})`
+
+  const zoneLabel = zoneName === '-' ? 'une zone' : `la zone « ${zoneName} »`
+  const preposition = zoneName === '-' ? (isExit ? "d'" : 'dans') : (isExit ? 'de' : 'dans')
+  const actionPhrase = isExit ? 'vient de sortir' : "vient d'entrer"
+
   const lines = [
-    'ALERTE GÉOFENCE 🚧',
+    `🚧 ${headerAction} — Teliman Logistique`,
     '',
-    `Véhicule: ${truckLabel}`,
-    driverLine,
-    `${action}: ${zoneName}`,
-    speedLine,
-    `Position: ${position}`,
-    mapsUrl ? `Carte: ${mapsUrl}` : '',
-    `Heure: ${time}`,
+    `Le véhicule ${truckLabel}${driverText} ${actionPhrase} ${preposition} ${zoneLabel}${speedLine}.`,
     '',
-    'Alerte générée automatiquement par Teliman Tracking.',
+    `📍 Position : ${position}`,
+    `🕒 Heure : ${time}`,
+    mapsUrl ? `🗺️ Carte : ${mapsUrl}` : '',
+    ...buildMissionContextBlock(event.mission),
+    '',
+    'Cordialement,',
+    "L'équipe Teliman Logistique",
   ]
   return lines.filter((line) => line !== '').join('\n')
 }
@@ -346,6 +357,23 @@ function isUnassignedDriver(value) {
 function display(value) {
   const text = String(value ?? '').trim()
   return text || '-'
+}
+
+// Bloc « Mission en cours » attaché aux alertes : contexte du bon de livraison actif
+// du véhicule (réf, client, destination, marchandise). Ne rend rien si aucun détail.
+function buildMissionContextBlock(mission = {}) {
+  if (!mission || typeof mission !== 'object') return []
+  const reference = display(mission.reference)
+  const client = display(mission.client)
+  const destination = display(mission.destination)
+  const goods = display(mission.goods)
+  if (reference === '-' && client === '-' && destination === '-' && goods === '-') return []
+  const lines = ['', '📦 Mission en cours']
+  if (reference !== '-') lines.push(`▪️ Bon n°${reference}`)
+  if (client !== '-') lines.push(`▪️ Client : ${client}`)
+  if (destination !== '-') lines.push(`▪️ Destination : ${destination}`)
+  if (goods !== '-') lines.push(`▪️ Marchandise : ${goods}`)
+  return lines
 }
 
 // Les notifications transactionnelles (BL, test manuel) peuvent attendre l'ouverture

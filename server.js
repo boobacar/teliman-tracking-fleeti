@@ -755,7 +755,29 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   return results
 }
 
+// Résout le contexte « mission en cours » d'un véhicule : le bon de livraison actif
+// lié au tracker. Sert à accompagner les alertes WhatsApp par la mission du camion.
+function resolveActiveMissionContext(trackerId) {
+  const id = ensureValidTrackerId(trackerId)
+  if (!id) return null
+  try {
+    const order = (readDeliveryOrders() || []).find((entry) => entry.active && String(entry.trackerId) === String(id))
+    if (!order) return null
+    return {
+      reference: String(order.reference || '').trim(),
+      client: String(order.client || '').trim(),
+      destination: String(order.destination || '').trim(),
+      goods: String(order.goods || '').trim(),
+    }
+  } catch (error) {
+    console.warn('[mission] résolution de la mission en cours impossible:', error?.message || error)
+    return null
+  }
+}
+
 async function notifyFleetAlertWhatsApp(event) {
+  // Contexte mission attaché à l'événement → repris par les builders de message.
+  event.mission = resolveActiveMissionContext(event?.tracker_id ?? event?.trackerId)
   const results = await sendFleetAlertWhatsAppNotifications({
     event,
     masterData: readMasterDataWrapper(),
@@ -829,6 +851,8 @@ function getAlertRecipientPhones() {
 }
 
 async function notifyGeofenceAlertWhatsApp(event, eventId) {
+  // Contexte mission attaché à l'événement → repris par le builder de message.
+  event.mission = resolveActiveMissionContext(event?.trackerId ?? event?.tracker_id)
   const recipients = getAlertRecipientPhones()
   const results = await sendGeofenceAlertWhatsAppNotifications({
     event,

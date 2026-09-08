@@ -103,12 +103,12 @@ test('buildGeofenceAlertWhatsAppMessage contient zone, action et camion', () => 
     lat: 9.411007,
     lng: -5.626558,
   })
-  assert.match(message, /ALERTE GÉOFENCE/)
-  assert.match(message, /ENTRÉE en zone: Korhogo, client/)
-  assert.match(message, /Véhicule: CI-1234 AB/)
-  assert.match(message, /Carte: https:\/\/maps\.google\.com\/\?q=/)
+  assert.match(message, /^🚧 Entrée en zone — Teliman Logistique/)
+  assert.match(message, /vient d'entrer dans la zone « Korhogo, client »/)
+  assert.match(message, /CI-1234 AB/)
+  assert.match(message, /maps\.google\.com\/\?q=9\.411007,-5\.626558/)
   const exitMessage = buildGeofenceAlertWhatsAppMessage({ eventType: 'exit', geofenceName: 'Abidjan, carrière' })
-  assert.match(exitMessage, /SORTIE de zone: Abidjan, carrière/)
+  assert.match(exitMessage, /vient de sortir de la zone « Abidjan, carrière »/)
 })
 
 test('sendGeofenceAlertWhatsAppNotifications envoie aux destinataires actifs', async () => {
