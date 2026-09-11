@@ -273,7 +273,7 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker, fenêtre
   // horaire (protection anti-ban). La file envoie sans baileysQueue pour éviter la récursion.
   if (config.baileysQueue) {
-    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !isImmediate }
+    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !(isImmediate || context?.immediate === true) }
     config.baileysQueue.enqueue(job)
     return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient, media: logoPath ? 'logo' : 'text' }
   }

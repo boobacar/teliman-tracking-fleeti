@@ -2976,7 +2976,7 @@ app.post('/api/whatsapp/test-message', requirePermission('manage_whatsapp'), asy
     imagePath: validated.withLogo ? resolveAlertLogoPath(WHATSAPP_CONFIG) : '',
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
-    context: { source: 'manual_test', eventType: 'test' },
+    context: { source: 'manual_test', eventType: 'test', immediate: true },
   })
   if (result.queued) {
     return res.json({ ok: true, queued: true, reason: result.reason, recipient: validated.to })
