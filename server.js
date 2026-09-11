@@ -14,7 +14,7 @@ import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/m
 import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
-import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, resolveAlertLogoPath, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { createWhatsAppQueue, makeWarmupDailyLimit } from './src/backend/whatsappQueue.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
@@ -137,6 +137,12 @@ const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
 const TRACKS_SOURCE = resolveTracksSource(process.env.FLEETI_TRACKS_SOURCE)
 const PRIVATE_API_CONFIGURED = Boolean(API_BASE && LOGIN && PASSWORD && DEALER_ID)
 const WHATSAPP_CONFIG = buildWhatsAppConfigFromEnv(process.env)
+// Logo Teliman Logistique joint aux alertes WhatsApp (image + légende). Résolu ici
+// car le module de notifications est pur (il ne connaît pas les chemins du repo).
+// Surchargeable par WHATSAPP_ALERT_LOGO_PATH ; désactivable par WHATSAPP_ALERT_LOGO=false.
+if (!WHATSAPP_CONFIG.alertLogoPath) {
+  WHATSAPP_CONFIG.alertLogoPath = path.join(__dirname, 'public', 'teliman-logistique-logo.jpg')
+}
 const baileysWhatsAppClient = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys'
   ? createBaileysWhatsAppClient({
       authDir: WHATSAPP_CONFIG.baileysAuthDir || path.join(DATA_DIR, 'whatsapp-auth'),
@@ -714,7 +720,7 @@ async function whatsAppQueueOnResult(result, job) {
 // File Baileys : protections anti-ban actives uniquement en provider baileys.
 const whatsappBaileysQueue = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys' && WHATSAPP_CONFIG.queueEnabled && baileysWhatsAppClient
   ? createWhatsAppQueue({
-      sendFn: async (job) => sendWhatsAppTextMessage({ to: job.to, message: job.message, config: job.config, baileysClient: baileysWhatsAppClient, fetchImpl: job.fetchImpl }),
+      sendFn: async (job) => sendWhatsAppTextMessage({ to: job.to, message: job.message, imagePath: job.imagePath, config: job.config, baileysClient: baileysWhatsAppClient, fetchImpl: job.fetchImpl }),
       onResult: whatsAppQueueOnResult,
       minIntervalMs: { min: 3000, max: 6000 },
       maxRetries: 1,
@@ -2844,6 +2850,9 @@ app.post('/api/whatsapp/test-message', requirePermission('manage_whatsapp'), asy
   const result = await sendWhatsAppTextMessage({
     to: validated.to,
     message: validated.message,
+    // `withLogo` reproduit exactement ce que reçoivent les destinataires d'alerte
+    // (logo Teliman en image + message en légende).
+    imagePath: validated.withLogo ? resolveAlertLogoPath(WHATSAPP_CONFIG) : '',
     config: WHATSAPP_CONFIG,
     baileysClient: baileysWhatsAppClient,
     context: { source: 'manual_test', eventType: 'test' },

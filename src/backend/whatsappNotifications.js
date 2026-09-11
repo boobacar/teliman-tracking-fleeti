@@ -206,12 +206,29 @@ export function createWhatsAppHistoryEntry({ result = {}, order = {}, message = 
     recipient: result.recipient || '',
     senderPhone: senderPhone || '',
     messageId: result.messageId || '',
+    // 'logo' = alerte envoyée en image + légende ; 'text' = envoi texte seul.
+    media: result.media || '',
     reason: result.reason || '',
     orderId: order?.id || '',
     orderReference: order?.reference || '',
     client: order?.client || '',
     messagePreview: truncateMessagePreview(message),
   }
+}
+
+// Sources d'alerte (flotte, géofence) : jamais différées et habillées du logo
+// Teliman Logistique en pièce jointe (l'alerte devient une carte de marque).
+export const ALERT_SOURCES = ['fleet_alert', 'geofence']
+
+export function isAlertSource(context = null) {
+  return ALERT_SOURCES.includes(String(context?.source || '').trim())
+}
+
+// Chemin du logo joint aux alertes. Vide si la fonctionnalité est désactivée
+// (WHATSAPP_ALERT_LOGO=false) ou si aucun chemin n'est configuré.
+export function resolveAlertLogoPath(config = {}) {
+  if (config?.alertLogoEnabled === false) return ''
+  return String(config?.alertLogoPath || '').trim()
 }
 
 export function buildWhatsAppConfigFromEnv(env = {}) {
@@ -226,12 +243,16 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
     // Fenêtre horaire d'envoi (heure serveur locale) : pas d'envoi en rafale la nuit
     sendHours: parseSendHours(env.WHATSAPP_SEND_HOURS_START, env.WHATSAPP_SEND_HOURS_END),
     queueEnabled: String(env.WHATSAPP_QUEUE_ENABLED ?? 'true').toLowerCase() !== 'false',
+    // Logo Teliman Logistique joint aux alertes (flotte/géofence). Le chemin réel
+    // est résolu par le serveur (public/teliman-logistique-logo.jpg) si vide ici.
+    alertLogoEnabled: String(env.WHATSAPP_ALERT_LOGO ?? 'true').toLowerCase() !== 'false',
+    alertLogoPath: String(env.WHATSAPP_ALERT_LOGO_PATH || '').trim(),
     // Injecté au démarrage du serveur (pas depuis l'environnement)
     baileysQueue: null,
   }
 }
 
-export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null, context = null } = {}) {
+export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null, context = null, imagePath = '' } = {}) {
   const recipient = normalizeWhatsAppPhone(to)
   if (!recipient) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
   if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
@@ -240,14 +261,18 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   if (config.provider !== 'baileys' || !baileysClient) {
     return { sent: false, skipped: true, reason: 'Canal Meta désactivé — connectez un numéro via Baileys (QR).' }
   }
+  const isAlert = isAlertSource(context)
+  // Logo Teliman : joint aux alertes (dérivé de la config) ou forcé par l'appelant
+  // (test manuel). Les notifications BL restent en texte seul.
+  const logoPath = String(imagePath || '').trim() || (isAlert ? resolveAlertLogoPath(config) : '')
   // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker, fenêtre
   // horaire (protection anti-ban). La file envoie sans baileysQueue pour éviter la récursion.
   if (config.baileysQueue) {
-    const job = { to: recipient, message, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: isDeferrableJob(context) }
+    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !isAlert }
     config.baileysQueue.enqueue(job)
-    return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient }
+    return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient, media: logoPath ? 'logo' : 'text' }
   }
-  return baileysClient.sendText(recipient, message)
+  return baileysClient.sendText(recipient, message, { imagePath: logoPath })
 }
 
 export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES, context = null } = {}) {
@@ -365,10 +390,7 @@ function buildMissionContextBlock(mission = {}) {
 
 // Les notifications transactionnelles (BL, test manuel) peuvent attendre l'ouverture
 // de la fenêtre horaire ; les alertes (flotte, géofence) sont critiques → jamais différées.
-function isDeferrableJob(context = null) {
-  const source = String(context?.source || '').trim()
-  return !['fleet_alert', 'geofence'].includes(source)
-}
+// (Défini par `isAlertSource` — les alertes sont aussi celles qui portent le logo.)
 
 // Fenêtre horaire d'envoi : {start, end} valides (0-23 pour start, 0-24 pour end) ou null.
 function parseSendHours(startValue, endValue) {

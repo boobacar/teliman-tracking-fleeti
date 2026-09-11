@@ -1,6 +1,9 @@
 import { Buffer } from 'node:buffer'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildDeliveryOrderWhatsAppMessage,
   buildWhatsAppMessageFromTemplate,
@@ -8,6 +11,7 @@ import {
   DEFAULT_WHATSAPP_TEMPLATES,
   createWhatsAppHistoryEntry,
   detectDeliveryOrderWhatsAppEvents,
+  resolveAlertLogoPath,
   resolveAlertWhatsAppRecipients,
   buildFleetAlertWhatsAppMessage,
   buildGeofenceAlertWhatsAppMessage,
@@ -16,6 +20,14 @@ import {
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
 import { createBaileysWhatsAppClient, toBaileysJid } from '../src/backend/baileysWhatsAppClient.js'
+
+// Logo de test : un vrai fichier sur disque (le client lit le fichier avant envoi).
+function createTestLogoFile(contents = 'LOGO-TELIMAN') {
+  const dir = mkdtempSync(join(tmpdir(), 'teliman-wa-logo-'))
+  const file = join(dir, 'teliman-logistique-logo.jpg')
+  writeFileSync(file, contents)
+  return file
+}
 
 const order = {
   id: 101,
@@ -254,6 +266,8 @@ test('buildWhatsAppConfigFromEnv active le provider Baileys avec un dossier auth
     baileys463CooldownHours: 24,
     sendHours: null,
     queueEnabled: true,
+    alertLogoEnabled: true,
+    alertLogoPath: '',
     baileysQueue: null,
   })
 })
@@ -601,4 +615,156 @@ test('createBaileysWhatsAppClient arrête la reconnexion sur session révoquée 
   assert.match(client.getStatus().lastError, /révoquée|403/)
   await new Promise((resolve) => setTimeout(resolve, 80))
   assert.equal(socketCreations, 1, 'aucun socket recréé après un 403')
+})
+
+// --- Logo Teliman Logistique sur les alertes WhatsApp ---------------------------
+
+test('buildWhatsAppConfigFromEnv lit le logo des alertes (chemin + activation)', () => {
+  const config = buildWhatsAppConfigFromEnv({ WHATSAPP_ALERT_LOGO_PATH: '/srv/teliman/logo.jpg' })
+  assert.equal(config.alertLogoPath, '/srv/teliman/logo.jpg')
+  assert.equal(config.alertLogoEnabled, true, 'logo actif par défaut')
+  assert.equal(buildWhatsAppConfigFromEnv({ WHATSAPP_ALERT_LOGO: 'false' }).alertLogoEnabled, false)
+})
+
+test('resolveAlertLogoPath renvoie le logo des alertes actives seulement', () => {
+  assert.equal(resolveAlertLogoPath({ alertLogoPath: '/tmp/logo.jpg' }), '/tmp/logo.jpg')
+  assert.equal(resolveAlertLogoPath({ alertLogoPath: '/tmp/logo.jpg', alertLogoEnabled: false }), '')
+  assert.equal(resolveAlertLogoPath({}), '')
+  assert.equal(resolveAlertLogoPath(), '')
+})
+
+test('sendWhatsAppTextMessage joint le logo aux alertes et jamais aux BL', async () => {
+  const jobs = []
+  const config = { enabled: true, provider: 'baileys', alertLogoPath: '/tmp/logo.jpg', baileysQueue: { enqueue: (job) => jobs.push(job) } }
+  const baileysClient = { sendText: async () => ({ sent: true }) }
+
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Alerte flotte', config, baileysClient, context: { source: 'fleet_alert' } })
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Sortie zone', config, baileysClient, context: { source: 'geofence' } })
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'BL créé', config, baileysClient, context: { source: 'delivery_order' } })
+
+  assert.equal(jobs[0].imagePath, '/tmp/logo.jpg', 'alerte flotte habillée du logo')
+  assert.equal(jobs[1].imagePath, '/tmp/logo.jpg', 'alerte géofence habillée du logo')
+  assert.equal(jobs[2].imagePath, '', 'notification BL en texte seul')
+  assert.equal(jobs[0].deferrable, false)
+  assert.equal(jobs[2].deferrable, true)
+})
+
+test('sendWhatsAppTextMessage n’ajoute pas de logo quand la fonctionnalité est désactivée', async () => {
+  const jobs = []
+  const config = { enabled: true, provider: 'baileys', alertLogoPath: '/tmp/logo.jpg', alertLogoEnabled: false, baileysQueue: { enqueue: (job) => jobs.push(job) } }
+
+  await sendWhatsAppTextMessage({ to: '2250701020304', message: 'Alerte flotte', config, baileysClient: { sendText: async () => ({ sent: true }) }, context: { source: 'fleet_alert' } })
+
+  assert.equal(jobs[0].imagePath, '')
+})
+
+test('les alertes flotte et géofence partent avec le logo en pièce jointe (image + légende)', async () => {
+  const logoPath = createTestLogoFile()
+  const sent = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async (jid, payload) => {
+        sent.push({ jid, payload })
+        return { key: { id: 'MSG-LOGO' } }
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+    typingSimulation: false,
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+
+  const message = buildFleetAlertWhatsAppMessage({ event: 'speedup', truckLabel: 'TG 1234 AB', speed: 92, time: '2026-09-11T10:00:00.000Z' })
+  const result = await client.sendText('+225 07 01 02 03 04', message, { imagePath: logoPath })
+
+  assert.equal(result.sent, true)
+  assert.equal(result.media, 'logo')
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].payload.caption, message, 'le texte de l’alerte devient la légende de l’image')
+  assert.equal(sent[0].payload.mimetype, 'image/jpeg')
+  assert.ok(Buffer.isBuffer(sent[0].payload.image), 'le logo est envoyé en buffer')
+  assert.match(sent[0].payload.caption, /Teliman Logistique/)
+})
+
+test('un logo illisible ne fait PAS perdre l’alerte : repli en texte seul', async () => {
+  const sent = []
+  const warnings = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async (jid, payload) => {
+        sent.push({ jid, payload })
+        return { key: { id: 'MSG-TEXT' } }
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn: (...args) => warnings.push(args.join(' ')), error() {} },
+    typingSimulation: false,
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+
+  const result = await client.sendText('+225 07 01 02 03 04', 'Alerte zone', { imagePath: '/tmp/logo-inexistant-teliman.jpg' })
+
+  assert.equal(result.sent, true)
+  assert.equal(result.media, 'text')
+  assert.deepEqual(sent.map((entry) => entry.payload), [{ text: 'Alerte zone' }])
+  assert.ok(warnings.some((line) => /logo introuvable/.test(line)))
+})
+
+test('une légende trop longue (> 1024) part en texte seul au lieu d’être tronquée par WhatsApp', async () => {
+  const logoPath = createTestLogoFile()
+  const sent = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async (jid, payload) => {
+        sent.push({ jid, payload })
+        return { key: { id: 'MSG-LONG' } }
+      },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+    typingSimulation: false,
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+
+  const longMessage = 'A'.repeat(1100)
+  const result = await client.sendText('+225 07 01 02 03 04', longMessage, { imagePath: logoPath })
+
+  assert.equal(result.media, 'text')
+  assert.equal(sent[0].payload.text, longMessage)
+  assert.equal(sent[0].payload.image, undefined)
+})
+
+test('l’historique WhatsApp enregistre le mode d’envoi (logo ou texte)', () => {
+  const withLogo = createWhatsAppHistoryEntry({
+    result: { source: 'geofence', recipient: '22177000000', sent: true, media: 'logo' },
+    message: 'Alerte zone',
+    source: 'geofence',
+    now: () => '2026-09-11T10:00:00.000Z',
+  })
+  const withoutLogo = createWhatsAppHistoryEntry({ result: { sent: true, media: 'text' }, message: 'Alerte zone', source: 'geofence' })
+
+  assert.equal(withLogo.media, 'logo')
+  assert.equal(withLogo.status, 'sent')
+  assert.equal(withoutLogo.media, 'text')
 })

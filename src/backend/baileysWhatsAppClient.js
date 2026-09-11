@@ -3,6 +3,9 @@ import { normalizeWhatsAppPhone } from './whatsappNotifications.js'
 
 const DEFAULT_AUTH_DIR = 'whatsapp-auth'
 const WHATSAPP_JID_SUFFIX = '@s.whatsapp.net'
+// Légende maximale d'un média WhatsApp. Au-delà, on envoie le texte seul :
+// WhatsApp tronquerait la légende (pire qu'une alerte sans logo).
+const MAX_CAPTION_LENGTH = 1024
 
 export function resolveReconnectDelay({
   attempts,
@@ -79,7 +82,10 @@ export function createBaileysWhatsAppClient({
     }
   }
 
-  async function sendText(to, message) {
+  // `imagePath` (optionnel) : image jointe (logo Teliman) avec le message en
+  // légende. Sans image — ou si l'image est illisible — l'envoi reste en texte
+  // seul : une alerte ne doit JAMAIS être perdue à cause du logo.
+  async function sendText(to, message, { imagePath = '' } = {}) {
     const jid = toBaileysJid(to)
     if (!jid) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
     if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
@@ -114,14 +120,28 @@ export function createBaileysWhatsAppClient({
           await sleep(resolveTypingDelay(typingDelayMs))
         } catch { /* presence best-effort */ }
       }
-      const result = await socket.sendMessage(recipientJid, { text: message })
+      const imagePayload = await resolveOutgoingImagePayload({ imagePath, caption: message, logger })
+      let mediaKind = 'text'
+      let result = null
+      if (imagePayload) {
+        try {
+          result = await socket.sendMessage(recipientJid, imagePayload)
+          mediaKind = 'logo'
+        } catch (error) {
+          // Le 463 (Reachout Timelock) est un rejet du contact, pas de l'image :
+          // inutile de retenter en texte, on laisse le catch global le classer.
+          if (extractErrorStatusCode(error) === 463) throw error
+          logger.warn?.(`[baileys] envoi avec logo impossible (${error?.message || error}) — repli en texte seul.`)
+        }
+      }
+      if (!result) result = await socket.sendMessage(recipientJid, { text: message })
       if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
         try { await socket.sendPresenceUpdate('paused', recipientJid) } catch { /* best-effort */ }
       }
-      return { sent: true, messageId: result?.key?.id || '' }
+      return { sent: true, messageId: result?.key?.id || '', media: mediaKind }
     } catch (error) {
       lastError = error?.message || 'Erreur envoi Baileys.'
-      const statusCode = error?.output?.statusCode ?? error?.statusCode ?? error?.data?.statusCode ?? error?.data?.error
+      const statusCode = extractErrorStatusCode(error)
       const isReachoutTimelock = statusCode === 463 || /(^|[^0-9])463([^0-9]|$)|reachout|timelock/i.test(lastError)
       // Erreur 463 (Reachout Timelock) : contact sans historique récent. Ne JAMAIS réessayer
       // (le retry aggrave le risque) → marqué errorKind pour que la file ne le retente pas.
@@ -313,6 +333,37 @@ export function createBaileysWhatsAppClient({
   }
 
   return { start, reconnect, disconnect, sendText, getStatus, getQr }
+}
+
+// Charge le logo à joindre (image + légende = texte de l'alerte). Renvoie null
+// si aucun chemin, si le fichier est illisible ou si la légende dépasserait la
+// limite WhatsApp — l'appelant envoie alors le texte seul.
+async function resolveOutgoingImagePayload({ imagePath, caption, logger } = {}) {
+  const filePath = String(imagePath || '').trim()
+  if (!filePath) return null
+  if (String(caption || '').length > MAX_CAPTION_LENGTH) {
+    logger?.warn?.(`[baileys] message trop long pour une légende image (${String(caption || '').length} > ${MAX_CAPTION_LENGTH}) — envoi en texte seul.`)
+    return null
+  }
+  try {
+    const data = await fs.readFile(filePath)
+    if (!data?.length) return null
+    return { image: data, caption, mimetype: resolveImageMimeType(filePath) }
+  } catch (error) {
+    logger?.warn?.(`[baileys] logo introuvable (${filePath}) : ${error?.message || error} — envoi en texte seul.`)
+    return null
+  }
+}
+
+function resolveImageMimeType(filePath) {
+  const extension = String(filePath || '').toLowerCase().split('.').pop()
+  if (extension === 'png') return 'image/png'
+  if (extension === 'webp') return 'image/webp'
+  return 'image/jpeg'
+}
+
+function extractErrorStatusCode(error) {
+  return error?.output?.statusCode ?? error?.statusCode ?? error?.data?.statusCode ?? error?.data?.error
 }
 
 async function resolveWhatsAppAccountJid(socket, jid) {

@@ -92,7 +92,7 @@ export const driverOverridesSchema = z.object({ overrides: z.record(z.string().t
 export const driverOverrideUpdateSchema = driverOverrideSchema
 export const driverAssignmentsSchema = z.object({ assignments: z.record(z.string().trim().min(1).max(100), z.union([z.string().trim().max(64), z.number(), z.null()])) }).strict()
 
-export const whatsappTestMessageSchema = z.object({ to: z.string().trim().min(8).max(32).regex(/^\+?[0-9 ]+$/), message: z.string().trim().min(1).max(2000) }).strict()
+export const whatsappTestMessageSchema = z.object({ to: z.string().trim().min(8).max(32).regex(/^\+?[0-9 ]+$/), message: z.string().trim().min(1).max(2000), withLogo: z.boolean().optional() }).strict()
 export const whatsappReconnectSchema = z.object({ clearSession: z.boolean().optional() }).strict()
 export const whatsappTemplatesSchema = z.object({ templates: z.record(z.string().max(80), z.string().trim().min(1).max(4000)) }).strict()
 
