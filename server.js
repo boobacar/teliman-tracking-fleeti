@@ -146,6 +146,10 @@ if (!WHATSAPP_CONFIG.alertLogoPath) {
 const baileysWhatsAppClient = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys'
   ? createBaileysWhatsAppClient({
       authDir: WHATSAPP_CONFIG.baileysAuthDir || path.join(DATA_DIR, 'whatsapp-auth'),
+      // Snapshots rotatifs des creds (creds.json + clés) : permet de reconnecter
+      // sans scan QR après une purge/effacement local. Une révocation réelle par
+      // WhatsApp (401/403) reste irrécupérable — re-scan obligatoire.
+      authBackupDir: path.join(DATA_DIR, 'whatsapp-auth-backups'),
       typingSimulation: WHATSAPP_CONFIG.baileysTyping,
       reachoutCooldownHours: WHATSAPP_CONFIG.baileys463CooldownHours,
     })

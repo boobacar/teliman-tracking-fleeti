@@ -1,5 +1,6 @@
 import fs from 'fs/promises'
 import { normalizeWhatsAppPhone } from './whatsappNotifications.js'
+import { restoreAuthDir, snapshotAuthDir } from './whatsappAuthStore.js'
 
 const DEFAULT_AUTH_DIR = 'whatsapp-auth'
 const WHATSAPP_JID_SUFFIX = '@s.whatsapp.net'
@@ -27,8 +28,32 @@ export function toBaileysJid(phone) {
   return recipient ? `${recipient}${WHATSAPP_JID_SUFFIX}` : ''
 }
 
+// Faut-il détruire les creds WhatsApp ?
+// - `purge_invalid` : WhatsApp a explicitement rejeté la session (401 / unauthorized).
+//   Les creds sont morts → purge (snapshot pris avant) + nouveau QR.
+// - `purge_stale` : aucune connexion n'a abouti depuis `stalePurgeMs` (creds
+//   probablement morts) → purge + nouveau QR pour que l'opérateur puisse re-pairer.
+// - `keep` : déconnexion réseau transitoire (« Connection Failure », « WebSocket
+//   Error », « Connection Terminated ») → ON GARDE les creds, on retente. C'est ce
+//   qui évite les scans QR inutiles.
+export function resolveCredsPurgeAction({
+  statusCode = null,
+  message = '',
+  staleSinceMs = null,
+  nowMs = Date.now(),
+  stalePurgeMs = 6 * 60 * 60 * 1000,
+} = {}) {
+  if (statusCode === 401 || /unauthorized/i.test(String(message))) return 'purge_invalid'
+  if (Number.isFinite(staleSinceMs) && nowMs - staleSinceMs >= Math.max(0, Number(stalePurgeMs) || 0)) return 'purge_stale'
+  return 'keep'
+}
+
 export function createBaileysWhatsAppClient({
   authDir = DEFAULT_AUTH_DIR,
+  authBackupDir = '',
+  authBackupKeep = 10,
+  staleCredsPurgeMs = 6 * 60 * 60 * 1000,
+  now = () => Date.now(),
   socketFactory,
   authStateFactory,
   qrCodeFactory,
@@ -53,6 +78,14 @@ export function createBaileysWhatsAppClient({
   // re-tente PAS ce contact pendant N heures (marteler un contact sans historique
   // est le chemin le plus rapide vers un ban).
   const reachoutCooldowns = new Map()
+  // Protection des creds : snapshots horodatés + restauration au démarrage.
+  let credsRestoredFrom = ''
+  let lastSnapshotName = ''
+  let lastSnapshotAt = ''
+  let staleCredsSince = null
+  // Une purge volontaire dans CE process ne doit pas être annulée par une
+  // restauration : sinon boucle purge → restore → 401 → purge.
+  let purgedInProcess = false
 
   async function start() {
     if (started) return getStatus()
@@ -61,6 +94,7 @@ export function createBaileysWhatsAppClient({
     lastError = ''
 
     try {
+      await restoreCredentialsIfMissing()
       const { state: authState, saveCreds } = await resolveAuthStateFactory(authStateFactory)(authDir)
       socket = await resolveSocketFactory(socketFactory)({ auth: authState })
       socket.ev.on('creds.update', saveCreds)
@@ -167,6 +201,52 @@ export function createBaileysWhatsAppClient({
     }
   }
 
+  // Restaure les creds depuis le dernier snapshot quand le dossier auth n'en a
+  // plus (purge, suppression accidentelle, carte SD restaurée) → pas de scan QR.
+  // Ne touche JAMAIS à des creds présents et ne défait pas une purge volontaire
+  // du même process (sinon boucle purge → restauration → 401 → purge).
+  async function restoreCredentialsIfMissing() {
+    if (!authBackupDir || purgedInProcess) return
+    try {
+      const result = await restoreAuthDir({ authDir, backupRoot: authBackupDir })
+      if (result.restored) {
+        credsRestoredFrom = result.name
+        logger.info?.(`[baileys] creds WhatsApp restaurés depuis le snapshot ${result.name} — aucun scan QR nécessaire.`)
+      }
+    } catch (error) {
+      logger.warn?.(`[baileys] restauration des creds WhatsApp impossible: ${error?.message || error}`)
+    }
+  }
+
+  async function saveAuthSnapshot(reason) {
+    if (!authBackupDir) return null
+    try {
+      const snapshot = await snapshotAuthDir({ authDir, backupRoot: authBackupDir, keep: authBackupKeep })
+      if (!snapshot) return null
+      lastSnapshotName = snapshot.name
+      lastSnapshotAt = new Date().toISOString()
+      logger.info?.(`[baileys] snapshot des creds WhatsApp enregistré (${reason}) : ${snapshot.name}`)
+      return snapshot
+    } catch (error) {
+      logger.warn?.(`[baileys] snapshot des creds WhatsApp impossible: ${error?.message || error}`)
+      return null
+    }
+  }
+
+  // Archive systématiquement les creds AVANT toute purge : une erreur de
+  // diagnostic (faux 401 sur incident réseau) reste ainsi rattrapable.
+  async function purgeCredentials(reason) {
+    await saveAuthSnapshot(`avant purge — ${reason}`)
+    purgedInProcess = true
+    try {
+      await resolveSessionCleaner(sessionCleaner)(authDir)
+      return { ok: true }
+    } catch (error) {
+      logger.warn?.(`[baileys] nettoyage de session échoué : ${error?.message || error}`)
+      return { ok: false, reason: error?.message || 'nettoyage de session échoué' }
+    }
+  }
+
   function getStatus() {
     pruneReachoutCooldowns()
     return {
@@ -183,6 +263,13 @@ export function createBaileysWhatsAppClient({
       reachoutCooldownCount: reachoutCooldowns.size,
       typingSimulation: Boolean(typingSimulation),
       reachoutCooldownHours: Math.max(1, Number(reachoutCooldownHours) || 24),
+      // Protection des creds (snapshots + restauration sans scan QR)
+      credsProtection: Boolean(authBackupDir),
+      credsBackupDir: authBackupDir || '',
+      credsBackupKeep: authBackupKeep,
+      lastCredsSnapshot: lastSnapshotName,
+      lastCredsSnapshotAt: lastSnapshotAt,
+      credsRestoredFrom,
     }
   }
 
@@ -212,7 +299,11 @@ export function createBaileysWhatsAppClient({
       connectedAt = new Date().toISOString()
       user = normalizeBaileysUser(socket?.user)
       reconnectAttempts = 0
+      staleCredsSince = null
       logger.info?.('[baileys] WhatsApp connecté.')
+      // Creds à jour et validés par WhatsApp → snapshot de référence : c'est ce
+      // snapshot qui permettra de reconnecter sans scan QR en cas de perte locale.
+      await saveAuthSnapshot('connexion réussie')
     }
 
     if (update.connection === 'connecting' && !lastQr) {
@@ -238,10 +329,11 @@ export function createBaileysWhatsAppClient({
         return
       }
       // Session invalide (401) : les creds sauvegardés sont rejetés par WhatsApp
-      // (pairing jamais finalisé, device révoqué…). Purger le dossier de session
-      // et repartir sur un QR neuf, sinon Baileys boucle sur une session morte.
-      const isInvalidSession = statusCode === 401 || /unauthorized|connection failure/i.test(String(disconnectError?.message || ''))
-      if (isInvalidSession) {
+      // (device délié, session révoquée). Purger le dossier de session et
+      // repartir sur un QR neuf, sinon Baileys boucle sur une session morte.
+      // Le 401 est un code explicite : on ne purge QUE là-dessus (voir plus bas
+      // le traitement des déconnexions réseau, qui ne détruisent plus les creds).
+      if (resolveCredsPurgeAction({ statusCode, message: disconnectError?.message || '' }) === 'purge_invalid') {
         lastQr = ''
         lastQrDataUrl = ''
         lastError = 'Session WhatsApp invalide (401) — nettoyage de la session, scannez le nouveau QR.'
@@ -249,7 +341,7 @@ export function createBaileysWhatsAppClient({
         started = false
         socket = null
         logger.warn?.(`[baileys] Session invalide (401) — purge des creds, nouveau QR généré.`)
-        try { await resolveSessionCleaner(sessionCleaner)(authDir) } catch { /* best-effort */ }
+        await purgeCredentials('session invalide 401')
         setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 1500)
         return
       }
@@ -267,6 +359,32 @@ export function createBaileysWhatsAppClient({
       reconnectAttempts += 1
       started = false
       socket = null
+      // Les creds ne sont PLUS détruits sur une déconnexion réseau (« Connection
+      // Failure », « WebSocket Error », « Connection Terminated ») : c'était la
+      // cause n°1 des scans QR inutiles. Ils ne sont purgés que si AUCUNE
+      // connexion n'aboutit pendant `staleCredsPurgeMs` — et dans ce cas seulement
+      // (creds réellement morts) on repart sur un QR neuf pour que l'opérateur
+      // puisse re-pairer depuis l'interface.
+      if (!staleCredsSince) staleCredsSince = now()
+      const credsAction = resolveCredsPurgeAction({
+        statusCode,
+        message: disconnectError?.message || '',
+        staleSinceMs: staleCredsSince,
+        nowMs: now(),
+        stalePurgeMs: staleCredsPurgeMs,
+      })
+      if (credsAction === 'purge_stale') {
+        const hours = Math.round(staleCredsPurgeMs / 3600_000)
+        lastQr = ''
+        lastQrDataUrl = ''
+        staleCredsSince = null
+        reconnectAttempts = 0
+        lastError = `Aucune connexion WhatsApp depuis ${hours} h — creds purgés, scannez le nouveau QR.`
+        logger.warn?.(`[baileys] Creds WhatsApp probablement morts (${hours} h sans connexion) — purge + nouveau QR.`)
+        await purgeCredentials('creds périmés')
+        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 1500)
+        return
+      }
       // NE JAMAIS abandonner définitivement. WhatsApp ferme la socket des sessions
       // longues après ~1-2 jours (recyclage, coupure réseau, téléphone brièvement
       // hors-ligne) et la reconnexion peut échouer plusieurs fois de suite. Si on
@@ -313,13 +431,10 @@ export function createBaileysWhatsAppClient({
     }
     // TOUJOURS purger la session locale si demandé, même si le logout distant a
     // échoué. C'est ce qui garantit un état « déconnecté » propre et re-appairable.
+    // Les creds sont archivés au passage (annulation possible par snapshot).
     if (clearSession) {
-      try {
-        await resolveSessionCleaner(sessionCleaner)(authDir)
-      } catch (error) {
-        remoteUnlinkOk = false
-        logger.warn?.(`[baileys] Nettoyage local de session échoué : ${error?.message || error}`)
-      }
+      const purgeResult = await purgeCredentials('déconnexion demandée')
+      if (!purgeResult.ok) remoteUnlinkOk = false
     }
     if (!remoteUnlinkOk) {
       lastError = 'Session WhatsApp déconnectée, mais le détachement distant a échoué (session locale purgée).'
