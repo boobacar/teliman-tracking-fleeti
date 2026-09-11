@@ -17,6 +17,7 @@ export function initDatabase(dbPath) {
   db.pragma('busy_timeout = 5000')
   
   createTables()
+  applySchemaMigrations()
   return db
 }
 
@@ -189,7 +190,94 @@ function createTables() {
       actor TEXT DEFAULT 'auto'
     );
     CREATE INDEX IF NOT EXISTS idx_mission_timeline_order ON mission_timeline(deliveryOrderId, at);
+    CREATE TABLE IF NOT EXISTS mission_zone_map (
+      id INTEGER PRIMARY KEY,
+      matchText TEXT NOT NULL DEFAULT '',
+      geofenceId INTEGER NOT NULL,
+      createdAt TEXT NOT NULL DEFAULT ''
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mission_zone_map_text ON mission_zone_map(matchText);
   `)
+}
+
+// Colonnes ajoutées après coup (bases existantes) : ALTER idempotent.
+function ensureColumn(table, name, definition) {
+  const db = getDatabase()
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name)
+  if (existing.includes(name)) return false
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`)
+  return true
+}
+
+// `scope` : 'internal' = reçoit toutes les alertes de zone ; 'client' = ne reçoit
+// que Départ/Arrivée des missions de `clientName` (jamais les alertes génériques).
+export function applySchemaMigrations() {
+  ensureColumn('alert_recipients', 'scope', "TEXT NOT NULL DEFAULT 'internal'")
+  ensureColumn('alert_recipients', 'clientName', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('delivery_orders', 'departureNotifiedAt', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('delivery_orders', 'arrivalNotifiedAt', "TEXT NOT NULL DEFAULT ''")
+}
+
+// ── Correspondance texte de BL → zone (départ/arrivée de mission) ──
+
+export function readMissionZoneMap() {
+  const rows = getDatabase().prepare('SELECT * FROM mission_zone_map ORDER BY matchText ASC').all()
+  return rows.map((row) => ({ ...row, geofenceId: Number(row.geofenceId) }))
+}
+
+export function readMissionZoneMapByText(matchText) {
+  const key = normalizeZoneMatchText(matchText)
+  if (!key) return null
+  const row = getDatabase().prepare('SELECT * FROM mission_zone_map WHERE matchText = ?').get(key)
+  return row ? { ...row, geofenceId: Number(row.geofenceId) } : null
+}
+
+export function insertMissionZoneMap(item) {
+  const key = normalizeZoneMatchText(item?.matchText)
+  if (!key) throw new Error('Texte de mission requis')
+  const geofenceId = Number(item?.geofenceId)
+  if (!Number.isInteger(geofenceId) || geofenceId <= 0) throw new Error('Zone invalide')
+  const info = getDatabase()
+    .prepare('INSERT INTO mission_zone_map (matchText, geofenceId, createdAt) VALUES (?, ?, ?)')
+    .run(key, geofenceId, new Date().toISOString())
+  return getDatabase().prepare('SELECT * FROM mission_zone_map WHERE id = ?').get(Number(info.lastInsertRowid))
+}
+
+export function updateMissionZoneMap(id, updates) {
+  const sets = []
+  const params = { id }
+  if (updates.matchText !== undefined) {
+    const key = normalizeZoneMatchText(updates.matchText)
+    if (!key) throw new Error('Texte de mission requis')
+    sets.push('matchText = @matchText')
+    params.matchText = key
+  }
+  if (updates.geofenceId !== undefined) {
+    const geofenceId = Number(updates.geofenceId)
+    if (!Number.isInteger(geofenceId) || geofenceId <= 0) throw new Error('Zone invalide')
+    sets.push('geofenceId = @geofenceId')
+    params.geofenceId = geofenceId
+  }
+  if (!sets.length) throw new Error('Aucune modification fournie')
+  const result = getDatabase().prepare(`UPDATE mission_zone_map SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Correspondance introuvable')
+  return getDatabase().prepare('SELECT * FROM mission_zone_map WHERE id = ?').get(id)
+}
+
+export function deleteMissionZoneMap(id) {
+  const result = getDatabase().prepare('DELETE FROM mission_zone_map WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Correspondance introuvable')
+}
+
+// Clé de comparaison : sans accents, sans casse, sans ponctuation.
+export function normalizeZoneMatchText(value) {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 // ── Delivery Orders ──
@@ -660,14 +748,16 @@ export function insertAlertRecipient(item) {
   const db = getDatabase()
   const hasId = Number.isInteger(Number(item.id))
   const stmt = db.prepare(`
-    INSERT INTO alert_recipients (${hasId ? 'id, ' : ''}name, phone, active, createdAt)
-    VALUES (${hasId ? '@id, ' : ''}@name, @phone, @active, @createdAt)
+    INSERT INTO alert_recipients (${hasId ? 'id, ' : ''}name, phone, active, scope, clientName, createdAt)
+    VALUES (${hasId ? '@id, ' : ''}@name, @phone, @active, @scope, @clientName, @createdAt)
   `)
   const info = stmt.run({
     ...(hasId ? { id: Number(item.id) } : {}),
     name: item.name || '',
     phone: item.phone || '',
     active: item.active ? 1 : 0,
+    scope: item.scope === 'client' ? 'client' : 'internal',
+    clientName: item.clientName || '',
     createdAt: item.createdAt || new Date().toISOString(),
   })
   return readAlertRecipientById(hasId ? Number(item.id) : Number(info.lastInsertRowid))

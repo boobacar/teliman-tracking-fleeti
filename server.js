@@ -11,11 +11,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildFleetiProviderTrackBundle, buildTrackBundleFromTelemetryCache, chunkIds, fetchAllPublicAssets, isCameraLike, normalizeTrackEvent, normalizeTrackPoint, parseIsoDuration, resolveScopedTrackerIds, resolveTracksSource } from './src/backend/fleetiBackend.js'
 import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/masterData.js'
-import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
+import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, missionZoneMapSchema, missionZoneMapUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
 import { buildMissionContext, DEFAULT_MISSION_MAX_AGE_HOURS, describeMissionSkip, pickActiveMission } from './src/backend/missionContext.js'
-import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, resolveAlertLogoPath, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
+import { describeMissionZoneMapping, planClientBoundaryAlert } from './src/backend/missionZones.js'
+import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, buildWhatsAppMessageFromTemplate, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, resolveAlertLogoPath, resolveClientWhatsAppRecipients, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { createWhatsAppQueue, makeWarmupDailyLimit } from './src/backend/whatsappQueue.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
 import { createGeofenceTracker } from './src/backend/geofenceEngine.js'
@@ -39,6 +40,7 @@ import {
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
   readMissionTimeline, appendMissionTimelineEvent,
   readGeofenceEvents, countGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
+  readMissionZoneMap, insertMissionZoneMap, updateMissionZoneMap, deleteMissionZoneMap,
 } from './src/backend/database.js'
 
 dotenv.config()
@@ -513,6 +515,11 @@ function requiredRoutePermissions(req) {
       ? ['manage_data']
       : ['manage_data', 'page_alerts']
   }
+  if (pathName.startsWith('/api/mission-zone-map')) {
+    return mutation
+      ? ['manage_data']
+      : ['manage_data', 'page_alerts']
+  }
   if (pathName.startsWith('/api/reports')) return ['page_reports']
   if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
   if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) {
@@ -856,15 +863,113 @@ const geofenceTracker = createGeofenceTracker({ minIntervalMs: 60 * 1000 })
 
 export { haversineDistanceMeters } from './src/backend/geofenceEngine.js'
 
+// Alertes de zone génériques : UNIQUEMENT les destinataires « interne ». Les
+// contacts clients (scope 'client') ne reçoivent que Départ/Arrivée de leurs
+// missions — jamais les entrées/sorties de zones de la flotte.
 function getAlertRecipientPhones() {
   try {
     return (readActiveAlertRecipients() || [])
+      .filter((recipient) => String(recipient.scope || 'internal') !== 'client')
       .map((recipient) => String(recipient.phone || '').trim())
       .filter(Boolean)
   } catch (error) {
     console.warn('[geofence] lecture destinataires impossible:', error?.message || error)
     return []
   }
+}
+
+// Destinataires « client » d'un compte donné (table alert_recipients, scope client).
+function getClientScopedAlertPhones(clientName) {
+  const target = String(clientName || '').trim().toLowerCase()
+  if (!target) return []
+  try {
+    return (readActiveAlertRecipients() || [])
+      .filter((recipient) => String(recipient.scope || 'internal') === 'client')
+      .filter((recipient) => String(recipient.clientName || '').trim().toLowerCase() === target)
+      .map((recipient) => String(recipient.phone || '').trim())
+      .filter(Boolean)
+  } catch (error) {
+    console.warn('[mission] lecture destinataires client impossible:', error?.message || error)
+    return []
+  }
+}
+
+// ── Alertes CLIENT aux bornes de mission ────────────────────────────────────────
+// Un client ne reçoit que deux messages par mission : « Départ » quand le camion
+// sort de la zone de départ de SA mission, « Arrivée » quand il entre dans la zone
+// de destination. Toutes les autres alertes de zone restent internes.
+async function notifyClientMissionBoundaryWhatsApp(event) {
+  let plan = null
+  try {
+    const orders = readDeliveryOrders() || []
+    const geofences = readActiveGeofences() || []
+    const zonesById = Object.fromEntries(geofences.map((zone) => [String(zone.id), zone]))
+    plan = planClientBoundaryAlert(event, {
+      orders,
+      zonesById,
+      geofences,
+      zoneMap: readMissionZoneMap(),
+      now: Date.now(),
+      maxAgeHours: MISSION_CONTEXT_MAX_AGE_HOURS,
+    })
+  } catch (error) {
+    console.warn('[mission] planification alerte client impossible:', error?.message || error)
+    return []
+  }
+  if (!plan) return []
+
+  const { order, role, zone } = plan
+  const eventType = role === 'departure' ? 'departed' : 'arrived'
+  const label = role === 'departure' ? 'Départ' : 'Arrivée'
+
+  // Destinataires : contacts du client (master data) + numéros « client » dédiés.
+  const masterData = readMasterDataWrapper()
+  const phones = [...resolveClientWhatsAppRecipients(order, masterData), ...getClientScopedAlertPhones(order.client)]
+  const seen = new Set()
+  const recipients = []
+  for (const phone of phones) {
+    const key = String(phone || '').replace(/\D/g, '')
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    recipients.push(phone)
+  }
+
+  if (!recipients.length) {
+    console.log(`[mission] ${label} BL ${order.reference || order.id} : aucun contact client configuré (${order.client || '-'}).`)
+    return []
+  }
+
+  const message = buildWhatsAppMessageFromTemplate(eventType, order, readWhatsAppTemplates())
+  const results = []
+  for (const recipient of recipients) {
+    const result = await sendWhatsAppTextMessage({
+      to: recipient,
+      message,
+      config: WHATSAPP_CONFIG,
+      baileysClient: baileysWhatsAppClient,
+      context: { source: 'mission_client_alert', eventType, order },
+    })
+    results.push({ recipient, eventType, zone: zone?.name || '', message, ...result })
+    await appendWhatsAppHistory(createWhatsAppHistoryEntry({
+      result: { ...result, recipient, eventType },
+      order,
+      message,
+      source: 'mission_client_alert',
+      senderPhone: baileysWhatsAppClient?.getStatus?.()?.connectedPhone || '',
+    }))
+    if (result.sent) console.log(`[mission] ${label} BL ${order.reference || order.id} (zone ${zone?.name || '-'}) envoyé à ${recipient}`)
+    else if (result.queued) console.log(`[mission] ${label} BL ${order.reference || order.id} en file pour ${recipient}`)
+    else console.warn(`[mission] ${label} BL ${order.reference || order.id} non envoyé à ${recipient}: ${result.reason || 'raison inconnue'}`)
+  }
+
+  // Marqueur : une seule annonce par borne et par mission.
+  try {
+    const field = role === 'departure' ? 'departureNotifiedAt' : 'arrivalNotifiedAt'
+    updateDeliveryOrderAtomic(order.id, { [field]: new Date().toISOString() })
+  } catch (error) {
+    console.warn('[mission] marquage de la borne notifiée impossible:', error?.message || error)
+  }
+  return results
 }
 
 async function notifyGeofenceAlertWhatsApp(event, eventId) {
@@ -941,6 +1046,11 @@ function evaluateGeofenceTransitions(positions) {
       }
       notifyGeofenceAlertWhatsApp(event, eventId).catch((error) => {
         console.warn('[geofence] notification impossible:', error?.message || error)
+      })
+      // Bornes de mission → le CLIENT (départ de la zone de départ / arrivée à
+      // destination). Les autres zones ne concernent que les destinataires internes.
+      notifyClientMissionBoundaryWhatsApp(event).catch((error) => {
+        console.warn('[mission] notification client impossible:', error?.message || error)
       })
     },
   })
@@ -3186,6 +3296,59 @@ app.delete('/api/alert-recipients/:id', requirePermission('manage_data'), (req, 
     const id = Number(req.params.id)
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
     deleteAlertRecipient(id)
+    res.json({ ok: true })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+// ── Correspondances missions → zones (départ / arrivée) ─────────────────────────
+
+app.get('/api/mission-zone-map', requirePermission('page_alerts'), (_req, res) => {
+  try {
+    const mapping = readMissionZoneMap()
+    const geofences = readGeofences() || []
+    const zoneName = (id) => geofences.find((zone) => Number(zone.id) === Number(id))?.name || ''
+    res.json({
+      ok: true,
+      mappings: mapping.map((entry) => ({ ...entry, zoneName: zoneName(entry.geofenceId) })),
+      missions: describeMissionZoneMapping(readDeliveryOrders() || [], {
+        zoneMap: mapping,
+        geofences: (geofences || []).filter((zone) => zone.active),
+        now: Date.now(),
+        maxAgeHours: MISSION_CONTEXT_MAX_AGE_HOURS,
+      }),
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/mission-zone-map', requirePermission('manage_data'), (req, res) => {
+  try {
+    const validated = validateBody(missionZoneMapSchema, req.body || {})
+    res.status(201).json({ ok: true, mapping: insertMissionZoneMap(validated) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.put('/api/mission-zone-map/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const validated = validateBody(missionZoneMapUpdateSchema, req.body || {})
+    res.json({ ok: true, mapping: updateMissionZoneMap(id, validated) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/mission-zone-map/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    deleteMissionZoneMap(id)
     res.json({ ok: true })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })

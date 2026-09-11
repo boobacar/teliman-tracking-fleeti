@@ -309,6 +309,15 @@ export const updateAlertRecipient = (id, payload) => fetchJson(`/api/alert-recip
   body: JSON.stringify(payload),
 })
 export const deleteAlertRecipient = (id) => fetchJson(`/api/alert-recipients/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
+// Correspondances missions → zones (bornes Départ / Arrivée des missions client)
+export const loadMissionZoneMap = () => getJson('/api/mission-zone-map')
+export const createMissionZoneMapping = (payload) => postJson('/api/mission-zone-map', payload)
+export const updateMissionZoneMapping = (id, payload) => fetchJson(`/api/mission-zone-map/${id}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+  body: JSON.stringify(payload),
+})
+export const deleteMissionZoneMapping = (id) => fetchJson(`/api/mission-zone-map/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 export const updateAlertAction = (key, payload) => fetchJson(`/api/alerts/${encodeURIComponent(key)}`, {
   method: 'PATCH',
   headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },

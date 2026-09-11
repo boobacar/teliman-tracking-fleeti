@@ -121,11 +121,22 @@ export const geofenceSchema = z.object({
 
 export const geofenceUpdateSchema = geofenceSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')
 
+// ── Correspondance texte de BL → zone ──
+export const missionZoneMapSchema = z.object({
+  matchText: z.string().trim().min(1, 'Texte du bon de livraison requis').max(160),
+  geofenceId: z.coerce.number().int().positive(),
+}).strict()
+export const missionZoneMapUpdateSchema = missionZoneMapSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')
+
 // ── Alert Recipient ──
+// `scope` : 'internal' = toutes les alertes de zone ; 'client' = uniquement les
+// bornes (Départ/Arrivée) des missions de `clientName`.
 export const alertRecipientSchema = z.object({
   name: z.string().trim().min(1, 'Nom du destinataire requis').max(160),
   phone: z.string().trim().min(8, 'Numéro invalide').max(32).regex(/^\+?[0-9 ]+$/, 'Numéro invalide'),
   active: z.boolean().optional(),
+  scope: z.enum(['internal', 'client']).optional(),
+  clientName: z.string().trim().max(160).optional(),
 }).strict()
 
 export const alertRecipientUpdateSchema = alertRecipientSchema.partial().refine((value) => Object.keys(value).length > 0, 'Modification requise')

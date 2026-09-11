@@ -216,8 +216,16 @@ export function createWhatsAppHistoryEntry({ result = {}, order = {}, message = 
 // Teliman Logistique en pièce jointe (l'alerte devient une carte de marque).
 export const ALERT_SOURCES = ['fleet_alert', 'geofence']
 
+// Envois jamais différés par la fenêtre horaire / le quota : alertes et bornes
+// de mission client (un « Départ » annoncé 8 h plus tard n'a aucune valeur).
+export const IMMEDIATE_SOURCES = ['fleet_alert', 'geofence', 'mission_client_alert']
+
 export function isAlertSource(context = null) {
   return ALERT_SOURCES.includes(String(context?.source || '').trim())
+}
+
+export function isImmediateSource(context = null) {
+  return IMMEDIATE_SOURCES.includes(String(context?.source || '').trim())
 }
 
 // Chemin du logo joint aux alertes. Vide si la fonctionnalité est désactivée
@@ -258,13 +266,14 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
     return { sent: false, skipped: true, reason: 'Canal Meta désactivé — connectez un numéro via Baileys (QR).' }
   }
   const isAlert = isAlertSource(context)
+  const isImmediate = isImmediateSource(context)
   // Logo Teliman : joint aux alertes (dérivé de la config) ou forcé par l'appelant
-  // (test manuel). Les notifications BL restent en texte seul.
+  // (test manuel). Les notifications BL et client restent en texte seul.
   const logoPath = String(imagePath || '').trim() || (isAlert ? resolveAlertLogoPath(config) : '')
   // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker, fenêtre
   // horaire (protection anti-ban). La file envoie sans baileysQueue pour éviter la récursion.
   if (config.baileysQueue) {
-    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !isAlert }
+    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !isImmediate }
     config.baileysQueue.enqueue(job)
     return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient, media: logoPath ? 'logo' : 'text' }
   }

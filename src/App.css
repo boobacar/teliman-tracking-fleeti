@@ -6433,3 +6433,28 @@ a.leaflet-control-zoom-out {
   border-top: 1px solid #16261a;
 }
 .sidebar-version code { font-size: 10.5px; background: #0d1117; border: 1px solid #1b3a19; border-radius: 6px; padding: 1px 6px; color: #7dd3fc; }
+
+/* Correspondances missions → zones (page Géofences & Alertes) */
+.recipient-table select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ops-border, #23511F);
+  background: rgba(7, 9, 12, 0.55);
+  color: var(--ops-text, #f3f5f7);
+  font-size: 13px;
+  max-width: 230px;
+}
+.recipient-table td select + select {
+  display: block;
+  margin-top: 6px;
+}
+.recipient-table td small {
+  display: block;
+  color: var(--ops-muted, #97a3b6);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.geofence-missing {
+  color: var(--ops-warning, #f59e0b);
+  font-size: 13px;
+}

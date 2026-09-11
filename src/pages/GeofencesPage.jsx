@@ -10,11 +10,15 @@ import { useAccessibleConfirm } from '../components/ConfirmDialog.jsx'
 import {
   createAlertRecipient,
   createGeofence,
+  createMissionZoneMapping,
   deleteAlertRecipient,
   deleteGeofence,
+  deleteMissionZoneMapping,
   loadAlertRecipients,
   loadGeofenceEvents,
   loadGeofences,
+  loadMasterData,
+  loadMissionZoneMap,
   updateAlertRecipient,
   updateGeofence,
 } from '../lib/fleeti'
@@ -182,8 +186,15 @@ export function GeofencesPage() {
   const [pickEnabled, setPickEnabled] = useState(false)
   const [dragDraft, setDragDraft] = useState(null) // { id, lat, lng } pendant un glissement
 
-  const [recipientForm, setRecipientForm] = useState({ name: '', phone: '', active: true })
+  const [recipientForm, setRecipientForm] = useState({ name: '', phone: '', active: true, scope: 'internal', clientName: '' })
   const [recipientSaving, setRecipientSaving] = useState(false)
+
+  // Correspondances missions → zones + missions en cours (diagnostic).
+  const [zoneMap, setZoneMap] = useState([])
+  const [missionZones, setMissionZones] = useState([])
+  const [clientNames, setClientNames] = useState([])
+  const [mappingForm, setMappingForm] = useState({ matchText: '', geofenceId: '' })
+  const [mappingSaving, setMappingSaving] = useState(false)
 
   const [eventsPage, setEventsPage] = useState(1)
   const [eventsTotal, setEventsTotal] = useState(0)
@@ -204,12 +215,17 @@ export function GeofencesPage() {
   const refresh = useCallback(async () => {
     setError('')
     try {
-      const [geofencePayload, recipientPayload] = await Promise.all([
+      const [geofencePayload, recipientPayload, mapPayload, masterDataPayload] = await Promise.all([
         loadGeofences(),
         loadAlertRecipients(),
+        loadMissionZoneMap().catch(() => ({ mappings: [], missions: [] })),
+        loadMasterData().catch(() => null),
       ])
       setGeofences(geofencePayload.geofences || [])
       setRecipients(recipientPayload.recipients || [])
+      setZoneMap(mapPayload.mappings || [])
+      setMissionZones(mapPayload.missions || [])
+      setClientNames(masterDataPayload?.clients || [])
     } catch (err) {
       setError(err.message || 'Impossible de charger les géofences.')
     } finally {
@@ -353,14 +369,61 @@ export function GeofencesPage() {
     setRecipientSaving(true)
     setError('')
     try {
-      await createAlertRecipient({ ...recipientForm, active: recipientForm.active })
-      setRecipientForm({ name: '', phone: '', active: true })
+      await createAlertRecipient({
+        ...recipientForm,
+        active: recipientForm.active,
+        clientName: recipientForm.scope === 'client' ? recipientForm.clientName : '',
+      })
+      setRecipientForm({ name: '', phone: '', active: true, scope: 'internal', clientName: '' })
       await refresh()
       setSuccess('Numéro d’alerte ajouté.')
     } catch (err) {
       setError(err.message || 'Ajout impossible.')
     } finally {
       setRecipientSaving(false)
+    }
+  }
+
+  // Passage Interne ↔ Client d'un destinataire (et rattachement au client).
+  async function handleRecipientScope(recipient, scope, clientName = recipient.clientName || '') {
+    setError('')
+    try {
+      await updateAlertRecipient(recipient.id, { scope, clientName: scope === 'client' ? clientName : '' })
+      await refresh()
+      setSuccess(
+        scope === 'client'
+          ? `« ${recipient.name} » ne recevra plus que les Départ/Arrivée de ses missions.`
+          : `« ${recipient.name} » reçoit de nouveau toutes les alertes de zone.`,
+      )
+    } catch (err) {
+      setError(err.message || 'Modification impossible.')
+    }
+  }
+
+  async function handleAddMapping(event) {
+    event.preventDefault()
+    setMappingSaving(true)
+    setError('')
+    try {
+      await createMissionZoneMapping({ matchText: mappingForm.matchText, geofenceId: Number(mappingForm.geofenceId) })
+      setMappingForm({ matchText: '', geofenceId: '' })
+      await refresh()
+      setSuccess('Correspondance enregistrée : les missions qui utilisent ce texte seront reliées à cette zone.')
+    } catch (err) {
+      setError(err.message || 'Enregistrement impossible (texte déjà utilisé ?).')
+    } finally {
+      setMappingSaving(false)
+    }
+  }
+
+  async function handleDeleteMapping(entry) {
+    setError('')
+    try {
+      await deleteMissionZoneMapping(entry.id)
+      await refresh()
+      setSuccess('Correspondance supprimée.')
+    } catch (err) {
+      setError(err.message || 'Suppression impossible.')
     }
   }
 
@@ -500,7 +563,7 @@ export function GeofencesPage() {
       <section className="panel">
         <SectionHeader
           title="Numéros qui reçoivent les alertes"
-          description="Ces numéros WhatsApp reçoivent les alertes de géofence (entrée / sortie de zone) et les alertes flotte."
+          description="« Interne » : toutes les alertes de zone et de flotte. « Client » : uniquement le Départ (sortie de la zone de départ) et l’Arrivée à destination de ses propres missions."
           right={
             <form className="recipient-add-form" onSubmit={handleAddRecipient}>
               <input
@@ -519,6 +582,25 @@ export function GeofencesPage() {
                 aria-label="Numéro WhatsApp"
                 required
               />
+              <select
+                value={recipientForm.scope}
+                onChange={(event) => setRecipientForm({ ...recipientForm, scope: event.target.value, clientName: '' })}
+                aria-label="Type de destinataire"
+              >
+                <option value="internal">Interne</option>
+                <option value="client">Client</option>
+              </select>
+              {recipientForm.scope === 'client' && (
+                <select
+                  value={recipientForm.clientName}
+                  onChange={(event) => setRecipientForm({ ...recipientForm, clientName: event.target.value })}
+                  aria-label="Client concerné"
+                  required
+                >
+                  <option value="">— Client —</option>
+                  {clientNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              )}
               <button type="submit" className="primary-btn" disabled={recipientSaving}>
                 <Plus size={18} />
                 {recipientSaving ? 'Ajout…' : 'Ajouter'}
@@ -531,13 +613,33 @@ export function GeofencesPage() {
           <div className="recipient-table-wrap">
             <table className="ops-table recipient-table">
               <thead>
-                <tr><th>Destinataire</th><th>Numéro WhatsApp</th><th>Actif</th><th><span className="visually-hidden">Actions</span></th></tr>
+                <tr><th>Destinataire</th><th>Numéro WhatsApp</th><th>Type</th><th>Actif</th><th><span className="visually-hidden">Actions</span></th></tr>
               </thead>
               <tbody>
                 {recipients.map((recipient) => (
                   <tr key={recipient.id}>
                     <td><strong>{recipient.name}</strong></td>
                     <td><span className="recipient-phone"><Phone size={15} />{recipient.phone}</span></td>
+                    <td>
+                      <select
+                        value={recipient.scope === 'client' ? 'client' : 'internal'}
+                        onChange={(event) => handleRecipientScope(recipient, event.target.value)}
+                        aria-label={`Type de destinataire pour ${recipient.name}`}
+                      >
+                        <option value="internal">Interne — tout</option>
+                        <option value="client">Client — Départ/Arrivée</option>
+                      </select>
+                      {recipient.scope === 'client' && (
+                        <select
+                          value={recipient.clientName || ''}
+                          onChange={(event) => handleRecipientScope(recipient, 'client', event.target.value)}
+                          aria-label={`Client rattaché à ${recipient.name}`}
+                        >
+                          <option value="">— Client —</option>
+                          {clientNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                      )}
+                    </td>
                     <td>
                       <label className="toggle-row recipient-toggle">
                         <span>{recipient.active ? 'Actif' : 'Inactif'}</span>
@@ -559,6 +661,96 @@ export function GeofencesPage() {
           {recipients.length === 0
             ? <><BellOff size={15} /> Aucun destinataire : les événements sont enregistrés mais aucune notification WhatsApp n’est envoyée.</>
             : <><Bell size={15} /> Les notifications sont envoyées via la connexion WhatsApp active (page WhatsApp).</>}
+        </p>
+      </section>
+
+      <section className="panel">
+        <SectionHeader
+          title="Zones de départ / arrivée des missions"
+          description="Le client d’une mission ne reçoit que ces deux bornes : Départ (le camion sort de la zone de départ) et Arrivée (il entre dans la zone de destination). Reliez ici les textes écrits dans les bons de livraison (« Point de chargement », « Destination ») à vos zones."
+          right={
+            <form className="recipient-add-form" onSubmit={handleAddMapping}>
+              <input
+                type="text"
+                value={mappingForm.matchText}
+                onChange={(event) => setMappingForm({ ...mappingForm, matchText: event.target.value })}
+                placeholder="Texte du BL (ex. Caderac)"
+                aria-label="Texte du bon de livraison"
+                required
+              />
+              <select
+                value={mappingForm.geofenceId}
+                onChange={(event) => setMappingForm({ ...mappingForm, geofenceId: event.target.value })}
+                aria-label="Zone correspondante"
+                required
+              >
+                <option value="">— Zone —</option>
+                {geofences.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+              </select>
+              <button type="submit" className="primary-btn" disabled={mappingSaving}>
+                <Plus size={18} />
+                {mappingSaving ? 'Ajout…' : 'Relier'}
+              </button>
+            </form>
+          }
+        />
+        {zoneMap.length === 0 && !loading && (
+          <EmptyBanner message="Aucune correspondance enregistrée. Un texte identique à un nom de zone (ex. « BOUAKE ») est relié automatiquement." />
+        )}
+        {zoneMap.length > 0 && (
+          <div className="recipient-table-wrap">
+            <table className="ops-table recipient-table">
+              <thead>
+                <tr><th>Texte du BL</th><th>Zone</th><th><span className="visually-hidden">Actions</span></th></tr>
+              </thead>
+              <tbody>
+                {zoneMap.map((entry) => (
+                  <tr key={entry.id}>
+                    <td><strong>{entry.matchText}</strong></td>
+                    <td>{entry.zoneName || <span className="geofence-missing">zone supprimée</span>}</td>
+                    <td className="table-actions-cell">
+                      <button type="button" className="ghost-btn icon-btn" aria-label={`Supprimer la correspondance ${entry.matchText}`} onClick={() => handleDeleteMapping(entry)}>
+                        <Trash2 size={22} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {missionZones.length > 0 && (
+          <div className="recipient-table-wrap">
+            <table className="ops-table recipient-table">
+              <thead>
+                <tr><th>Mission en cours</th><th>Camion</th><th>Zone de départ</th><th>Zone d’arrivée</th><th>Annonces client</th></tr>
+              </thead>
+              <tbody>
+                {missionZones.map((mission) => (
+                  <tr key={mission.orderId}>
+                    <td><strong>{mission.reference || mission.orderId}</strong><small>{mission.client}</small></td>
+                    <td>{mission.truckLabel}</td>
+                    <td>
+                      {mission.departureZone
+                        ? <>{mission.departureZone.name}<small>{mission.loadingPoint} · {mission.departureZone.source === 'map' ? 'correspondance' : 'nom de zone'}</small></>
+                        : <span className="geofence-missing">« {mission.loadingPoint || '-'} » à relier</span>}
+                    </td>
+                    <td>
+                      {mission.arrivalZone
+                        ? <>{mission.arrivalZone.name}<small>{mission.destination} · {mission.arrivalZone.source === 'map' ? 'correspondance' : 'nom de zone'}</small></>
+                        : <span className="geofence-missing">« {mission.destination || '-'} » à relier</span>}
+                    </td>
+                    <td>
+                      {mission.departureNotifiedAt ? 'Départ annoncé' : 'Départ à venir'} · {mission.arrivalNotifiedAt ? 'Arrivée annoncée' : 'Arrivée à venir'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="geofence-help-note">
+          <Bell size={15} /> Sans correspondance, aucune alerte n’est envoyée au client pour cette borne — les alertes internes continuent normalement.
         </p>
       </section>
 
