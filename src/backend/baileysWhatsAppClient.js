@@ -28,23 +28,29 @@ export function toBaileysJid(phone) {
   return recipient ? `${recipient}${WHATSAPP_JID_SUFFIX}` : ''
 }
 
-// Faut-il détruire les creds WhatsApp ?
-// - `purge_invalid` : WhatsApp a explicitement rejeté la session (401 / unauthorized).
-//   Les creds sont morts → purge (snapshot pris avant) + nouveau QR.
-// - `purge_stale` : aucune connexion n'a abouti depuis `stalePurgeMs` (creds
-//   probablement morts) → purge + nouveau QR pour que l'opérateur puisse re-pairer.
-// - `keep` : déconnexion réseau transitoire (« Connection Failure », « WebSocket
-//   Error », « Connection Terminated ») → ON GARDE les creds, on retente. C'est ce
-//   qui évite les scans QR inutiles.
+// Faut-il écarter les creds WhatsApp pour servir un QR neuf ?
+// Doctrine (11/09/2026, après audit Baileys + incidents) : un 401 ISOLÉ ne doit
+// JAMAIS détruire la session. Le protocole renvoie des 401 transitoires
+// (« Connection Failure », « conflict: device_removed » — bugs documentés des
+// versions 7.0.0-rc, issues #2140 / #2248 / #2110) : purger immédiatement
+// transformait une coupure passagère en scan QR obligatoire. On re-tente donc
+// d'abord avec les MÊMES creds, et seulement après `max401BeforeQr` échecs
+// CONSÉCUTIFS (aucune connexion réussie entre-temps) la session est considérée
+// morte : les creds sont ARCHIVÉS (snapshot) puis mis de côté pour qu'un QR neuf
+// soit servi à l'opérateur.
+// - `retry_with_creds` : 401 encore dans la tolérance → on garde les creds.
+// - `purge_invalid` : session jugée morte après N échecs consécutifs.
+// - `keep` : coupure réseau (« Connection Failure », « WebSocket Error »,
+//   « Connection Terminated ») → creds intacts, on retente sans limite.
 export function resolveCredsPurgeAction({
   statusCode = null,
   message = '',
-  staleSinceMs = null,
-  nowMs = Date.now(),
-  stalePurgeMs = 6 * 60 * 60 * 1000,
+  consecutive401 = 0,
+  max401BeforeQr = 3,
 } = {}) {
-  if (statusCode === 401 || /unauthorized/i.test(String(message))) return 'purge_invalid'
-  if (Number.isFinite(staleSinceMs) && nowMs - staleSinceMs >= Math.max(0, Number(stalePurgeMs) || 0)) return 'purge_stale'
+  if (statusCode === 401 || /unauthorized/i.test(String(message))) {
+    return consecutive401 >= Math.max(1, Number(max401BeforeQr) || 1) ? 'purge_invalid' : 'retry_with_creds'
+  }
   return 'keep'
 }
 
@@ -82,10 +88,53 @@ export function createBaileysWhatsAppClient({
   let credsRestoredFrom = ''
   let lastSnapshotName = ''
   let lastSnapshotAt = ''
-  let staleCredsSince = null
+  // 401 CONSÉCUTIFS sans aucune connexion réussie entre-temps. Ce compteur est la
+  // seule chose qui autorise à écarter des creds (voir resolveCredsPurgeAction) :
+  // un 401 isolé — fréquent lors des reconnexions — ne doit jamais coûter un scan QR.
+  let consecutive401 = 0
+  const MAX_401_BEFORE_QR = 3
   // Une purge volontaire dans CE process ne doit pas être annulée par une
   // restauration : sinon boucle purge → restore → 401 → purge.
   let purgedInProcess = false
+
+  // Verrou d'instance : une SEULE connexion WhatsApp par jeu de creds. Deux
+  // process avec la même session (Pi + VPS, ou un ancien process resté vivant)
+  // provoquent des conflits côté WhatsApp (« connectionReplaced », « conflict:
+  // device_removed ») pouvant aller jusqu'à la déliaison de l'appareil — donc un
+  // scan QR. Si un autre process vivant détient le verrou, on ne se connecte pas.
+  async function acquireInstanceLock() {
+    const lockPath = `${authDir}.lock`
+    try {
+      const raw = await fs.readFile(lockPath, 'utf8')
+      const lock = JSON.parse(raw)
+      const pid = Number(lock?.pid)
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+        let alive = false
+        try {
+          process.kill(pid, 0)
+          alive = true
+        } catch (error) {
+          // EPERM = le process existe mais appartient à un autre utilisateur :
+          // le verrou est bien détenu, on ne se connecte pas.
+          alive = error?.code === 'EPERM'
+        }
+        if (alive) {
+          state = 'error'
+          lastError = `Session WhatsApp déjà utilisée par le process ${pid} — connexion refusée (protection anti-conflit).`
+          logger.error?.(`[baileys] ${lastError}`)
+          return false
+        }
+      }
+    } catch {
+      // Pas de verrou lisible : on le pose.
+    }
+    try {
+      await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), 'utf8')
+    } catch (error) {
+      logger.warn?.(`[baileys] verrou d'instance non écrit: ${error?.message || error}`)
+    }
+    return true
+  }
 
   async function start() {
     if (started) return getStatus()
@@ -94,6 +143,10 @@ export function createBaileysWhatsAppClient({
     lastError = ''
 
     try {
+      if (!(await acquireInstanceLock())) {
+        started = false
+        return getStatus()
+      }
       await restoreCredentialsIfMissing()
       const { state: authState, saveCreds } = await resolveAuthStateFactory(authStateFactory)(authDir)
       socket = await resolveSocketFactory(socketFactory)({ auth: authState })
@@ -299,7 +352,9 @@ export function createBaileysWhatsAppClient({
       connectedAt = new Date().toISOString()
       user = normalizeBaileysUser(socket?.user)
       reconnectAttempts = 0
-      staleCredsSince = null
+      // Connexion réussie : la session est redevenue saine → le compteur de 401
+      // repart de zéro (sinon un incident passé finirait par déclencher un QR).
+      consecutive401 = 0
       logger.info?.('[baileys] WhatsApp connecté.')
       // Creds à jour et validés par WhatsApp → snapshot de référence : c'est ce
       // snapshot qui permettra de reconnecter sans scan QR en cas de perte locale.
@@ -328,20 +383,38 @@ export function createBaileysWhatsAppClient({
         logger.warn?.(`[baileys] Session WhatsApp révoquée (403) — reconnexion automatique arrêtée. Re-scan QR requis.`)
         return
       }
-      // Session invalide (401) : les creds sauvegardés sont rejetés par WhatsApp
-      // (device délié, session révoquée). Purger le dossier de session et
-      // repartir sur un QR neuf, sinon Baileys boucle sur une session morte.
-      // Le 401 est un code explicite : on ne purge QUE là-dessus (voir plus bas
-      // le traitement des déconnexions réseau, qui ne détruisent plus les creds).
-      if (resolveCredsPurgeAction({ statusCode, message: disconnectError?.message || '' }) === 'purge_invalid') {
+      // Session rejetée (401). On ne purge PAS au premier refus : les 401
+      // transitoires (bugs 7.0.0-rc, « device_removed » fantôme) sont courants et
+      // une purge immédiate transformait une coupure en scan QR obligatoire. On
+      // re-tente avec les MÊMES creds, et seulement après MAX_401_BEFORE_QR échecs
+      // consécutifs on écarte la session (archivée au préalable) pour servir un QR.
+      consecutive401 += 1
+      const credsAction = resolveCredsPurgeAction({
+        statusCode,
+        message: disconnectError?.message || '',
+        consecutive401,
+        max401BeforeQr: MAX_401_BEFORE_QR,
+      })
+      if (credsAction === 'retry_with_creds') {
         lastQr = ''
         lastQrDataUrl = ''
-        lastError = 'Session WhatsApp invalide (401) — nettoyage de la session, scannez le nouveau QR.'
+        lastError = `Session WhatsApp refusée (401) — tentative ${consecutive401}/${MAX_401_BEFORE_QR} avec les creds existants.`
+        state = 'disconnected'
+        logger.warn?.(`[baileys] 401 WhatsApp (${disconnectedReasonLabel(disconnectError)}) — tentative ${consecutive401}/${MAX_401_BEFORE_QR}, creds CONSERVÉS.`)
+        const delay = resolveReconnectDelay({ attempts: consecutive401, maxAttempts: MAX_401_BEFORE_QR, baseMs: 10_000, maxMs: 5 * 60_000 })
+        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), delay)
+        return
+      }
+      if (credsAction === 'purge_invalid') {
+        lastQr = ''
+        lastQrDataUrl = ''
+        lastError = `Session WhatsApp invalide (401 ×${MAX_401_BEFORE_QR}) — les creds sont archivés, scannez le nouveau QR.`
+        consecutive401 = 0
         reconnectAttempts = 0
         started = false
         socket = null
-        logger.warn?.(`[baileys] Session invalide (401) — purge des creds, nouveau QR généré.`)
-        await purgeCredentials('session invalide 401')
+        logger.warn?.(`[baileys] Session invalide après ${MAX_401_BEFORE_QR} refus consécutifs — creds archivés, nouveau QR généré.`)
+        await purgeCredentials(`session invalide (401 ×${MAX_401_BEFORE_QR})`)
         setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 1500)
         return
       }
@@ -359,32 +432,11 @@ export function createBaileysWhatsAppClient({
       reconnectAttempts += 1
       started = false
       socket = null
-      // Les creds ne sont PLUS détruits sur une déconnexion réseau (« Connection
-      // Failure », « WebSocket Error », « Connection Terminated ») : c'était la
-      // cause n°1 des scans QR inutiles. Ils ne sont purgés que si AUCUNE
-      // connexion n'aboutit pendant `staleCredsPurgeMs` — et dans ce cas seulement
-      // (creds réellement morts) on repart sur un QR neuf pour que l'opérateur
-      // puisse re-pairer depuis l'interface.
-      if (!staleCredsSince) staleCredsSince = now()
-      const credsAction = resolveCredsPurgeAction({
-        statusCode,
-        message: disconnectError?.message || '',
-        staleSinceMs: staleCredsSince,
-        nowMs: now(),
-        stalePurgeMs: staleCredsPurgeMs,
-      })
-      if (credsAction === 'purge_stale') {
-        const hours = Math.round(staleCredsPurgeMs / 3600_000)
-        lastQr = ''
-        lastQrDataUrl = ''
-        staleCredsSince = null
-        reconnectAttempts = 0
-        lastError = `Aucune connexion WhatsApp depuis ${hours} h — creds purgés, scannez le nouveau QR.`
-        logger.warn?.(`[baileys] Creds WhatsApp probablement morts (${hours} h sans connexion) — purge + nouveau QR.`)
-        await purgeCredentials('creds périmés')
-        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), 1500)
-        return
-      }
+      // Les creds ne sont JAMAIS détruits sur une déconnexion réseau (« Connection
+      // Failure », « WebSocket Error », « Connection Terminated ») ni après un délai
+      // sans connexion : c'était la cause n°1 des scans QR inutiles. Une session
+      // réellement morte finit de toute façon par des 401 consécutifs, traités
+      // ci-dessus — avec tolérance.
       // NE JAMAIS abandonner définitivement. WhatsApp ferme la socket des sessions
       // longues après ~1-2 jours (recyclage, coupure réseau, téléphone brièvement
       // hors-ligne) et la reconnexion peut échouer plusieurs fois de suite. Si on
@@ -526,24 +578,68 @@ function resolveAuthStateFactory(authStateFactory) {
   }
 }
 
+// Libellé lisible d'une erreur de déconnexion Baileys : la cause « conflict:
+// device_removed » n'apparaît que dans le nœud XML, pas dans `.message` — sans
+// ça, impossible de distinguer un vrai déliage d'un 401 transitoire.
+function disconnectedReasonLabel(error) {
+  const parts = []
+  const code = error?.output?.statusCode ?? error?.statusCode ?? error?.data?.statusCode
+  if (code) parts.push(String(code))
+  const conflict = error?.data?.content?.find?.((node) => node?.tag === 'conflict')
+  if (conflict?.attrs?.type) parts.push(String(conflict.attrs.type))
+  const streamError = error?.data?.content?.find?.((node) => node?.tag === 'stream:error')
+  if (streamError?.attrs?.code) parts.push(String(streamError.attrs.code))
+  if (error?.message) parts.push(String(error.message))
+  return parts.filter(Boolean).join(' / ') || 'cause inconnue'
+}
+
 function resolveSocketFactory(socketFactory) {
   if (socketFactory) return socketFactory
   return async ({ auth }) => {
     const baileys = await import('@whiskeysockets/baileys')
     const makeWASocket = baileys.default || baileys.makeWASocket
-    // IMPORTANT : surcharger `version` avec fetchLatestBaileysVersion() est OBLIGATOIRE.
-    // La version embarquée du package 7.0.0-rc13 ([2,3000,1035194821]) est obsolète :
-    // WhatsApp rejette le handshake → « Connection Failure » sans QR, même en appairage.
-    // La version récupérée ([2,3000,1043857760]) est acceptée. (Vérifié empiriquement.)
-    const { version } = baileys.fetchLatestBaileysVersion
-      ? await baileys.fetchLatestBaileysVersion()
-      : { version: undefined }
+    // Version WhatsApp Web : fetchLatestBaileysVersion() renvoie une valeur FIGÉE
+    // dans le dépôt Baileys, souvent périmée → WhatsApp ferme le handshake
+    // (405/428 « Connection Terminated ») AVANT même le QR. fetchLatestWaWebVersion()
+    // interroge web.whatsapp.com/sw.js et reflète ce que le serveur attend
+    // réellement (issue #2679 : la version périmée bloque jusqu'à l'appairage).
+    let version
+    try {
+      if (baileys.fetchLatestWaWebVersion) {
+        version = (await baileys.fetchLatestWaWebVersion()).version
+      } else if (baileys.fetchLatestBaileysVersion) {
+        version = (await baileys.fetchLatestBaileysVersion()).version
+      }
+    } catch (error) {
+      console.warn('[baileys] version WA Web indisponible, version embarquée utilisée:', error?.message || error)
+      version = undefined
+    }
+    // Empreinte navigateur : WhatsApp REJETTE désormais le descripteur « Desktop »
+    // (WebSubPlatform WIN32/DARWIN) → 428 « Connection Terminated » avant le QR.
+    // Un couple Chrome/Ubuntu est accepté (issue #2671, confirmé en production).
+    const browser = baileys.Browsers?.ubuntu
+      ? baileys.Browsers.ubuntu('Chrome')
+      : ['Ubuntu', 'Chrome', '22.04.4']
+    // Cache mémoire des clés Signal : moins d'I/O disque (carte SD), sessions
+    // moins fragiles après une reconnexion.
+    const keys = baileys.makeCacheableSignalKeyStore
+      ? baileys.makeCacheableSignalKeyStore(auth.keys, createSilentBaileysLogger())
+      : auth.keys
     return makeWASocket({
-      auth,
+      auth: { creds: auth.creds, keys },
       version,
+      browser,
       logger: createSilentBaileysLogger(),
       printQRInTerminal: false,
-      browser: ['Teliman Logistique', 'Chrome', '1.0.0'],
+      // Stabilité de session : ping régulier + timeouts larges, et on ne se déclare
+      // PAS « en ligne » (le téléphone garde ses notifications).
+      keepAliveIntervalMs: 30_000,
+      connectTimeoutMs: 60_000,
+      defaultQueryTimeoutMs: 60_000,
+      retryRequestDelayMs: 250,
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      fireInitQueries: true,
     })
   }
 }

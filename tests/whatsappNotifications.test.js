@@ -791,21 +791,22 @@ test('l’historique WhatsApp enregistre le mode d’envoi (logo ou texte)', () 
 
 // --- Protection des creds WhatsApp (pas de scan QR inutile) ---------------------
 
-test('resolveCredsPurgeAction ne détruit les creds que sur 401 ou creds périmés', () => {
-  const nowMs = Date.parse('2026-09-11T12:00:00.000Z')
+test('resolveCredsPurgeAction ne détruit les creds qu’après 3 refus 401 consécutifs', () => {
+  // Un 401 ISOLÉ ne doit jamais coûter un scan QR : les 401 transitoires
+  // (« Connection Failure », « conflict: device_removed » fantôme) sont fréquents
+  // lors des reconnexions → on garde les creds et on retente.
+  assert.equal(resolveCredsPurgeAction({ statusCode: 401 }), 'retry_with_creds')
+  assert.equal(resolveCredsPurgeAction({ message: 'Unauthorized connection' }), 'retry_with_creds')
+  assert.equal(resolveCredsPurgeAction({ statusCode: 401, consecutive401: 2, max401BeforeQr: 3 }), 'retry_with_creds')
 
-  // 401 explicite (ou message « unauthorized ») → purge + nouveau QR
-  assert.equal(resolveCredsPurgeAction({ statusCode: 401 }), 'purge_invalid')
-  assert.equal(resolveCredsPurgeAction({ message: 'Unauthorized connection' }), 'purge_invalid')
+  // 3e refus consécutif (aucune connexion réussie entre-temps) → session morte
+  assert.equal(resolveCredsPurgeAction({ statusCode: 401, consecutive401: 3, max401BeforeQr: 3 }), 'purge_invalid')
+  assert.equal(resolveCredsPurgeAction({ statusCode: 401, consecutive401: 9, max401BeforeQr: 3 }), 'purge_invalid')
 
-  // Déconnexions réseau transitoires → on GARDE les creds (c'était la cause des scans QR inutiles)
+  // Déconnexions réseau transitoires → creds TOUJOURS conservés, même après des heures
   for (const message of ['Connection Failure', 'Connection Terminated', 'WebSocket Error ()', 'Stream Errored (restart required)']) {
-    assert.equal(resolveCredsPurgeAction({ statusCode: null, message, staleSinceMs: nowMs, nowMs, stalePurgeMs: 6 * 3600_000 }), 'keep', message)
+    assert.equal(resolveCredsPurgeAction({ statusCode: null, message }), 'keep', message)
   }
-
-  // Aucune connexion depuis plus de 6 h → creds probablement morts
-  assert.equal(resolveCredsPurgeAction({ staleSinceMs: nowMs - 7 * 3600_000, nowMs, stalePurgeMs: 6 * 3600_000 }), 'purge_stale')
-  assert.equal(resolveCredsPurgeAction({ staleSinceMs: nowMs - 3600_000, nowMs, stalePurgeMs: 6 * 3600_000 }), 'keep')
   assert.equal(resolveCredsPurgeAction({}), 'keep')
 })
 
@@ -868,7 +869,7 @@ test('le client ne restaure pas de creds périmés par-dessus une purge volontai
   assert.equal(existsSync(join(authDir, 'creds.json')), false, 'pas de restauration automatique après une purge volontaire')
 })
 
-test('le client archive un snapshot à chaque connexion réussie et avant toute purge 401', async () => {
+test('le client conserve les creds sur 401 isolé et ne les archive qu’après 3 refus consécutifs', async () => {
   const authDir = mkdtempSync(join(tmpdir(), 'teliman-client-auth-'))
   const backupRoot = join(mkdtempSync(join(tmpdir(), 'teliman-client-backups-')), 'backups')
   writeFileSync(join(authDir, 'creds.json'), '{"registrationId":7}')
@@ -891,13 +892,43 @@ test('le client archive un snapshot à chaque connexion réussie et avant toute 
   assert.ok(client.getStatus().lastCredsSnapshot, 'un snapshot est pris à la connexion')
   assert.equal(client.getStatus().lastCredsSnapshotAt?.length > 0, true)
 
-  // 401 : les creds sont archivés AVANT la purge (une erreur de diagnostic reste rattrapable)
-  await handlers['connection.update']({
+  const unauthorized = {
     connection: 'close',
     lastDisconnect: { error: { output: { statusCode: 401 }, message: 'Unauthorized' } },
-  })
-  assert.equal(cleaned, 1, 'session purgée sur 401 explicite')
+  }
+
+  // 401 isolés (coupure réseau, « device_removed » transitoire) : creds CONSERVÉS
+  await handlers['connection.update'](unauthorized)
+  assert.equal(cleaned, 0, 'aucune purge au 1er 401')
+  assert.equal(existsSync(join(authDir, 'creds.json')), true, 'les creds restent en place')
+  await handlers['connection.update'](unauthorized)
+  assert.equal(cleaned, 0, 'aucune purge au 2e 401')
+
+  // 3e refus consécutif sans connexion réussie : session écartée (creds archivés)
+  await handlers['connection.update'](unauthorized)
+  assert.equal(cleaned, 1, 'session écartée au 3e refus consécutif')
   const snapshotNames = (await listAuthSnapshots(backupRoot)).map((snapshot) => snapshot.name)
   assert.ok(snapshotNames.length >= 1, 'snapshot conservé avant purge')
   assert.ok(snapshotNames.some((name) => name === client.getStatus().lastCredsSnapshot))
+})
+
+test('un second process ne peut pas utiliser les mêmes creds WhatsApp (verrou d’instance)', async () => {
+  const authDir = mkdtempSync(join(tmpdir(), 'teliman-client-lock-'))
+  writeFileSync(join(authDir, 'creds.json'), '{"registrationId":1}')
+  // Verrou détenu par un process vivant (PID 1 = init, toujours vivant)
+  writeFileSync(`${authDir}.lock`, JSON.stringify({ pid: 1, at: '2026-09-11T00:00:00.000Z' }))
+
+  const handlers = {}
+  let socketCreated = 0
+  const client = createBaileysWhatsAppClient({
+    authDir,
+    socketFactory: async () => { socketCreated += 1; return { ev: { on: (name, handler) => { handlers[name] = handler } } } },
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'x',
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  assert.equal(socketCreated, 0, 'aucune socket créée quand un autre process détient la session')
+  assert.match(client.getStatus().lastError || '', /déjà utilisée/)
 })
