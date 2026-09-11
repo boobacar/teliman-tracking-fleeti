@@ -19,7 +19,7 @@ import {
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
-import { createBaileysWhatsAppClient, resolveCredsPurgeAction, toBaileysJid } from '../src/backend/baileysWhatsAppClient.js'
+import { buildImagePreview, createBaileysWhatsAppClient, resolveCredsPurgeAction, toBaileysJid } from '../src/backend/baileysWhatsAppClient.js'
 import { listAuthSnapshots } from '../src/backend/whatsappAuthStore.js'
 
 // Logo de test : un vrai fichier sur disque (le client lit le fichier avant envoi).
@@ -366,6 +366,57 @@ test('createBaileysWhatsAppClient expose le statut, le QR et envoie un message v
   assert.equal(result.sent, true)
   assert.equal(result.messageId, 'MSG-1')
   assert.deepEqual(sent, [{ jid: '2250701020304@s.whatsapp.net', payload: { text: 'Message test' } }])
+})
+
+test('buildImagePreview fournit un aperçu JPEG 32 px + les dimensions d’origine', async () => {
+  const sharp = (await import('sharp')).default
+  const jpeg = await sharp({ create: { width: 320, height: 72, channels: 3, background: '#ffffff' } }).jpeg().toBuffer()
+
+  const preview = await buildImagePreview(jpeg, { warn() {} })
+  assert.equal(preview.width, 320, 'largeur d’origine conservée')
+  assert.equal(preview.height, 72, 'hauteur d’origine conservée')
+  assert.ok(preview.jpegThumbnail?.length > 0, 'aperçu produit')
+  // Vrai JPEG en sortie (signature SOI) — sinon WhatsApp affiche une vignette cassée
+  assert.equal(preview.jpegThumbnail[0], 0xff)
+  assert.equal(preview.jpegThumbnail[1], 0xd8)
+
+  // Une donnée non image ne doit jamais lever : l’envoi continue sans aperçu
+  assert.deepEqual(await buildImagePreview(Buffer.from('pas une image'), { warn() {} }), {})
+})
+
+test('l’envoi avec logo joint l’aperçu et les dimensions (image affichée entière dans WhatsApp)', async () => {
+  const sharp = (await import('sharp')).default
+  const jpeg = await sharp({ create: { width: 320, height: 72, channels: 3, background: '#ffffff' } }).jpeg().toBuffer()
+  const dir = mkdtempSync(join(tmpdir(), 'teliman-wa-img-'))
+  const logoPath = join(dir, 'teliman-logistique-logo.jpg')
+  writeFileSync(logoPath, jpeg)
+
+  const sent = []
+  const handlers = {}
+  const client = createBaileysWhatsAppClient({
+    authDir: '/tmp/teliman-wa-img-test',
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async (jid, payload) => { sent.push({ jid, payload }); return { key: { id: 'MSG-IMG' } } },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+221 77 626 00 20', 'Alerte avec logo', { imagePath: logoPath })
+
+  assert.equal(result.sent, true)
+  assert.equal(result.media, 'logo')
+  const payload = sent.at(-1)?.payload
+  assert.ok(payload?.image?.length, 'image jointe')
+  assert.equal(payload.caption, 'Alerte avec logo')
+  assert.equal(payload.width, 320, 'dimensions transmises (cadrage correct)')
+  assert.equal(payload.height, 72, 'dimensions transmises (cadrage correct)')
+  assert.ok(payload.jpegThumbnail?.length > 0, 'aperçu transmis — sans lui WhatsApp zoome/recadre l’image')
 })
 
 test('createBaileysWhatsAppClient vérifie le compte WhatsApp réel avant envoi international', async () => {

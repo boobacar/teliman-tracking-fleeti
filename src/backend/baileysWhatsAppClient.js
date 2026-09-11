@@ -7,6 +7,9 @@ const WHATSAPP_JID_SUFFIX = '@s.whatsapp.net'
 // Légende maximale d'un média WhatsApp. Au-delà, on envoie le texte seul :
 // WhatsApp tronquerait la légende (pire qu'une alerte sans logo).
 const MAX_CAPTION_LENGTH = 1024
+// Largeur de l'aperçu joint aux images (valeur utilisée par Baileys) : sans lui,
+// WhatsApp affiche une vignette zoomée/recadrée au lieu de l'image entière.
+const THUMBNAIL_WIDTH = 32
 
 export function resolveReconnectDelay({
   attempts,
@@ -515,10 +518,41 @@ async function resolveOutgoingImagePayload({ imagePath, caption, logger } = {}) 
   try {
     const data = await fs.readFile(filePath)
     if (!data?.length) return null
-    return { image: data, caption, mimetype: resolveImageMimeType(filePath) }
+    // Aperçu + dimensions calculés ICI : Baileys 6.7.23 échoue à le faire seul
+    // (« failed to obtain extra info » — extraction sharp sur son fichier
+    // temporaire), et une image sans jpegThumbnail/width/height s'affiche
+    // recadrée et zoomée dans WhatsApp au lieu de la carte de marque attendue.
+    const preview = await buildImagePreview(data, logger)
+    if (preview.jpegThumbnail) {
+      logger?.info?.(`[baileys] aperçu image calculé (${preview.width || '?'}x${preview.height || '?'}, ${preview.jpegThumbnail.length} o) — l'image s'affichera entière.`)
+    }
+    return { image: data, caption, mimetype: resolveImageMimeType(filePath), ...preview }
   } catch (error) {
     logger?.warn?.(`[baileys] logo introuvable (${filePath}) : ${error?.message || error} — envoi en texte seul.`)
     return null
+  }
+}
+
+// Aperçu JPEG (largeur 32 px, qualité 50 — les valeurs de Baileys) + dimensions
+// d'origine. Best-effort : si le calcul échoue, on renvoie {} et l'envoi continue
+// (une alerte ne doit JAMAIS être perdue à cause de l'image).
+export async function buildImagePreview(buffer, logger = console) {
+  try {
+    const sharpModule = await import('sharp')
+    const sharp = sharpModule.default || sharpModule
+    const image = sharp(buffer)
+    const meta = await image.metadata()
+    const jpegThumbnail = await image.resize(THUMBNAIL_WIDTH).jpeg({ quality: 50 }).toBuffer()
+    if (!jpegThumbnail?.length) return {}
+    const preview = { jpegThumbnail }
+    if (meta?.width && meta?.height) {
+      preview.width = meta.width
+      preview.height = meta.height
+    }
+    return preview
+  } catch (error) {
+    logger?.warn?.(`[baileys] aperçu de l'image non calculable (${error?.message || error}) — envoi sans aperçu.`)
+    return {}
   }
 }
 
