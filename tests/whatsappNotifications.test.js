@@ -85,7 +85,8 @@ test('buildFleetAlertWhatsAppMessage inclut véhicule, chauffeur, type, position
     address: '5.34500, -4.02400',
   })
 
-  assert.match(message, /^Teliman Logistique/)
+  assert.doesNotMatch(message, /^Teliman Logistique/, 'plus de titre en haut : le logo est joint à l’alerte')
+  assert.match(message, /^Le véhicule TG 1234 AB \(Kouadio Jean\) vient de dépasser la limite de vitesse à 96 km\/h\./)
   assert.match(message, /vient de dépasser la limite de vitesse/)
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
@@ -108,7 +109,7 @@ test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assign
     lng: -3.1890516,
   })
 
-  assert.match(message, /^Teliman Logistique/)
+  assert.doesNotMatch(message, /^Teliman Logistique/)
   assert.match(message, /est à l'arrêt/)
   assert.match(message, /3100WWCI01/)
   assert.doesNotMatch(message, /Chauffeur:/)
@@ -126,14 +127,31 @@ test('buildFleetAlertWhatsAppMessage ajoute le bloc Mission en cours quand une m
     lat: 5.345,
     lng: -4.024,
     address: 'Abidjan',
-    mission: { reference: 'BL-2026-001', client: 'Société X', destination: 'Abidjan', goods: 'Ciment' },
+    mission: { reference: 'BL-2026-001', client: 'Société X', destination: 'Abidjan', goods: 'Ciment', quantity: '32,500' },
   })
 
   assert.match(message, /Mission en cours/)
   assert.match(message, /Bon n°BL-2026-001/)
-  assert.match(message, /Client : Société X/)
-  assert.match(message, /Destination : Abidjan/)
-  assert.match(message, /Marchandise : Ciment/)
+  assert.doesNotMatch(message, /Client :/, 'la ligne client a été retirée du bloc mission')
+  assert.match(message, /Marchandise : Ciment\n▪️ Quantité : 32,500/, 'quantité juste sous la marchandise')
+})
+
+test('le bloc mission s’arrête à la quantité et ignore une quantité absente', () => {
+  const withQuantity = buildFleetAlertWhatsAppMessage({
+    event: 'speedup',
+    truckLabel: 'TG 1234 AB',
+    time: '2026-05-07T12:34:00.000Z',
+    mission: { reference: 'BL-1', destination: 'Bouaké', goods: 'Sable 0x5', quantity: '56,300' },
+  })
+  assert.match(withQuantity, /▪️ Bon n°BL-1\n▪️ Destination : Bouaké\n▪️ Marchandise : Sable 0x5\n▪️ Quantité : 56,300\nCordialement,/)
+
+  const withoutQuantity = buildFleetAlertWhatsAppMessage({
+    event: 'speedup',
+    truckLabel: 'TG 1234 AB',
+    time: '2026-05-07T12:34:00.000Z',
+    mission: { reference: 'BL-1', destination: 'Bouaké', goods: 'Sable 0x5' },
+  })
+  assert.doesNotMatch(withoutQuantity, /Quantité/)
 })
 
 test('buildFleetAlertWhatsAppMessage n’affiche pas de bloc mission sans mission active', () => {
@@ -163,8 +181,9 @@ test('buildGeofenceAlertWhatsAppMessage inclut action, zone, position, heure et 
     mission: { reference: 'BL-2026-002', client: 'Société Y', destination: 'Korhogo', goods: 'Arachides' },
   })
 
-  assert.match(message, /^Teliman Logistique/)
-  assert.match(message, /vient d'entrer dans la zone « Korhogo client »/)
+  assert.doesNotMatch(message, /^Teliman Logistique/, 'plus de titre en haut : le logo est joint à l\'alerte')
+  assert.match(message, /^Le véhicule TG 1234 AB \(Kouadio Jean\) vient d'entrer dans la zone « Korhogo client » à 35 km\/h\./)
+  assert.doesNotMatch(message, /Client :/, 'la ligne client a été retirée du bloc mission')
   assert.match(message, /TG 1234 AB/)
   assert.match(message, /Kouadio Jean/)
   assert.match(message, /35 km\/h/)
@@ -187,8 +206,8 @@ test('buildGeofenceAlertWhatsAppMessage gère la sortie de zone', () => {
     lng: -5.0303,
   })
 
-  assert.match(message, /^Teliman Logistique/)
-  assert.match(message, /vient de sortir de la zone « Bouaké carrière »/)
+  assert.doesNotMatch(message, /^Teliman Logistique/)
+  assert.match(message, /^Le véhicule CI-2026-TL vient de sortir de la zone « Bouaké carrière »\./)
 })
 
 test('sendFleetAlertWhatsAppNotifications envoie instantanément aux destinataires du type d’alerte', async () => {

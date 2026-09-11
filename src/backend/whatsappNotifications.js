@@ -60,8 +60,6 @@ export function buildFleetAlertWhatsAppMessage(event = {}) {
     : `Le véhicule ${truckLabel}${driverText} est à l'arrêt depuis un moment. Vérifiez qu'aucun imprévu ne bloque la mission.`
 
   const lines = [
-    'Teliman Logistique',
-    '',
     opening,
     '',
     `🕒 Heure : ${time}`,
@@ -115,8 +113,6 @@ export function buildGeofenceAlertWhatsAppMessage(event = {}) {
   const actionPhrase = isExit ? 'vient de sortir' : "vient d'entrer"
 
   const lines = [
-    'Teliman Logistique',
-    '',
     `Le véhicule ${truckLabel}${driverText} ${actionPhrase} ${preposition} ${zoneLabel}${speedLine}.`,
     '',
     `🕒 Heure : ${time}`,
@@ -372,19 +368,20 @@ function display(value) {
 }
 
 // Bloc « Mission en cours » attaché aux alertes : contexte du bon de livraison actif
-// du véhicule (réf, client, destination, marchandise). Ne rend rien si aucun détail.
+// du véhicule (réf, destination, marchandise, quantité). Ne rend rien si aucun détail.
+// Le client n'est volontairement PAS affiché (demande du 11/09/2026).
 function buildMissionContextBlock(mission = {}) {
   if (!mission || typeof mission !== 'object') return []
   const reference = display(mission.reference)
-  const client = display(mission.client)
   const destination = display(mission.destination)
   const goods = display(mission.goods)
-  if (reference === '-' && client === '-' && destination === '-' && goods === '-') return []
+  const quantity = display(mission.quantity)
+  if ([reference, destination, goods, quantity].every((value) => value === '-')) return []
   const lines = ['', '📦 Mission en cours']
   if (reference !== '-') lines.push(`▪️ Bon n°${reference}`)
-  if (client !== '-') lines.push(`▪️ Client : ${client}`)
   if (destination !== '-') lines.push(`▪️ Destination : ${destination}`)
   if (goods !== '-') lines.push(`▪️ Marchandise : ${goods}`)
+  if (quantity !== '-') lines.push(`▪️ Quantité : ${quantity}`)
   return lines
 }
 

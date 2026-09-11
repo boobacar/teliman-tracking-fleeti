@@ -103,7 +103,8 @@ test('buildGeofenceAlertWhatsAppMessage contient zone, action et camion', () => 
     lat: 9.411007,
     lng: -5.626558,
   })
-  assert.match(message, /^Teliman Logistique/)
+  assert.doesNotMatch(message, /^Teliman Logistique/)
+  assert.match(message, /^Le véhicule CI-1234 AB vient d'entrer dans la zone « Korhogo, client »/)
   assert.match(message, /vient d'entrer dans la zone « Korhogo, client »/)
   assert.match(message, /CI-1234 AB/)
   assert.match(message, /maps\.google\.com\/\?q=9\.411007,-5\.626558/)

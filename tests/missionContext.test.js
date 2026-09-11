@@ -57,6 +57,7 @@ test('un BL actif et récent est retenu comme mission en cours', () => {
     client: 'K1 MINE',
     destination: 'Bouaké',
     goods: 'Gravier',
+    quantity: '',
   })
 })
 

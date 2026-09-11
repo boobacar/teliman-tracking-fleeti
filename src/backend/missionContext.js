@@ -78,7 +78,7 @@ export function pickActiveMission(orders = [], trackerId, { now = Date.now(), ma
   }, null)
 }
 
-// Contexte minimal affiché dans l'alerte (réf, client, destination, marchandise).
+// Contexte minimal affiché dans l'alerte (réf, destination, marchandise, quantité).
 export function buildMissionContext(order = null) {
   if (!order) return null
   const context = {
@@ -86,8 +86,9 @@ export function buildMissionContext(order = null) {
     client: String(order.client || '').trim(),
     destination: String(order.destination || '').trim(),
     goods: String(order.goods || '').trim(),
+    quantity: String(order.quantity ?? '').trim(),
   }
-  if (!context.reference && !context.client && !context.destination && !context.goods) return null
+  if (!context.reference && !context.client && !context.destination && !context.goods && !context.quantity) return null
   return context
 }
 
