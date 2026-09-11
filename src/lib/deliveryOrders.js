@@ -1,3 +1,12 @@
+// Clé de statut normalisée (sans accents ni casse) : 'Livré' → 'livre'.
+export function deliveryStatusKey(value) {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 export function parseDeliveryQuantity(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const raw = String(value ?? '').trim()

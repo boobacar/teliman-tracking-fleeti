@@ -14,6 +14,7 @@ import { buildMasterDataPayload, normalizeManualTrackers } from './src/backend/m
 import { validateBody, deliveryOrderSchema, deliveryOrderUpdateSchema, fuelVoucherSchema, fuelVoucherUpdateSchema, oilChangeSchema, oilChangeUpdateSchema, adminUserSchema, adminUserUpdateSchema, driverOverridesSchema, driverOverrideUpdateSchema, driverAssignmentsSchema, whatsappTestMessageSchema, whatsappReconnectSchema, whatsappTemplatesSchema, tracksQuerySchema, tracksBatchSchema, geofenceSchema, geofenceUpdateSchema, alertRecipientSchema, alertRecipientUpdateSchema, alertActionPatchSchema } from './src/backend/validation.js'
 import { computeTodayMileage } from './src/backend/mileage.js'
 import { createBaileysWhatsAppClient } from './src/backend/baileysWhatsAppClient.js'
+import { buildMissionContext, DEFAULT_MISSION_MAX_AGE_HOURS, describeMissionSkip, pickActiveMission } from './src/backend/missionContext.js'
 import { buildFleetAlertWhatsAppMessage, buildWhatsAppConfigFromEnv, createWhatsAppHistoryEntry, DEFAULT_WHATSAPP_TEMPLATES, resolveAlertLogoPath, sendDeliveryOrderWhatsAppNotifications, sendFleetAlertWhatsAppNotifications, sendGeofenceAlertWhatsAppNotifications, sendWhatsAppTextMessage } from './src/backend/whatsappNotifications.js'
 import { createWhatsAppQueue, makeWarmupDailyLimit } from './src/backend/whatsappQueue.js'
 import { normalizeDeliveryQuantity, parseDeliveryQuantity } from './src/lib/deliveryOrders.js'
@@ -131,6 +132,10 @@ const TRACKER_IDS = parseNumberList(process.env.FLEETI_TRACKER_IDS) || []
 const FLEETI_PAGE_SIZE = Number(process.env.FLEETI_PAGE_SIZE || 500)
 const FLEETI_TRACKER_CHUNK_SIZE = Number(process.env.FLEETI_TRACKER_CHUNK_SIZE || 100)
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 60 * 1000)
+// Âge maximum d'un bon de livraison pour être présenté comme « mission en cours »
+// dans une alerte. Au-delà, le BL est considéré comme un reliquat non clôturé
+// (incident du 11/09/2026 : BL de 266 h affiché dans les alertes).
+const MISSION_CONTEXT_MAX_AGE_HOURS = Math.max(1, Number(process.env.MISSION_CONTEXT_MAX_AGE_HOURS || DEFAULT_MISSION_MAX_AGE_HOURS))
 const ALLOWED_ORIGINS = parseCsv(process.env.ALLOWED_ORIGINS)
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || ''
 const REQUIRE_API_TOKEN = process.env.REQUIRE_API_TOKEN === 'true'
@@ -765,20 +770,22 @@ async function notifyDeliveryOrderWhatsApp(previousOrder, order) {
   return results
 }
 
-// Résout le contexte « mission en cours » d'un véhicule : le bon de livraison actif
-// lié au tracker. Sert à accompagner les alertes WhatsApp par la mission du camion.
+// Résout le contexte « mission en cours » d'un véhicule : le bon de livraison
+// réellement en cours (actif, statut non terminal, arrivée non renseignée, et
+// émis il y a moins de MISSION_CONTEXT_MAX_AGE_HOURS). Un BL jamais clôturé est
+// ignoré : mieux vaut aucune mission qu'une mission périmée dans une alerte.
 function resolveActiveMissionContext(trackerId) {
   const id = ensureValidTrackerId(trackerId)
   if (!id) return null
   try {
-    const order = (readDeliveryOrders() || []).find((entry) => entry.active && String(entry.trackerId) === String(id))
-    if (!order) return null
-    return {
-      reference: String(order.reference || '').trim(),
-      client: String(order.client || '').trim(),
-      destination: String(order.destination || '').trim(),
-      goods: String(order.goods || '').trim(),
+    const orders = readDeliveryOrders() || []
+    const order = pickActiveMission(orders, id, { now: Date.now(), maxAgeHours: MISSION_CONTEXT_MAX_AGE_HOURS })
+    if (!order) {
+      const reason = describeMissionSkip(orders, id, { now: Date.now(), maxAgeHours: MISSION_CONTEXT_MAX_AGE_HOURS })
+      if (reason) console.warn(`[mission] alerte camion ${id} sans mission en cours — ${reason}`)
+      return null
     }
+    return buildMissionContext(order)
   } catch (error) {
     console.warn('[mission] résolution de la mission en cours impossible:', error?.message || error)
     return null
