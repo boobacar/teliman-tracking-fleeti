@@ -5031,7 +5031,10 @@ async function shutdown(signal) {
   forceTimer.unref()
   httpServer.close(async () => {
     try {
-      await baileysWhatsAppClient?.disconnect?.({ clearSession: false })
+      // Arrêt LOCAL : `unlink: false` ferme la socket sans logout(). logout()
+      // DÉLIE l'appareil côté WhatsApp et impose un scan QR au redémarrage suivant
+      // (incident du 14/09/2026 : un pm2 restart a délié la passerelle).
+      await baileysWhatsAppClient?.disconnect?.({ clearSession: false, unlink: false })
     } catch (error) {
       console.warn('[shutdown] arrêt WhatsApp incomplet:', error?.message || error)
     }

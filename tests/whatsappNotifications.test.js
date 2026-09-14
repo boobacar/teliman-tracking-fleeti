@@ -19,7 +19,7 @@ import {
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
-import { buildImagePreview, createBaileysWhatsAppClient, resolveCredsPurgeAction, toBaileysJid } from '../src/backend/baileysWhatsAppClient.js'
+import { buildImagePreview, createBaileysWhatsAppClient, createOutboundMessageCache, resolveCredsPurgeAction, toBaileysJid, withDelayedPreKeyDeletion } from '../src/backend/baileysWhatsAppClient.js'
 import { listAuthSnapshots } from '../src/backend/whatsappAuthStore.js'
 
 // Logo de test : un vrai fichier sur disque (le client lit le fichier avant envoi).
@@ -982,4 +982,201 @@ test('un second process ne peut pas utiliser les mêmes creds WhatsApp (verrou d
   await client.start()
   assert.equal(socketCreated, 0, 'aucune socket créée quand un autre process détient la session')
   assert.match(client.getStatus().lastError || '', /déjà utilisée/)
+})
+
+test('createOutboundMessageCache : garde les sortants, expire par TTL et borne la mémoire', () => {
+  let clock = 0
+  const cache = createOutboundMessageCache({ max: 2, ttlMs: 1_000, now: () => clock })
+
+  cache.remember('A', { conversation: 'A' })
+  cache.remember('B', { conversation: 'B' })
+  assert.deepEqual(cache.get('A'), { conversation: 'A' })
+
+  // Plafond atteint → le plus ancien est évincé (A part, B et C restent)
+  clock = 500
+  cache.remember('C', { conversation: 'C' })
+  assert.equal(cache.get('A'), undefined, 'plus ancien évincé au-delà du plafond')
+  assert.equal(cache.size(), 2)
+
+  // TTL dépassé → plus rien de renvoyable
+  clock = 2_000
+  assert.equal(cache.get('B'), undefined)
+  assert.equal(cache.get('C'), undefined)
+  assert.equal(cache.size(), 0)
+
+  // Robustesse : identifiant ou contenu manquant ne pollue pas la mémoire
+  cache.remember('', { conversation: 'x' })
+  cache.remember('D', null)
+  assert.equal(cache.size(), 0)
+})
+
+test('WhatsApp demande un renvoi (retry) : le message sortant est renvoyé, un message hors mémoire ne lève pas', async () => {
+  const authDir = mkdtempSync(join(tmpdir(), 'teliman-wa-retry-'))
+  const handlers = {}
+  const sent = []
+  let factoryArgs = null
+  const client = createBaileysWhatsAppClient({
+    authDir,
+    socketFactory: async (args) => {
+      factoryArgs = args
+      return {
+        ev: { on: (name, handler) => { handlers[name] = handler } },
+        onWhatsApp: async (jid) => [{ jid, exists: true }],
+        sendMessage: async (jid, payload) => {
+          sent.push({ jid, payload })
+          return { key: { id: `MSG-${sent.length}`, remoteJid: jid }, message: payload }
+        },
+      }
+    },
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'data:image/png;base64,x',
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  // Sans getMessage, Baileys (défaut : async () => undefined) ne peut RIEN renvoyer :
+  // le destinataire reste bloqué à vie sur « En attente de ce message… ».
+  assert.equal(typeof factoryArgs.getMessage, 'function', 'getMessage transmis à la socket')
+
+  await handlers['connection.update']({ connection: 'open' })
+  const result = await client.sendText('+221 77 620 00 20', 'Le véhicule 4400WWCI01 est sorti de zone')
+  assert.equal(result.sent, true)
+
+  const renvoye = await factoryArgs.getMessage({ id: result.messageId, remoteJid: '221776260020@s.whatsapp.net' })
+  assert.deepEqual(renvoye, { text: 'Le véhicule 4400WWCI01 est sorti de zone' }, 'contenu du message renvoyé tel quel')
+  assert.equal(client.getStatus().retryRequestsServed, 1)
+  assert.equal(client.getStatus().outboundMessagesCached, 1)
+
+  assert.equal(await factoryArgs.getMessage({ id: 'INCONNU', remoteJid: 'x@s.whatsapp.net' }), undefined)
+  assert.equal(client.getStatus().retryRequestsMissed, 1)
+  assert.equal(client.getStatus().retryRequestsServed, 1, 'un renvoi impossible ne compte pas comme servi')
+})
+
+test('un 401 réarme la relance : le start() programmé retente vraiment (sinon muet, sans QR)', async () => {
+  const handlers = {}
+  let sockets = 0
+  const client = createBaileysWhatsAppClient({
+    authDir: mkdtempSync(join(tmpdir(), 'teliman-wa-401-')),
+    socketFactory: async () => {
+      sockets += 1
+      return { ev: { on: (name, handler) => { handlers[name] = handler } } }
+    },
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'x',
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  assert.equal(sockets, 1)
+
+  // WhatsApp refuse la session (401) : creds conservés + relance programmée
+  const error = Object.assign(new Error('Connection Failure'), { output: { statusCode: 401 } })
+  await handlers['connection.update']({ connection: 'close', lastDisconnect: { error } })
+  assert.equal(client.getStatus().state, 'disconnected')
+  assert.match(String(client.getStatus().lastError), /tentative 1\/3/)
+
+  // Ce que fait le setTimeout interne : la relance doit réellement retenter
+  await client.start()
+  assert.equal(sockets, 2, 'sans réarmement, start() sortait sans retenter → passerelle muette')
+})
+
+test('l’arrêt local ferme la socket SANS délier l’appareil (logout = scan QR forcé)', async () => {
+  const handlers = {}
+  const calls = { logout: 0, end: 0 }
+  const client = createBaileysWhatsAppClient({
+    authDir: mkdtempSync(join(tmpdir(), 'teliman-wa-unlink-')),
+    socketFactory: async () => ({
+      ev: { on: (name, handler) => { handlers[name] = handler } },
+      onWhatsApp: async (jid) => [{ jid, exists: true }],
+      sendMessage: async () => ({ key: { id: 'M-1' }, message: {} }),
+      logout: async () => { calls.logout += 1 },
+      end: () => { calls.end += 1 },
+    }),
+    authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
+    qrCodeFactory: async () => 'x',
+    logger: { info() {}, warn() {}, error() {} },
+  })
+
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+
+  // Ce que fait shutdown() de server.js à chaque redémarrage du process
+  const result = await client.disconnect({ unlink: false })
+  assert.equal(result.remoteUnlinkOk, true)
+  assert.equal(calls.logout, 0, 'logout() délierait l’appareil → scan QR à chaque restart')
+  assert.equal(calls.end, 1, 'socket fermée localement')
+  assert.equal(client.getStatus().connected, false)
+
+  // La déconnexion DEMANDÉE depuis l'interface doit, elle, toujours délier
+  await client.start()
+  await handlers['connection.update']({ connection: 'open' })
+  await client.disconnect()
+  assert.equal(calls.logout, 1, 'déconnexion explicite = déliaison réelle')
+})
+
+// Horloge manuelle : les timers sont injectés, aucun test n'attend 5 minutes.
+function fakeTimers() {
+  let seq = 0
+  const scheduled = new Map()
+  return {
+    setTimer: (fn, ms) => {
+      const id = ++seq
+      scheduled.set(id, { fn, ms })
+      return id
+    },
+    clearTimer: (id) => { scheduled.delete(id) },
+    fireAll: () => {
+      const entries = [...scheduled.values()]
+      scheduled.clear()
+      for (const entry of entries) entry.fn()
+    },
+    count: () => scheduled.size,
+    delays: () => [...scheduled.values()].map((entry) => entry.ms),
+  }
+}
+
+test('une prekey utilisée n’est PLUS supprimée immédiatement (renvoi WhatsApp possible)', async () => {
+  const writes = []
+  const store = { get: async () => ({}), set: async (data) => { writes.push(data) }, clear: async () => { writes.push('CLEAR') } }
+  const timers = fakeTimers()
+  const keys = withDelayedPreKeyDeletion(store, { graceMs: 5 * 60_000, setTimer: timers.setTimer, clearTimer: timers.clearTimer })
+
+  // Utilisation d'une prekey → Baileys demande la suppression
+  await keys.set({ 'pre-key': { 42: null } })
+  assert.deepEqual(writes, [], 'aucune suppression immédiate : un renvoi de WhatsApp passe encore')
+  assert.equal(keys.pendingPreKeyDeletions(), 1)
+  assert.deepEqual(timers.delays(), [5 * 60_000], 'grâce de 5 minutes')
+
+  timers.fireAll()
+  assert.deepEqual(writes, [{ 'pre-key': { 42: null } }], 'suppression appliquée après la grâce')
+  assert.equal(keys.pendingPreKeyDeletions(), 0)
+})
+
+test('les autres magasins de clés passent immédiatement, et une prekey réécrite annule la suppression', async () => {
+  const writes = []
+  const store = { get: async () => ({ 1: 'x' }), set: async (data) => { writes.push(data) }, clear: async () => { writes.push('CLEAR') } }
+  const timers = fakeTimers()
+  const keys = withDelayedPreKeyDeletion(store, { setTimer: timers.setTimer, clearTimer: timers.clearTimer })
+
+  await keys.set({ session: { 'a@s.whatsapp.net': { session: 1 } }, 'pre-key': { 7: null } })
+  assert.deepEqual(writes, [{ session: { 'a@s.whatsapp.net': { session: 1 } } }], 'la session part tout de suite')
+  assert.equal(keys.pendingPreKeyDeletions(), 1)
+
+  // WhatsApp (re)charge une prekey du même id avant l'échéance → pas de suppression
+  await keys.set({ 'pre-key': { 7: { keyPair: 'neuf' } } })
+  assert.deepEqual(writes[1], { 'pre-key': { 7: { keyPair: 'neuf' } } })
+  assert.equal(keys.pendingPreKeyDeletions(), 0, 'suppression en attente annulée')
+  timers.fireAll()
+  assert.equal(writes.length, 2, 'aucune suppression différée après réécriture')
+
+  // clear() (logout/purge) annule aussi les suppressions en attente
+  await keys.set({ 'pre-key': { 9: null } })
+  assert.equal(keys.pendingPreKeyDeletions(), 1)
+  await keys.clear()
+  assert.equal(keys.pendingPreKeyDeletions(), 0)
+  timers.fireAll()
+  assert.equal(writes.length, 3, 'rien de ressuscité après un clear')
+
+  // Délégation de lecture intacte
+  assert.deepEqual(await keys.get('pre-key', [1]), { 1: 'x' })
 })

@@ -11,6 +11,129 @@ const MAX_CAPTION_LENGTH = 1024
 // WhatsApp affiche une vignette zoomée/recadrée au lieu de l'image entière.
 const THUMBNAIL_WIDTH = 32
 
+// Mémoire des messages SORTANTS : quand un destinataire n'arrive pas à déchiffrer
+// un message, WhatsApp demande au client émetteur de le RENVOYER (« retry
+// receipt »). Baileys appelle alors `getMessage(key)` — dont l'implémentation par
+// défaut renvoie TOUJOURS undefined (lib/Defaults/index.js). Sans contenu à
+// renvoyer, le renvoi n'a jamais lieu et le destinataire reste bloqué à vie sur
+// « En attente de ce message… » (symptôme constaté le 14/09/2026 : alertes
+// géofence indéchiffrables sur le téléphone d'un destinataire, sans erreur côté
+// serveur). On garde donc les derniers messages envoyés, avec TTL + plafond.
+const OUTBOUND_CACHE_TTL_MS = 30 * 60_000
+const OUTBOUND_CACHE_MAX = 500
+
+export function createOutboundMessageCache({
+  max = OUTBOUND_CACHE_MAX,
+  ttlMs = OUTBOUND_CACHE_TTL_MS,
+  now = () => Date.now(),
+} = {}) {
+  const entries = new Map()
+  const limit = Math.max(1, Number(max) || OUTBOUND_CACHE_MAX)
+
+  function prune() {
+    for (const [id, entry] of entries) {
+      if (now() - entry.at > ttlMs) entries.delete(id)
+    }
+    while (entries.size > limit) {
+      const oldest = entries.keys().next().value
+      if (oldest === undefined) break
+      entries.delete(oldest)
+    }
+  }
+
+  return {
+    // Un id inconnu ou un contenu vide ne pollue pas la mémoire.
+    remember(id, message) {
+      if (!id || !message) return
+      // Réinsertion : l'ordre d'itération doit rester l'ordre d'ancienneté.
+      entries.delete(id)
+      entries.set(id, { message, at: now() })
+      prune()
+    },
+    get(id) {
+      const entry = entries.get(id)
+      if (!entry) return undefined
+      if (now() - entry.at > ttlMs) {
+        entries.delete(id)
+        return undefined
+      }
+      return entry.message
+    },
+    size: () => entries.size,
+  }
+}
+
+// Baileys EFFACE une prekey dès sa première utilisation
+// (`removePreKey: (id) => keys.set({ 'pre-key': { [id]: null } })`, cf.
+// node_modules/@whiskeysockets/baileys/lib/Signal/libsignal.js). Or WhatsApp
+// renvoie souvent le MÊME message (réseau mobile instable, changement d'appareil) :
+// la 2e tentative arrive avec une prekey déjà supprimée → `PreKeyError: Invalid
+// PreKey ID` (176 occurrences en prod le 13/09/2026, uniquement pour les contacts
+// qui ÉCRIVENT au numéro d'alerte) et aucune session ne se noue dans les deux
+// sens. C'est le correctif n°3 de la PR Baileys #2372 (« delayed pre-key
+// deletion », 5 min de grâce), absent de la 6.7.23 : on l'applique au niveau du
+// store de clés — le seul endroit dont l'application est propriétaire.
+export function withDelayedPreKeyDeletion(keys, {
+  graceMs = 5 * 60_000,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+} = {}) {
+  if (!keys || typeof keys.set !== 'function') return keys
+  const pending = new Map()
+
+  function cancelPending(id) {
+    const timer = pending.get(id)
+    if (timer === undefined) return
+    clearTimer(timer)
+    pending.delete(id)
+  }
+
+  function scheduleDeletion(id) {
+    cancelPending(id)
+    const timer = setTimer(() => {
+      pending.delete(id)
+      // Suppression réelle, différée. Un échec ne doit jamais casser le socket.
+      Promise.resolve(keys.set({ 'pre-key': { [id]: null } })).catch(() => {})
+    }, graceMs)
+    // Ne pas maintenir le process en vie à cause d'un timer de nettoyage.
+    timer?.unref?.()
+    pending.set(id, timer)
+  }
+
+  return {
+    get: (...args) => keys.get(...args),
+    clear: async (...args) => {
+      // Un clear (logout, purge de session) annule les suppressions en attente :
+      // sinon un timer ressusciterait une écriture après le nettoyage.
+      for (const id of [...pending.keys()]) cancelPending(id)
+      return keys.clear?.(...args)
+    },
+    async set(data) {
+      if (!data || typeof data !== 'object') return undefined
+      const preKeyChanges = data['pre-key']
+      if (!preKeyChanges || typeof preKeyChanges !== 'object') return keys.set(data)
+
+      const passThrough = { ...data }
+      delete passThrough['pre-key']
+      const upserts = {}
+      const removals = []
+      for (const [id, value] of Object.entries(preKeyChanges)) {
+        if (value === null || value === undefined) removals.push(id)
+        else upserts[id] = value
+      }
+      // Une prekey (ré)écrite annule une suppression en attente pour le même id.
+      for (const id of Object.keys(upserts)) cancelPending(id)
+
+      let result
+      if (Object.keys(upserts).length) result = await keys.set({ ...passThrough, 'pre-key': upserts })
+      else if (Object.keys(passThrough).length) result = await keys.set(passThrough)
+      for (const id of removals) scheduleDeletion(id)
+      return result
+    },
+    pendingPreKeyDeletions: () => pending.size,
+  }
+}
+
 export function resolveReconnectDelay({
   attempts,
   maxAttempts,
@@ -100,6 +223,30 @@ export function createBaileysWhatsAppClient({
   // restauration : sinon boucle purge → restore → 401 → purge.
   let purgedInProcess = false
 
+  // Mémoire des messages sortants + compteurs de renvois protocolaires : c'est ce
+  // qui permet de répondre à WhatsApp quand un destinataire n'arrive pas à
+  // déchiffrer (sinon « En attente de ce message… » reste affiché à vie).
+  const outboundMessages = createOutboundMessageCache()
+  let retryRequestsServed = 0
+  let retryRequestsMissed = 0
+
+  // Appelée par Baileys pour chaque « retry receipt » : on renvoie le message
+  // d'origine (Baileys force au passage une session neuve vers le destinataire,
+  // cf. sendMessagesAgain → assertSessions). Un compteur qui monte = des
+  // destinataires qui ne déchiffraient pas nos messages : à surveiller.
+  async function handleRetryRequest(key = {}) {
+    const remoteJid = key?.remoteJid || 'inconnu'
+    const message = outboundMessages.get(key?.id)
+    if (message) {
+      retryRequestsServed += 1
+      logger.warn?.(`[baileys] renvoi demandé par ${remoteJid} (message non déchiffré) — renvoi avec session neuve.`)
+      return message
+    }
+    retryRequestsMissed += 1
+    logger.warn?.(`[baileys] renvoi demandé par ${remoteJid} pour un message hors mémoire (trop ancien) — renvoi impossible.`)
+    return undefined
+  }
+
   // Verrou d'instance : une SEULE connexion WhatsApp par jeu de creds. Deux
   // process avec la même session (Pi + VPS, ou un ancien process resté vivant)
   // provoquent des conflits côté WhatsApp (« connectionReplaced », « conflict:
@@ -152,7 +299,7 @@ export function createBaileysWhatsAppClient({
       }
       await restoreCredentialsIfMissing()
       const { state: authState, saveCreds } = await resolveAuthStateFactory(authStateFactory)(authDir)
-      socket = await resolveSocketFactory(socketFactory)({ auth: authState })
+      socket = await resolveSocketFactory(socketFactory)({ auth: authState, getMessage: handleRetryRequest })
       socket.ev.on('creds.update', saveCreds)
       socket.ev.on('connection.update', handleConnectionUpdate)
       state = 'connecting'
@@ -225,6 +372,9 @@ export function createBaileysWhatsAppClient({
         }
       }
       if (!result) result = await socket.sendMessage(recipientJid, { text: message })
+      // Mémoire des sortants : c'est ce contenu que WhatsApp nous redemandera de
+      // renvoyer si le destinataire n'a pas su le déchiffrer.
+      outboundMessages.remember(result?.key?.id, result?.message)
       if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
         try { await socket.sendPresenceUpdate('paused', recipientJid) } catch { /* best-effort */ }
       }
@@ -326,6 +476,11 @@ export function createBaileysWhatsAppClient({
       lastCredsSnapshot: lastSnapshotName,
       lastCredsSnapshotAt: lastSnapshotAt,
       credsRestoredFrom,
+      // Renvois protocolaires : servis = destinataires qui ne déchiffraient pas,
+      // impossibles = messages trop anciens pour être renvoyés (hors mémoire).
+      retryRequestsServed,
+      retryRequestsMissed,
+      outboundMessagesCached: outboundMessages.size(),
     }
   }
 
@@ -405,6 +560,13 @@ export function createBaileysWhatsAppClient({
         state = 'disconnected'
         logger.warn?.(`[baileys] 401 WhatsApp (${disconnectedReasonLabel(disconnectError)}) — tentative ${consecutive401}/${MAX_401_BEFORE_QR}, creds CONSERVÉS.`)
         const delay = resolveReconnectDelay({ attempts: consecutive401, maxAttempts: MAX_401_BEFORE_QR, baseMs: 10_000, maxMs: 5 * 60_000 })
+        // RÉARMER la relance : sans `started = false`, le `start()` programmé
+        // ci-dessous sortait immédiatement (`if (started) return getStatus()`) et la
+        // passerelle restait bloquée en 'disconnected' — plus aucune tentative, donc
+        // JAMAIS les 3 × 401 qui déclenchent le nouveau QR. Constaté en prod le
+        // 14/09/2026 : 8 minutes d'alerte muette après deux 401, sans QR à scanner.
+        started = false
+        socket = null
         setTimeout(() => start().catch((error) => logger.error?.(`[baileys] reconnexion impossible: ${error?.message || error}`)), delay)
         return
       }
@@ -461,7 +623,7 @@ export function createBaileysWhatsAppClient({
     }
   }
 
-  async function disconnect({ clearSession = false } = {}) {
+  async function disconnect({ clearSession = false, unlink = true } = {}) {
     const currentSocket = socket
     started = false
     socket = null
@@ -471,12 +633,29 @@ export function createBaileysWhatsAppClient({
     connectedAt = null
     user = null
 
+    // `unlink: false` = arrêt LOCAL du process (redémarrage, déploiement). Dans ce
+    // cas on ferme la socket SANS appeler logout() : `logout()` DÉLIE l'appareil
+    // côté WhatsApp (« 401 / Intentional Logout ») et impose un scan QR à chaque
+    // redémarrage — chaque ré-appairage rendant caduques les sessions de TOUS les
+    // contacts (« En attente de ce message… »). Constaté le 14/09/2026 : un simple
+    // pm2 restart a délié la passerelle. Seule l'action explicite « déconnecter »
+    // de l'interface doit délier.
+    let remoteUnlinkOk = true
+    if (!unlink) {
+      try {
+        currentSocket?.end?.(undefined)
+      } catch (error) {
+        remoteUnlinkOk = false
+        logger.warn?.(`[baileys] Fermeture locale de la socket incomplète : ${error?.message || error}`)
+      }
+      return { ok: true, state, remoteUnlinkOk }
+    }
+
     // Détacher le device côté WhatsApp en best-effort. Si la socket est déjà morte
     // (coupure réseau, restart, crash) ou que le logout échoue, on NE doit PAS
     // abandonner le nettoyage local — sinon des creds périmés survivent et la
     // reconnexion suivante repart sur une session morte (401), ce qui casse le
     // cycle « je veux connecter/déconnecter autant de fois que je veux ».
-    let remoteUnlinkOk = true
     try {
       if (currentSocket?.logout) await currentSocket.logout()
       else currentSocket?.end?.()
@@ -629,7 +808,7 @@ function disconnectedReasonLabel(error) {
 
 function resolveSocketFactory(socketFactory) {
   if (socketFactory) return socketFactory
-  return async ({ auth }) => {
+  return async ({ auth, getMessage }) => {
     const baileys = await import('@whiskeysockets/baileys')
     const makeWASocket = baileys.default || baileys.makeWASocket
     // Version WhatsApp Web : fetchLatestBaileysVersion() renvoie une valeur FIGÉE
@@ -656,9 +835,15 @@ function resolveSocketFactory(socketFactory) {
       : ['Ubuntu', 'Chrome', '22.04.4']
     // Cache mémoire des clés Signal : moins d'I/O disque (carte SD), sessions
     // moins fragiles après une reconnexion.
-    const keys = baileys.makeCacheableSignalKeyStore
+    const baseKeys = baileys.makeCacheableSignalKeyStore
       ? baileys.makeCacheableSignalKeyStore(auth.keys, createSilentBaileysLogger())
       : auth.keys
+    // Prekeys : suppression différée (5 min) — sinon le moindre renvoi WhatsApp
+    // arrive avec une prekey déjà effacée → « Invalid PreKey ID » et sessions
+    // jamais nouées avec les contacts qui écrivent au numéro (cf. le commentaire
+    // de withDelayedPreKeyDeletion). Enveloppe EXTERNE : le cache interne ne doit
+    // jamais voir la suppression.
+    const keys = withDelayedPreKeyDeletion(baseKeys)
     return makeWASocket({
       auth: { creds: auth.creds, keys },
       version,
@@ -674,6 +859,10 @@ function resolveSocketFactory(socketFactory) {
       markOnlineOnConnect: false,
       syncFullHistory: false,
       fireInitQueries: true,
+      // Renvoi des messages non déchiffrés par le destinataire (« Waiting for this
+      // message » à vie sans ça) : Baileys appelle cette fonction sur « retry
+      // receipt ». Défaut Baileys = toujours undefined → aucun renvoi possible.
+      getMessage: typeof getMessage === 'function' ? getMessage : async () => undefined,
     })
   }
 }
