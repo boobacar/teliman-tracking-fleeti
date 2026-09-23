@@ -19,7 +19,7 @@ import {
   resolveClientWhatsAppRecipients,
   sendWhatsAppTextMessage,
 } from '../src/backend/whatsappNotifications.js'
-import { buildImagePreview, createBaileysWhatsAppClient, createOutboundMessageCache, resolveCredsPurgeAction, toBaileysJid, withDelayedPreKeyDeletion } from '../src/backend/baileysWhatsAppClient.js'
+import { buildImagePreview, createBaileysWhatsAppClient, createOutboundMessageCache, evaluateInstanceLock, resolveCredsPurgeAction, toBaileysJid, withDelayedPreKeyDeletion } from '../src/backend/baileysWhatsAppClient.js'
 import { listAuthSnapshots } from '../src/backend/whatsappAuthStore.js'
 
 // Logo de test : un vrai fichier sur disque (le client lit le fichier avant envoi).
@@ -963,10 +963,12 @@ test('le client conserve les creds sur 401 isolé et ne les archive qu’après 
   assert.ok(snapshotNames.some((name) => name === client.getStatus().lastCredsSnapshot))
 })
 
-test('un second process ne peut pas utiliser les mêmes creds WhatsApp (verrou d’instance)', async () => {
+test('un verrou d’instance périmé (PID recyclé) ne laisse plus la passerelle muette', async () => {
   const authDir = mkdtempSync(join(tmpdir(), 'teliman-client-lock-'))
   writeFileSync(join(authDir, 'creds.json'), '{"registrationId":1}')
-  // Verrou détenu par un process vivant (PID 1 = init, toujours vivant)
+  // Cas réel du 23/09/2026 : verrou laissé par un process d'AVANT le redémarrage,
+  // dont le PID a été recyclé par un autre programme (ici PID 1 = init). L'ancien
+  // code refusait de se connecter indéfiniment → aucun message ne partait.
   writeFileSync(`${authDir}.lock`, JSON.stringify({ pid: 1, at: '2026-09-11T00:00:00.000Z' }))
 
   const handlers = {}
@@ -980,8 +982,12 @@ test('un second process ne peut pas utiliser les mêmes creds WhatsApp (verrou d
   })
 
   await client.start()
-  assert.equal(socketCreated, 0, 'aucune socket créée quand un autre process détient la session')
-  assert.match(client.getStatus().lastError || '', /déjà utilisée/)
+  assert.equal(socketCreated, 1, 'un verrou périmé ne doit pas empêcher la connexion')
+  const lock = JSON.parse(readFileSync(`${authDir}.lock`, 'utf8'))
+  assert.equal(lock.pid, process.pid, 'le verrou est repris par le process courant')
+
+  // La protection reste réelle pour un VRAI conflit (même programme, PID vivant) :
+  // couvert par les cas unitaires de evaluateInstanceLock.
 })
 
 test('createOutboundMessageCache : garde les sortants, expire par TTL et borne la mémoire', () => {
@@ -1112,6 +1118,48 @@ test('l’arrêt local ferme la socket SANS délier l’appareil (logout = scan 
   await handlers['connection.update']({ connection: 'open' })
   await client.disconnect()
   assert.equal(calls.logout, 1, 'déconnexion explicite = déliaison réelle')
+})
+
+test('verrou d’instance : un PID recyclé ou un verrou d’avant démarrage ne bloque pas la passerelle', () => {
+  const bootTimeMs = Date.parse('2026-09-23T05:29:05.000Z')
+  const base = { ownPid: 1753, bootTimeMs, ownCommandLine: 'node /home/pi/teliman-tracking-fleeti/server.js' }
+
+  // Pas de verrou, notre propre verrou : utilisables
+  assert.equal(evaluateInstanceLock({ ...base, lock: null }).usable, true)
+  assert.equal(evaluateInstanceLock({ ...base, lock: { pid: 1753, at: '2026-09-23T05:30:00.000Z' } }).usable, true)
+
+  // Verrou écrit AVANT le démarrage courant (cas réel du 23/09 : PID 1758 d'avant-boot)
+  const stale = evaluateInstanceLock({
+    ...base,
+    lock: { pid: 1758, at: '2026-09-23T03:39:46.358Z' },
+    pidAlive: () => true,
+    pidCmdLine: () => 'node /home/pi/GymCrew/server/src/server.js',
+  })
+  assert.equal(stale.usable, true, 'un verrou antérieur au démarrage ne peut pas être vivant')
+  assert.match(stale.reason, /recycl|antérieur/i)
+
+  // PID vivant mais appartenant à un AUTRE programme → périmé
+  const recycled = evaluateInstanceLock({
+    ...base,
+    lock: { pid: 1758, at: '2026-09-23T06:00:00.000Z' },
+    pidAlive: () => true,
+    pidCmdLine: () => 'node /home/pi/EMGA/backend/server.js',
+  })
+  assert.equal(recycled.usable, true)
+  assert.match(recycled.reason, /autre programme/)
+
+  // Conflit RÉEL : même programme, PID vivant, verrou postérieur au démarrage
+  const real = evaluateInstanceLock({
+    ...base,
+    lock: { pid: 1900, at: '2026-09-23T06:00:00.000Z' },
+    pidAlive: () => true,
+    pidCmdLine: () => 'node /home/pi/teliman-tracking-fleeti/server.js',
+  })
+  assert.equal(real.usable, false, 'deux processs identiques ne doivent pas partager la session')
+  assert.match(real.reason, /déjà utilisée/)
+
+  // PID détenteur disparu
+  assert.equal(evaluateInstanceLock({ ...base, lock: { pid: 4242, at: '2026-09-23T06:00:00.000Z' }, pidAlive: () => false }).usable, true)
 })
 
 // Horloge manuelle : les timers sont injectés, aucun test n'attend 5 minutes.

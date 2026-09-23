@@ -134,6 +134,44 @@ export function withDelayedPreKeyDeletion(keys, {
   }
 }
 
+// Le verrou d'instance (`<authDir>.lock`) empêche deux process d'utiliser les mêmes
+// creds WhatsApp. Quand il fonctionne, il protège la session ; quand il se trompe,
+// il la tue : le 23/09/2026 le verrou contenait le PID 1758 (process d'AVANT le
+// redémarrage de 05:29) — ce PID appartenait entre-temps à un autre programme, donc
+// le test `process.kill(pid, 0)` répondait « vivant » et la passerelle refusait de se
+// connecter… définitivement (aucune relance programmée), alertes muettes pendant des
+// heures. On décide donc explicitement si un verrou est utilisable ou périmé.
+export function evaluateInstanceLock({
+  lock = null,
+  ownPid = 0,
+  nowMs = Date.now(),
+  bootTimeMs = 0,
+  pidAlive = () => false,
+  pidCmdLine = () => '',
+  ownCommandLine = '',
+} = {}) {
+  const pid = Number(lock?.pid)
+  if (!Number.isInteger(pid) || pid <= 0) return { usable: true, reason: 'verrou absent ou invalide' }
+  if (pid === ownPid) return { usable: true, reason: 'notre propre verrou' }
+
+  // Verrou écrit avant le démarrage courant : le process qui l'a posé n'existe plus
+  // (les PID ne survivent pas à un redémarrage) → périmé, quel que soit le PID.
+  const writtenAt = Date.parse(lock?.at || '')
+  if (Number.isFinite(writtenAt) && bootTimeMs > 0 && writtenAt < bootTimeMs) {
+    return { usable: true, reason: 'verrou antérieur au démarrage courant (PID recyclé)' }
+  }
+  if (!pidAlive(pid)) return { usable: true, reason: 'process détenteur disparu' }
+
+  // Le PID vit, mais est-ce bien NOUS ? Sinon (PID recyclé par un autre programme),
+  // refuser la connexion serait une fausse panne.
+  const holderCmd = String(pidCmdLine(pid) || '')
+  const ownScript = String(ownCommandLine || '').split(' ').find((part) => part.endsWith('.js')) || ''
+  if (ownScript && holderCmd && !holderCmd.includes(ownScript)) {
+    return { usable: true, reason: `PID ${pid} recyclé par un autre programme` }
+  }
+  return { usable: false, reason: `session déjà utilisée par le process ${pid}` }
+}
+
 export function resolveReconnectDelay({
   attempts,
   maxAttempts,
@@ -252,32 +290,62 @@ export function createBaileysWhatsAppClient({
   // provoquent des conflits côté WhatsApp (« connectionReplaced », « conflict:
   // device_removed ») pouvant aller jusqu'à la déliaison de l'appareil — donc un
   // scan QR. Si un autre process vivant détient le verrou, on ne se connecte pas.
+  // Heure de démarrage de la machine : un verrou écrit AVANT ce moment ne peut plus
+  // correspondre à un process vivant (les PID ne survivent pas à un redémarrage).
+  async function resolveBootTimeMs() {
+    try {
+      const uptime = await fs.readFile('/proc/uptime', 'utf8')
+      const seconds = Number(String(uptime).trim().split(/\s+/)[0])
+      if (Number.isFinite(seconds)) return Date.now() - seconds * 1000
+    } catch { /* /proc indisponible (non Linux) : on ne peut pas dater le démarrage */ }
+    return 0
+  }
+
+  async function readProcessCmdLine(pid) {
+    try {
+      return await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')
+    } catch {
+      return ''
+    }
+  }
+
   async function acquireInstanceLock() {
     const lockPath = `${authDir}.lock`
+    let lock = null
     try {
-      const raw = await fs.readFile(lockPath, 'utf8')
-      const lock = JSON.parse(raw)
-      const pid = Number(lock?.pid)
-      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
-        let alive = false
-        try {
-          process.kill(pid, 0)
-          alive = true
-        } catch (error) {
-          // EPERM = le process existe mais appartient à un autre utilisateur :
-          // le verrou est bien détenu, on ne se connecte pas.
-          alive = error?.code === 'EPERM'
-        }
-        if (alive) {
-          state = 'error'
-          lastError = `Session WhatsApp déjà utilisée par le process ${pid} — connexion refusée (protection anti-conflit).`
-          logger.error?.(`[baileys] ${lastError}`)
-          return false
-        }
-      }
+      lock = JSON.parse(await fs.readFile(lockPath, 'utf8'))
     } catch {
       // Pas de verrou lisible : on le pose.
     }
+
+    if (lock) {
+      const pid = Number(lock?.pid)
+      let alive = false
+      try {
+        process.kill(pid, 0)
+        alive = true
+      } catch (error) {
+        // EPERM = le process existe mais appartient à un autre utilisateur : le verrou est bien détenu, on ne se connecte pas.
+        alive = error?.code === 'EPERM'
+      }
+      const holderCmdLine = alive ? await readProcessCmdLine(pid) : ''
+      const verdict = evaluateInstanceLock({
+        lock,
+        ownPid: process.pid,
+        bootTimeMs: await resolveBootTimeMs(),
+        pidAlive: () => alive,
+        pidCmdLine: () => holderCmdLine,
+        ownCommandLine: process.argv.join(' '),
+      })
+      if (!verdict.usable) {
+        state = 'error'
+        lastError = `Session WhatsApp déjà utilisée par le process ${pid} — connexion refusée (protection anti-conflit).`
+        logger.error?.(`[baileys] ${lastError}`)
+        return false
+      }
+      logger.warn?.(`[baileys] verrou d'instance ignoré (périmé) : ${verdict.reason}`)
+    }
+
     try {
       await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), 'utf8')
     } catch (error) {
@@ -295,6 +363,10 @@ export function createBaileysWhatsAppClient({
     try {
       if (!(await acquireInstanceLock())) {
         started = false
+        // NE JAMAIS condamner la passerelle : un verrou périmé (PID recyclé) ou un
+        // opérateur qui purge le fichier finit par rétablir la situation. Sans cette
+        // relance, l'état restait 'error' à vie → alertes muettes (incident 23/09).
+        setTimeout(() => start().catch((error) => logger.error?.(`[baileys] relance impossible: ${error?.message || error}`)), 5 * 60_000)
         return getStatus()
       }
       await restoreCredentialsIfMissing()
