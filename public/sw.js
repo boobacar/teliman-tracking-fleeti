@@ -1,7 +1,13 @@
 // Service Worker — Teliman Logistique
 // Stratégie : Cache-First pour assets statiques, Network-First pour API
+//
+// ⚠️ Incrémenter CACHE_STATIC à CHAQUE livraison qui change le front : le navigateur
+// ne réinstalle le service worker que si ce fichier change (octets différents), et
+// l'activation purge alors les anciens buckets. Sans ça, un appareil (surtout une PWA
+// installée sur téléphone) continue de servir l'ancienne coquille et l'on croit que
+// « les changements ne sont pas en prod ».
 
-const CACHE_STATIC = 'teliman-static-20260728-mapfix'
+const CACHE_STATIC = 'teliman-static-20260923-routage-alertes'
 
 const STATIC_EXTENSIONS = /\.(js|css|svg|png|jpg|jpeg|webp|ico|woff2?|json)$/
 
