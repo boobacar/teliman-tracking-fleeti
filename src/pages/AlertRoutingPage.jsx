@@ -131,11 +131,10 @@ export function AlertRoutingPage() {
       guard(() => createAlertSubscription({ recipientId: recipient.id, category: category.key, scopeType, scopeValue }))
       return
     }
-    // La portée fait partie de la clé d'unicité : on remplace la ligne.
-    guard(async () => {
-      await deleteAlertSubscription(existing.id)
-      await createAlertSubscription({ recipientId: recipient.id, category: category.key, scopeType, scopeValue })
-    })
+    // Mise à jour en place : la règle ne disparaît jamais, même si la nouvelle portée
+    // était refusée par le serveur (une suppression suivie d'une création laisserait
+    // un trou si la seconde étape échouait).
+    guard(() => updateAlertSubscription(existing.id, { scopeType, scopeValue }))
   }
 
   return (

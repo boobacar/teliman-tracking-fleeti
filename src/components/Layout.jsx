@@ -103,10 +103,12 @@ export function Layout({ children, currentUser, onLogout }) {
           Déconnexion
         </button>
 
-        <div className="sidebar-version" title={`Version ${__APP_VERSION__} — commit ${__APP_COMMIT__}`}>
+        <div className="sidebar-version" title={`Version ${__APP_VERSION__} — commit ${__APP_COMMIT__} — build ${__APP_BUILD__} (UTC)`}>
           <span>v{__APP_VERSION__}</span>
           <span>·</span>
           <code>{__APP_COMMIT__}</code>
+          <span>·</span>
+          <code title="Empreinte de build : sert à vérifier que le navigateur charge la dernière version">{__APP_BUILD__}</code>
         </div>
       </aside>
 

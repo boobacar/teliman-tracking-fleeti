@@ -42,7 +42,13 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        // Constantes injectées par Vite (voir vite.config.js → define)
+        __APP_VERSION__: 'readonly',
+        __APP_COMMIT__: 'readonly',
+        __APP_BUILD__: 'readonly',
+      },
     },
     rules: {
       // Les synchronisations contrôlées de composants existants reposent sur des effets.

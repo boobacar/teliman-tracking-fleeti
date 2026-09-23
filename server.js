@@ -36,12 +36,20 @@ import {
   readMasterData, writeMasterDataKey,
   readDriverOverrides, replaceDriverOverridesAtomic,
   readGeofences, readActiveGeofences, readGeofenceById, insertGeofence, updateGeofence, deleteGeofence,
-  readAlertRecipients, readActiveAlertRecipients, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
+  readAlertRecipients, readActiveAlertRecipients, readAlertRecipientById, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
+  readAlertSubscriptions, readAlertSubscriptionById, insertAlertSubscription, updateAlertSubscription, deleteAlertSubscription,
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
   readMissionTimeline, appendMissionTimelineEvent,
   readGeofenceEvents, countGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
   readMissionZoneMap, insertMissionZoneMap, updateMissionZoneMap, deleteMissionZoneMap,
 } from './src/backend/database.js'
+import {
+  ALERT_CATEGORIES,
+  ALERT_GROUPS,
+  describeRecipientRouting,
+  resolveRoutedRecipients,
+  validateSubscriptionInput,
+} from './src/backend/alertRouting.js'
 
 dotenv.config()
 
@@ -306,13 +314,21 @@ app.use(express.static(DIST_DIR, {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript')
     else if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css')
+    // La coquille (index.html) et le service worker ne doivent JAMAIS être mis en
+    // cache : sinon un navigateur (surtout une PWA) rejoue l'ancienne application et
+    // l'on croit que « les changements ne sont pas en prod » (incident du 23/09).
+    if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store, must-revalidate')
+    else if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache, must-revalidate')
   }
 }))
 // SPA fallback: renvoie index.html pour toute route non-API
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next()
   const indexPath = path.join(DIST_DIR, 'index.html')
-  if (fs.existsSync(indexPath)) return res.sendFile(indexPath)
+  if (fs.existsSync(indexPath)) {
+    res.setHeader('Cache-Control', 'no-store, must-revalidate')
+    return res.sendFile(indexPath)
+  }
   next()
 })
 
@@ -520,6 +536,10 @@ function requiredRoutePermissions(req) {
       ? ['manage_data']
       : ['manage_data', 'page_alerts']
   }
+  // « Qui reçoit quoi » : lecture pour les gestionnaires et les ops (page alertes),
+  // écriture réservée à manage_data.
+  if (pathName.startsWith('/api/alert-routing')) return ['manage_data', 'page_alerts']
+  if (pathName.startsWith('/api/alert-subscriptions')) return ['manage_data']
   if (pathName.startsWith('/api/reports')) return ['page_reports']
   if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
   if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) {
@@ -743,6 +763,22 @@ const whatsappBaileysQueue = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider
       dailyLimit: makeWarmupDailyLimit({ start: 30, rampPerDay: 20, max: 150 }),
       circuitBreaker: { maxConsecutiveFailures: 5, cooldownMs: 10 * 60 * 1000 },
       ...(WHATSAPP_CONFIG.sendHours ? { sendHours: WHATSAPP_CONFIG.sendHours } : {}),
+      // Reprise après redémarrage : sans ça, chaque restart jetait les alertes
+      // encore en attente (85 perdues le 14/09, 249 entrées fantômes le 23/09).
+      persistPath: path.join(DATA_DIR, 'whatsapp-queue-pending.json'),
+      persistMaxAgeMs: 6 * 60 * 60 * 1000,
+      serializeJob: (job) => ({
+        to: job.to,
+        message: job.message,
+        imagePath: job.imagePath || '',
+        context: job.context || null,
+        deferrable: job.deferrable !== false,
+      }),
+      // `config` contient le client Baileys (non sérialisable) : on le réinjecte ici.
+      rehydrateJob: (raw) => (raw?.to && raw?.message
+        ? { ...raw, config: { ...WHATSAPP_CONFIG, baileysQueue: null }, fetchImpl: fetch, deferrable: raw.deferrable !== false }
+        : null),
+      onPersistError: (error) => console.warn('[whatsapp] reprise de file non sauvegardée:', error?.message || error),
     })
   : null
 WHATSAPP_CONFIG.baileysQueue = whatsappBaileysQueue
@@ -830,9 +866,12 @@ async function notifyFleetAlertWhatsApp(event) {
       console.warn(`[whatsapp] Alerte flotte ${result.eventType || '-'} non envoyée: ${result.reason || 'raison inconnue'}`)
     }
   }
-  // Supplément : destinataires configurés (table alert_recipients), dédupliqués par numéro
+  // Supplément : destinataires abonnés à cette catégorie d'alerte flotte
+  // (table alert_recipients + règles alert_subscriptions), dédupliqués par numéro.
   const alreadySent = new Set(results.filter((r) => r.sent).map((r) => r.recipient))
-  const extraPhones = getAlertRecipientPhones().filter((phone) => !alreadySent.has(phone))
+  const fleetCategory = fleetAlertCategoryKey(event?.event || event?.eventType)
+  const fleetTruckLabel = event?.truckLabel || event?.trackerLabel || event?.label || ''
+  const extraPhones = routedAlertPhones(fleetCategory, { truckLabel: fleetTruckLabel }).filter((phone) => !alreadySent.has(phone))
   for (const recipient of extraPhones) {
     const message = buildFleetAlertWhatsAppMessage({ ...event, event: event?.event || event?.eventType })
     const result = await sendWhatsAppTextMessage({ to: recipient, message, config: WHATSAPP_CONFIG, baileysClient: baileysWhatsAppClient, context: { source: 'fleet_alert', eventType: event?.event || '', order: event } })
@@ -863,35 +902,36 @@ const geofenceTracker = createGeofenceTracker({ minIntervalMs: 60 * 1000 })
 
 export { haversineDistanceMeters } from './src/backend/geofenceEngine.js'
 
-// Alertes de zone génériques : UNIQUEMENT les destinataires « interne ». Les
-// contacts clients (scope 'client') ne reçoivent que Départ/Arrivée de leurs
-// missions — jamais les entrées/sorties de zones de la flotte.
-function getAlertRecipientPhones() {
+// Alertes de zone génériques : uniquement les destinataires abonnés à la catégorie
+// (règles `alert_subscriptions`). Sans règle explicite, un destinataire interne
+// reçoit toutes les alertes de zone et un contact client n'en reçoit aucune.
+// Voir src/backend/alertRouting.js.
+function routedAlertRecipients(category, context = {}) {
   try {
-    return (readActiveAlertRecipients() || [])
-      .filter((recipient) => String(recipient.scope || 'internal') !== 'client')
-      .map((recipient) => String(recipient.phone || '').trim())
-      .filter(Boolean)
+    return resolveRoutedRecipients({
+      recipients: readActiveAlertRecipients() || [],
+      subscriptions: readAlertSubscriptions() || [],
+      category,
+      context,
+    })
   } catch (error) {
-    console.warn('[geofence] lecture destinataires impossible:', error?.message || error)
+    console.warn('[alertes] routage impossible:', error?.message || error)
     return []
   }
 }
 
-// Destinataires « client » d'un compte donné (table alert_recipients, scope client).
-function getClientScopedAlertPhones(clientName) {
-  const target = String(clientName || '').trim().toLowerCase()
-  if (!target) return []
-  try {
-    return (readActiveAlertRecipients() || [])
-      .filter((recipient) => String(recipient.scope || 'internal') === 'client')
-      .filter((recipient) => String(recipient.clientName || '').trim().toLowerCase() === target)
-      .map((recipient) => String(recipient.phone || '').trim())
-      .filter(Boolean)
-  } catch (error) {
-    console.warn('[mission] lecture destinataires client impossible:', error?.message || error)
-    return []
-  }
+function routedAlertPhones(category, context = {}) {
+  return routedAlertRecipients(category, context)
+    .map((recipient) => String(recipient.phone || '').trim())
+    .filter(Boolean)
+}
+
+function fleetAlertCategoryKey(eventType) {
+  return String(eventType || '') === 'excessive_parking' ? 'fleet_parking' : 'fleet_speedup'
+}
+
+function geofenceAlertCategoryKey(eventType) {
+  return String(eventType || '') === 'exit' ? 'geofence_exit' : 'geofence_enter'
 }
 
 // ── Alertes CLIENT aux bornes de mission ────────────────────────────────────────
@@ -922,9 +962,11 @@ async function notifyClientMissionBoundaryWhatsApp(event) {
   const eventType = role === 'departure' ? 'departed' : 'arrived'
   const label = role === 'departure' ? 'Départ' : 'Arrivée'
 
-  // Destinataires : contacts du client (master data) + numéros « client » dédiés.
+  // Destinataires : contacts du client (master data) + numéros abonnés à cette
+  // borne de mission dans la table des destinataires.
   const masterData = readMasterDataWrapper()
-  const phones = [...resolveClientWhatsAppRecipients(order, masterData), ...getClientScopedAlertPhones(order.client)]
+  const boundaryCategory = role === 'departure' ? 'bl_departed' : 'bl_arrived'
+  const phones = [...resolveClientWhatsAppRecipients(order, masterData), ...routedAlertPhones(boundaryCategory, { clientName: order.client })]
   const seen = new Set()
   const recipients = []
   for (const phone of phones) {
@@ -975,7 +1017,12 @@ async function notifyClientMissionBoundaryWhatsApp(event) {
 async function notifyGeofenceAlertWhatsApp(event, eventId) {
   // Contexte mission attaché à l'événement → repris par le builder de message.
   event.mission = resolveActiveMissionContext(event?.trackerId ?? event?.tracker_id)
-  const recipients = getAlertRecipientPhones()
+  // Destinataires = ceux abonnés à CETTE catégorie (entrée / sortie), avec la portée
+  // éventuelle (zone précise, camion précis). Voir src/backend/alertRouting.js.
+  const recipients = routedAlertPhones(geofenceAlertCategoryKey(event?.eventType), {
+    zoneId: event?.geofenceId,
+    truckLabel: event?.truckLabel,
+  })
   const results = await sendGeofenceAlertWhatsAppNotifications({
     event,
     recipients,
@@ -3263,9 +3310,82 @@ app.get('/api/geofence-events', (req, res) => {
 
 app.get('/api/alert-recipients', (_req, res) => {
   try {
-    res.json({ ok: true, recipients: readAlertRecipients() })
+    const subscriptions = readAlertSubscriptions()
+    const recipients = readAlertRecipients().map((recipient) => ({
+      ...recipient,
+      routing: describeRecipientRouting(recipient, subscriptions),
+    }))
+    res.json({ ok: true, recipients, subscriptions })
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+// ── Qui reçoit quoi : règles d'abonnements (alert_subscriptions) ──
+
+app.get('/api/alert-routing', (_req, res) => {
+  try {
+    const subscriptions = readAlertSubscriptions()
+    res.json({
+      ok: true,
+      categories: ALERT_CATEGORIES,
+      groups: ALERT_GROUPS,
+      subscriptions,
+      recipients: readAlertRecipients().map((recipient) => ({
+        ...recipient,
+        routing: describeRecipientRouting(recipient, subscriptions),
+      })),
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/alert-subscriptions', requirePermission('manage_data'), (req, res) => {
+  try {
+    const validated = validateSubscriptionInput(req.body || {})
+    const recipient = readAlertRecipientById(validated.recipientId)
+    if (!recipient) return res.status(404).json({ ok: false, error: 'Destinataire introuvable' })
+    const subscription = insertAlertSubscription(validated)
+    res.status(201).json({ ok: true, subscription })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.put('/api/alert-subscriptions/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    const existing = readAlertSubscriptionById(id)
+    if (!existing) return res.status(404).json({ ok: false, error: 'Règle introuvable' })
+    // Une modification de portée passe par la même validation que la création.
+    const { recipientId, category, scopeType, scopeValue } = req.body || {}
+    if (recipientId !== undefined || category !== undefined || scopeType !== undefined || scopeValue !== undefined) {
+      const validated = validateSubscriptionInput({
+        recipientId: recipientId ?? existing.recipientId,
+        category: category ?? existing.category,
+        scopeType: scopeType ?? existing.scopeType,
+        scopeValue: scopeValue ?? existing.scopeValue,
+      })
+      const subscription = updateAlertSubscription(id, { ...validated, ...(req.body.active !== undefined ? { active: req.body.active } : {}) })
+      return res.json({ ok: true, subscription })
+    }
+    if (req.body.active === undefined) return res.status(400).json({ ok: false, error: 'Aucune modification fournie' })
+    res.json({ ok: true, subscription: updateAlertSubscription(id, { active: req.body.active }) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.delete('/api/alert-subscriptions/:id', requirePermission('manage_data'), (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
+    deleteAlertSubscription(id)
+    res.json({ ok: true })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
   }
 })
 
