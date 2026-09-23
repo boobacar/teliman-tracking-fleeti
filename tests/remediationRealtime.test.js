@@ -57,5 +57,8 @@ test('le rapport trajets filtre avant batch, masque les zéros et pagine le dét
 })
 
 test('le cache statique du service worker a une version déterministe', () => {
-  assert.match(sw, /teliman-static-20260728-mapfix/)
+  // La version doit être datée (AAAA-MM-JJ + libellé) et surtout INCRÉMENTÉE à chaque
+  // livraison front : sans changement d'octets dans sw.js, le navigateur ne réinstalle
+  // pas le service worker et continue de servir les anciens assets en cache.
+  assert.match(sw, /const CACHE_STATIC = 'teliman-static-\d{8}-[a-z0-9-]+'/)
 })

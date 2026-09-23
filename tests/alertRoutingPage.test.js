@@ -47,6 +47,9 @@ test('les appels API du routage existent côté cliente et côté serveur', () =
   assert.match(server, /app\.post\('\/api\/alert-subscriptions', requirePermission\('manage_data'\)/)
   assert.match(server, /app\.put\('\/api\/alert-subscriptions\/:id', requirePermission\('manage_data'\)/)
   assert.match(server, /app\.delete\('\/api\/alert-subscriptions\/:id', requirePermission\('manage_data'\)/)
+  // Sans mappage explicite, le garde-fou « default-deny » renvoie 403 à tout le monde.
+  assert.match(server, /if \(pathName\.startsWith\('\/api\/alert-routing'\)\) return \['manage_data', 'page_alerts'\]/)
+  assert.match(server, /if \(pathName\.startsWith\('\/api\/alert-subscriptions'\)\) return \['manage_data'\]/)
   // Le routage doit réellement filtrer les envois (et non juste stocker des règles).
   assert.match(server, /function routedAlertPhones\(category, context = \{\}\)/)
   assert.match(server, /routedAlertPhones\(geofenceAlertCategoryKey\(event\?\.eventType\)/)
