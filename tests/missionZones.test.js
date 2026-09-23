@@ -136,9 +136,12 @@ test('describeMissionZoneMapping signale les zones reconnues et les manquantes',
 
 test('les alertes de zone génériques excluent les destinataires clients', () => {
   const serverSource = readFileSync(new URL('../server.js', import.meta.url), 'utf8')
-  // Filtre scope sur les destinataires internes
-  assert.match(serverSource, /scope \|\| 'internal'\) !== 'client'/)
-  assert.match(serverSource, /function getClientScopedAlertPhones/)
+  // Le filtrage vit désormais dans le moteur de routage (src/backend/alertRouting.js) :
+  // un destinataire « client » n'a pas les catégories de zone dans ses défauts.
+  assert.match(serverSource, /function routedAlertPhones\(category, context = \{\}\)/)
+  assert.match(serverSource, /routedAlertPhones\(geofenceAlertCategoryKey\(event\?\.eventType\)/)
+  const routingSource = readFileSync(new URL('../src/backend/alertRouting.js', import.meta.url), 'utf8')
+  assert.match(routingSource, /client: \['bl_departed', 'bl_arrived'\]/)
   // Bornes de mission branchées dans le moteur de zones
   assert.match(serverSource, /notifyClientMissionBoundaryWhatsApp\(event\)/)
   assert.match(serverSource, /planClientBoundaryAlert\(event/)

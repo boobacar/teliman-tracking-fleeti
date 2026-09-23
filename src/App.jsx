@@ -12,6 +12,7 @@ const MapPage = lazy(() => import('./pages/MapPage').then((module) => ({ default
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
 const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage').then((module) => ({ default: module.WhatsAppPage })))
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then((module) => ({ default: module.AlertsPage })))
+const AlertRoutingPage = lazy(() => import('./pages/AlertRoutingPage').then((module) => ({ default: module.AlertRoutingPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const DriversReportPage = lazy(() => import('./pages/DriversReportPage').then((module) => ({ default: module.DriversReportPage })))
@@ -472,6 +473,7 @@ function App() {
           <Route path="/tracker/:id" element={guard('page_fleet', <TrackerDetailPage enrichedTrackers={operationalTrackers} deliveryOrders={deliveryOrders} />)} />
           <Route path="/data" element={guard('manage_data', <DataPage />)} />
           <Route path="/geofences" element={guard('manage_data', <GeofencesPage />)} />
+          <Route path="/alertes-diffusion" element={guard('manage_data', <AlertRoutingPage />)} />
           <Route path="/admin-users" element={guard('manage_users', <AdminUsersPage />)} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

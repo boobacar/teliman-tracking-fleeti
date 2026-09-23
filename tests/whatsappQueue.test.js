@@ -221,3 +221,82 @@ test('le circuit-breaker met la file en pause après trop d’échecs consécuti
   assert.equal(status.paused, false, 'pause levée après cooldown')
   assert.equal(attempts, 3, 'le 3e job part après le cooldown')
 })
+
+// ── Persistance de reprise : les alertes en attente survivent au redémarrage ──
+
+function fakePersistFs() {
+  const files = new Map()
+  return {
+    files,
+    readFileSync: (path) => {
+      if (!files.has(path)) { const error = new Error('ENOENT'); error.code = 'ENOENT'; throw error }
+      return files.get(path)
+    },
+    writeFileSync: (path, data) => { files.set(path, data) },
+  }
+}
+
+test('les jobs en attente sont écrits sur disque et retirés dès qu’ils sont tentés', async () => {
+  const fsApi = fakePersistFs()
+  const queue = createWhatsAppQueue({
+    sendFn: async () => ({ sent: true }),
+    minIntervalMs: 10,
+    persistPath: '/tmp/queue-pending.json',
+    persistDebounceMs: 0,
+    serializeJob: (job) => ({ to: job.to, message: job.message, context: job.context || null, deferrable: job.deferrable !== false }),
+    rehydrateJob: (raw) => ({ ...raw }),
+    fsApi,
+  })
+  queue.enqueue({ to: 'a', message: 'alerte A' })
+  queue.enqueue({ to: 'b', message: 'alerte B' })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  const written = JSON.parse(fsApi.files.get('/tmp/queue-pending.json'))
+  assert.ok(written.entries.length <= 2, 'au plus les deux jobs non encore envoyés')
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  queue.stop()
+  const after = JSON.parse(fsApi.files.get('/tmp/queue-pending.json'))
+  assert.equal(after.entries.length, 0, 'plus rien en attente une fois les jobs partis')
+  assert.equal(queue.status().persistenceEnabled, true)
+  assert.equal(queue.status().sentToday, 2)
+})
+
+test('au démarrage, les alertes non envoyées sont rejouées (et les trop vieilles écartées)', async () => {
+  const fsApi = fakePersistFs()
+  const nowMs = Date.parse('2026-09-23T18:00:00.000Z')
+  const saved = {
+    savedAt: '2026-09-23T17:00:00.000Z',
+    entries: [
+      { id: '1', at: '2026-09-23T17:45:00.000Z', job: { to: 'a', message: 'récente' } },
+      { id: '2', at: '2026-09-22T09:00:00.000Z', job: { to: 'b', message: 'trop vieille' } },
+    ],
+  }
+  fsApi.files.set('/tmp/queue-resume.json', JSON.stringify(saved))
+
+  const sent = []
+  const queue = createWhatsAppQueue({
+    sendFn: async (job) => { sent.push(job.message); return { sent: true } },
+    minIntervalMs: 10,
+    now: () => nowMs,
+    persistPath: '/tmp/queue-resume.json',
+    persistDebounceMs: 0,
+    persistMaxAgeMs: 6 * 60 * 60 * 1000,
+    serializeJob: (job) => ({ to: job.to, message: job.message }),
+    rehydrateJob: (raw) => ({ ...raw }),
+    fsApi,
+  })
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  queue.stop()
+  assert.equal(queue.resumedOnBoot, 1, 'seule l’alerte de moins de 6 h est rejouée')
+  assert.deepEqual(sent, ['récente'])
+  const after = JSON.parse(fsApi.files.get('/tmp/queue-resume.json'))
+  assert.equal(after.entries.length, 0, 'l’entrée périmée est nettoyée au passage')
+})
+
+test('une file sans persistPath (tests, autres projets) reste purement en mémoire', async () => {
+  const queue = createWhatsAppQueue({ sendFn: async () => ({ sent: true }), minIntervalMs: 10 })
+  queue.enqueue({ to: 'a', message: 'x' })
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  queue.stop()
+  assert.equal(queue.status().persistenceEnabled, false)
+  assert.equal(queue.resumedOnBoot, 0)
+})

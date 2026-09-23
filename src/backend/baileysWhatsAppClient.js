@@ -59,6 +59,22 @@ export function createOutboundMessageCache({
       }
       return entry.message
     },
+    // Sérialisation : la mémoire des sortants doit survivre à un redémarrage,
+    // sinon les demandes de renvoi (« En attente de ce message ») arrivent après
+    // le restart et ne trouvent plus rien (69 cas constatés le 23/09).
+    snapshot() {
+      prune()
+      return [...entries.entries()].map(([id, entry]) => ({ id, at: entry.at, message: entry.message }))
+    },
+    load(loaded = []) {
+      for (const item of Array.isArray(loaded) ? loaded : []) {
+        if (!item?.id || !item?.message) continue
+        if (now() - Number(item.at || 0) > ttlMs) continue
+        entries.set(String(item.id), { message: item.message, at: Number(item.at) || now() })
+      }
+      prune()
+      return entries.size
+    },
     size: () => entries.size,
   }
 }
@@ -268,6 +284,28 @@ export function createBaileysWhatsAppClient({
   let retryRequestsServed = 0
   let retryRequestsMissed = 0
 
+  // Persistance de cette mémoire (fichier à côté des creds) : un redémarrage ne doit
+  // pas rendre les renvois impossibles (« renvoi demandé … message hors mémoire »).
+  const outboundPersistPath = `${authDir}-outbound.json`
+  let outboundPersistTimer = null
+
+  function persistOutboundSoon() {
+    if (outboundPersistTimer) return
+    outboundPersistTimer = setTimeout(() => {
+      outboundPersistTimer = null
+      const payload = JSON.stringify({ savedAt: new Date().toISOString(), entries: outboundMessages.snapshot() })
+      fs.writeFile(`${outboundPersistPath}.tmp`, payload, 'utf8')
+        .then(() => fs.rename(`${outboundPersistPath}.tmp`, outboundPersistPath))
+        .catch(() => { /* la persistance ne doit jamais bloquer un envoi */ })
+    }, 1000)
+    outboundPersistTimer?.unref?.()
+  }
+
+  // Chargement initial : best-effort, jamais bloquant.
+  fs.readFile(outboundPersistPath, 'utf8')
+    .then((raw) => outboundMessages.load(JSON.parse(raw)?.entries || []))
+    .catch(() => { /* pas de fichier : rien à reprendre */ })
+
   // Appelée par Baileys pour chaque « retry receipt » : on renvoie le message
   // d'origine (Baileys force au passage une session neuve vers le destinataire,
   // cf. sendMessagesAgain → assertSessions). Un compteur qui monte = des
@@ -447,6 +485,7 @@ export function createBaileysWhatsAppClient({
       // Mémoire des sortants : c'est ce contenu que WhatsApp nous redemandera de
       // renvoyer si le destinataire n'a pas su le déchiffrer.
       outboundMessages.remember(result?.key?.id, result?.message)
+      persistOutboundSoon()
       if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
         try { await socket.sendPresenceUpdate('paused', recipientJid) } catch { /* best-effort */ }
       }

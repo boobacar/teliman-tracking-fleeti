@@ -152,6 +152,24 @@ function createTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_recipients_active ON alert_recipients(active);
 
+    -- Qui reçoit quoi : une ligne = « ce destinataire veut cette catégorie »
+    -- (éventuellement restreinte à une zone, un client ou un camion). Aucune ligne
+    -- pour un destinataire = comportement historique (voir src/backend/alertRouting.js).
+    CREATE TABLE IF NOT EXISTS alert_subscriptions (
+      id INTEGER PRIMARY KEY,
+      recipientId INTEGER NOT NULL,
+      category TEXT NOT NULL,
+      scopeType TEXT NOT NULL DEFAULT 'all',
+      scopeValue TEXT NOT NULL DEFAULT '',
+      channel TEXT NOT NULL DEFAULT 'whatsapp',
+      active INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT ''
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_subs_unique
+      ON alert_subscriptions(recipientId, category, scopeType, scopeValue);
+    CREATE INDEX IF NOT EXISTS idx_alert_subs_recipient ON alert_subscriptions(recipientId);
+
+
     CREATE TABLE IF NOT EXISTS geofence_events (
       id INTEGER PRIMARY KEY,
       geofenceId INTEGER NOT NULL,
@@ -783,8 +801,85 @@ export function updateAlertRecipient(id, updates) {
 }
 
 export function deleteAlertRecipient(id) {
+  // Les règles « qui reçoit quoi » du destinataire partent avec lui (sinon des
+  // lignes orphelines réapparaîtraient si l'identifiant était réutilisé).
+  getDatabase().prepare('DELETE FROM alert_subscriptions WHERE recipientId = ?').run(id)
   const result = getDatabase().prepare('DELETE FROM alert_recipients WHERE id = ?').run(id)
   if (result.changes !== 1) throw new Error('Destinataire introuvable')
+}
+
+// ── Abonnements d'alertes (qui reçoit quoi) ──
+
+export function readAlertSubscriptions() {
+  return getDatabase()
+    .prepare('SELECT * FROM alert_subscriptions ORDER BY recipientId ASC, category ASC, id ASC')
+    .all()
+    .map((row) => ({
+      ...row,
+      recipientId: Number(row.recipientId),
+      active: Boolean(row.active),
+    }))
+}
+
+export function readAlertSubscriptionById(id) {
+  const row = getDatabase().prepare('SELECT * FROM alert_subscriptions WHERE id = ?').get(id)
+  if (!row) return null
+  return { ...row, recipientId: Number(row.recipientId), active: Boolean(row.active) }
+}
+
+export function insertAlertSubscription(item) {
+  const recipientId = Number(item?.recipientId)
+  if (!Number.isInteger(recipientId) || recipientId <= 0) throw new Error('Destinataire invalide')
+  const category = String(item?.category || '').trim()
+  if (!category) throw new Error("Catégorie d'alerte requise")
+  const scopeType = String(item?.scopeType || 'all').trim() || 'all'
+  const scopeValue = String(item?.scopeValue || '').trim()
+  const existing = getDatabase()
+    .prepare('SELECT * FROM alert_subscriptions WHERE recipientId = ? AND category = ? AND scopeType = ? AND scopeValue = ?')
+    .get(recipientId, category, scopeType, scopeValue)
+  if (existing) {
+    // Déjà présent : on le réactive plutôt que d'échouer (l'interface envoie un
+    // « cocher » qui peut coïncider avec une ligne désactivée).
+    if (!existing.active) updateAlertSubscription(Number(existing.id), { active: true })
+    return readAlertSubscriptionById(Number(existing.id))
+  }
+  const info = getDatabase()
+    .prepare(`INSERT INTO alert_subscriptions (recipientId, category, scopeType, scopeValue, channel, active, createdAt)
+              VALUES (@recipientId, @category, @scopeType, @scopeValue, @channel, @active, @createdAt)`)
+    .run({
+      recipientId,
+      category,
+      scopeType,
+      scopeValue,
+      channel: String(item?.channel || 'whatsapp'),
+      active: item?.active === false ? 0 : 1,
+      createdAt: item?.createdAt || new Date().toISOString(),
+    })
+  return readAlertSubscriptionById(Number(info.lastInsertRowid))
+}
+
+export function updateAlertSubscription(id, updates = {}) {
+  const sets = []
+  const params = { id }
+  for (const [key, value] of Object.entries(updates)) {
+    if (!['scopeType', 'scopeValue', 'category', 'channel', 'active'].includes(key)) continue
+    if (key === 'active') {
+      sets.push('active = @active')
+      params.active = value ? 1 : 0
+    } else {
+      sets.push(`${key} = @${key}`)
+      params[key] = String(value ?? '')
+    }
+  }
+  if (!sets.length) throw new Error('Aucune modification fournie')
+  const result = getDatabase().prepare(`UPDATE alert_subscriptions SET ${sets.join(', ')} WHERE id = @id`).run(params)
+  if (result.changes !== 1) throw new Error('Règle introuvable')
+  return readAlertSubscriptionById(id)
+}
+
+export function deleteAlertSubscription(id) {
+  const result = getDatabase().prepare('DELETE FROM alert_subscriptions WHERE id = ?').run(id)
+  if (result.changes !== 1) throw new Error('Règle introuvable')
 }
 
 // ── Geofence Events ──

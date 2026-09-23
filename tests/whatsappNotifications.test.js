@@ -1014,6 +1014,18 @@ test('createOutboundMessageCache : garde les sortants, expire par TTL et borne l
   cache.remember('', { conversation: 'x' })
   cache.remember('D', null)
   assert.equal(cache.size(), 0)
+
+  // Survie au redémarrage : snapshot puis rechargement (les renvois WhatsApp
+  // doivent rester servables après un restart du process)
+  cache.remember('E', { conversation: 'E' })
+  const snapshot = cache.snapshot()
+  assert.equal(snapshot.length, 1)
+  const reloaded = createOutboundMessageCache({ ttlMs: 1_000, now: () => clock })
+  assert.equal(reloaded.load(snapshot), 1)
+  assert.deepEqual(reloaded.get('E'), { conversation: 'E' })
+  // Une entrée expirée n'est jamais rechargée
+  const tooOld = createOutboundMessageCache({ ttlMs: 1_000, now: () => clock + 10_000 })
+  assert.equal(tooOld.load([{ id: 'F', at: clock, message: { conversation: 'F' } }]), 0)
 })
 
 test('WhatsApp demande un renvoi (retry) : le message sortant est renvoyé, un message hors mémoire ne lève pas', async () => {

@@ -2,12 +2,32 @@
 // plafond journalier (fixe ou warm-up progressif), circuit-breaker
 // anti-tempête d'erreurs (pause automatique avant ban) et fenêtre horaire
 // naturelle (pas d'envoi en rafale la nuit ; les alertes passent quand même).
+// La file est persistée sur disque (option) pour survivre à un redémarrage.
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 
 const DEFAULT_MIN_INTERVAL_MS = 1100
 const DEFAULT_MAX_RETRIES = 2
 const DEFAULT_DAILY_LIMIT = 250
 const DEFAULT_CIRCUIT_BREAKER = { maxConsecutiveFailures: 8, cooldownMs: 10 * 60 * 1000 }
 const DAY_MS = 24 * 60 * 60 * 1000
+// Une alerte rejouée après un redémarrage n'a de sens que si elle est récente.
+const DEFAULT_PERSIST_MAX_AGE_MS = 6 * 60 * 60 * 1000
+const DEFAULT_PERSIST_LIMIT = 200
+
+function defaultFsApi() {
+  return {
+    readFileSync: (path) => readFileSync(path, 'utf8'),
+    writeFileSync: (path, data) => {
+      mkdirSync(dirname(path), { recursive: true })
+      // Écriture atomique : un crash pendant la sauvegarde ne doit pas laisser un
+      // fichier tronqué (les alertes en attente deviendraient illisibles).
+      const tmp = `${path}.tmp`
+      writeFileSync(tmp, data, 'utf8')
+      renameSync(tmp, path)
+    },
+  }
+}
 
 export function dayKey(now = Date.now()) {
   const date = new Date(now)
@@ -66,11 +86,115 @@ export function createWhatsAppQueue({
   sendHours = null,
   now = () => Date.now(),
   onResult = null,
+  // Reprise après redémarrage : la file vivait en mémoire, donc chaque restart
+  // JETAIT les alertes en attente (85 perdues le 14/09, 249 fantômes le 23/09).
+  // `persistPath` + `serializeJob`/`rehydrateJob` permettent de les rejouer.
+  persistPath = '',
+  persistMaxAgeMs = DEFAULT_PERSIST_MAX_AGE_MS,
+  persistLimit = DEFAULT_PERSIST_LIMIT,
+  persistDebounceMs = 500,
+  serializeJob = null,
+  rehydrateJob = null,
+  fsApi = null,
+  onPersistError = null,
 } = {}) {
   if (typeof sendFn !== 'function') throw new Error('createWhatsAppQueue: sendFn requis')
+  const persistenceOn = Boolean(persistPath && typeof serializeJob === 'function' && typeof rehydrateJob === 'function')
+  const fs = fsApi || defaultFsApi()
+  const persistEntries = new Map()
+  let persistTimer = null
+  let persistSeq = 0
 
   const pending = []
   let current = null
+
+  // ── Persistance de reprise ──────────────────────────────────────────────────
+  // Chaque job en attente est écrit dans `persistPath` (JSON, écriture atomique) et
+  // retiré dès qu'il a été tenté. Au démarrage, les jobs plus jeunes que
+  // `persistMaxAgeMs` sont rejoués : une alerte de zone partie pendant un
+  // redémarrage n'est plus perdue.
+  let resumedCount = 0
+
+  function hasPersist() {
+    return persistenceOn
+  }
+
+  function readPersisted() {
+    if (!hasPersist()) return []
+    try {
+      const raw = fs.readFileSync(persistPath)
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed?.entries) ? parsed.entries : []
+    } catch {
+      return [] // fichier absent ou illisible : rien à reprendre
+    }
+  }
+
+  function writePersisted() {
+    if (!hasPersist()) return
+    try {
+      const entries = [...persistEntries.values()].slice(-persistLimit)
+      fs.writeFileSync(persistPath, JSON.stringify({ savedAt: new Date(now()).toISOString(), entries }))
+    } catch (error) {
+      // Une persistance impossible ne doit jamais casser l'envoi d'alertes.
+      if (typeof onPersistError === 'function') onPersistError(error)
+    }
+  }
+
+  function saveSoon() {
+    if (!hasPersist()) return
+    if (persistTimer) return
+    persistTimer = setTimeout(() => {
+      persistTimer = null
+      writePersisted()
+    }, Math.max(0, Number(persistDebounceMs) || 0))
+    persistTimer?.unref?.()
+  }
+
+  function rememberJob(job) {
+    if (!hasPersist()) return
+    persistSeq += 1
+    const persistId = `${now()}-${persistSeq}`
+    job.__persistId = persistId
+    try {
+      persistEntries.set(persistId, { id: persistId, at: new Date(now()).toISOString(), job: serializeJob(job) })
+    } catch (error) {
+      if (typeof onPersistError === 'function') onPersistError(error)
+      return
+    }
+    saveSoon()
+  }
+
+  function forgetJob(job) {
+    if (!hasPersist() || !job?.__persistId) return
+    persistEntries.delete(job.__persistId)
+    saveSoon()
+  }
+
+  function resumePending() {
+    if (!hasPersist()) return 0
+    const maxAge = Math.max(0, Number(persistMaxAgeMs) || 0)
+    const fresh = readPersisted().filter((entry) => {
+      const at = Date.parse(entry?.at || '')
+      if (!Number.isFinite(at)) return false
+      return maxAge === 0 || now() - at <= maxAge
+    })
+    let resumed = 0
+    for (const entry of fresh) {
+      try {
+        const job = rehydrateJob(entry.job)
+        if (!job) continue
+        job.__persistId = entry.id
+        job.__resumedAt = entry.at
+        pending.push(job)
+        persistEntries.set(entry.id, entry)
+        resumed += 1
+      } catch { /* une entrée illisible ne doit pas bloquer la reprise */ }
+    }
+    resumedCount = resumed
+    if (resumed) saveSoon()
+    return resumed
+  }
   let lastSentAt = 0
   let timer = null
   let firstUseDayKey = ''
@@ -125,6 +249,10 @@ export function createWhatsAppQueue({
       ...stats,
       sendHours: sendHours ? { start: sendHours.start, end: sendHours.end } : null,
       outsideSendHours: Boolean(sendHours) && !sendHoursOpen,
+      // Reprise après redémarrage : combien d'alertes ont survécu au restart.
+      persistenceEnabled: persistenceOn,
+      resumedOnBoot: resumedCount,
+      persistedPending: persistEntries.size,
     }
   }
 
@@ -236,6 +364,8 @@ export function createWhatsAppQueue({
       }
     } finally {
       current = null
+      // Job tenté (envoyé, échoué ou rejeté) : il ne doit plus être rejoué.
+      forgetJob(job)
       if (pending.length || stats.sentToday >= limit || ((stats.pausedUntil || 0) > now())) {
         timer = setTimeout(flush, interval)
       }
@@ -244,6 +374,7 @@ export function createWhatsAppQueue({
 
   function enqueue(job) {
     const entry = { ...job }
+    rememberJob(entry)
     const isAlert = entry.deferrable === false
     if (isAlert) pending.unshift(entry)
     else pending.push(entry)
@@ -265,5 +396,10 @@ export function createWhatsAppQueue({
     timer = null
   }
 
-  return { enqueue, status, stop }
+  // Reprise au démarrage : les alertes en attente au moment du redémarrage sont
+  // rejouées (fenêtre/quota appliqués normalement par flush).
+  const resumedOnBoot = resumePending()
+  if (resumedOnBoot) timer = setTimeout(flush, 0)
+
+  return { enqueue, status, stop, resumedOnBoot }
 }
