@@ -22,6 +22,14 @@ export const deliveryOrderSchema = z.object({
   completedAt: z.string().trim().nullable().optional(),
   proofPhotoDataUrl: z.string().max(7_000_000).optional(),
   proofPhotoDataUrls: z.array(z.string().max(7_000_000)).max(10).optional(),
+  // Statut de la preuve de livraison (valeurs de l'interface : « En attente », « Reçue »,
+  // « Validée ») et commentaire libre. Ces deux champs sont des colonnes de la table et
+  // sont écrits par sanitizeDeliveryOrderPayload, mais ils manquaient au schéma : comme
+  // les schémas sont `.strict()`, un PATCH de photo (qui envoie toujours proofStatus)
+  // était rejeté EN BLOC — la photo n'était jamais enregistrée. Incident du 28/09/2026,
+  // corrigé après reproduction en sandbox.
+  proofStatus: z.string().trim().max(40).optional(),
+  proofNote: z.string().max(4000).optional(),
 }).strict()
 
 export const deliveryOrderUpdateSchema = deliveryOrderSchema.partial()

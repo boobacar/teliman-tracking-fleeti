@@ -1177,11 +1177,19 @@ async function preprocessDeliveryProofPhotos(body = {}, current = null) {
       normalized.proofPhotoDataUrls = currentList
     }
 
-    if (typeof normalized.proofPhotoDataUrl === 'string' && normalized.proofPhotoDataUrl.trim()) {
-      const matchingIndex = incomingList?.indexOf(normalized.proofPhotoDataUrl) ?? -1
-      normalized.proofPhotoDataUrl = matchingIndex >= 0
-        ? normalized.proofPhotoDataUrls[matchingIndex]
-        : await persistTracked(normalized.proofPhotoDataUrl)
+    if (typeof normalized.proofPhotoDataUrl === 'string') {
+      const rawPrimary = normalized.proofPhotoDataUrl.trim()
+      if (!rawPrimary) {
+        // Chaîne vide explicite = effacement. Sans ce cas, la photo principale restait
+        // en base après le retrait de la dernière photo : le fichier n'était jamais
+        // supprimé et un document (impression du bon) pouvait encore l'afficher.
+        normalized.proofPhotoDataUrl = ''
+      } else {
+        const matchingIndex = incomingList?.indexOf(normalized.proofPhotoDataUrl) ?? -1
+        normalized.proofPhotoDataUrl = matchingIndex >= 0
+          ? normalized.proofPhotoDataUrls[matchingIndex]
+          : await persistTracked(normalized.proofPhotoDataUrl)
+      }
     } else if (normalized.proofPhotoDataUrls?.length) {
       normalized.proofPhotoDataUrl = normalized.proofPhotoDataUrls[0]
     } else if (current?.proofPhotoDataUrl) {
