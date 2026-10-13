@@ -352,7 +352,7 @@ export function AlertsPage({ importantEvents }) {
         </div>
 
         <div className="reports-table-wrap">
-          <table className="reports-table">
+          <table className="reports-table mobile-cards">
             <caption>Règles d’alertes Fleeti</caption>
             <thead>
               <tr>

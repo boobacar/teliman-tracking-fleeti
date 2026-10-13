@@ -317,7 +317,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
         </div>
 
         <div className="reports-table-wrap">
-          <table className="reports-table">
+          <table className="reports-table mobile-cards">
             <caption>Kilométrage et échéances de vidange</caption>
             <thead>
               <tr>
@@ -626,7 +626,7 @@ export function OilChangesPage({ enrichedTrackers = [] }) {
         {loading ? <SkeletonTable rows={4} cols={8} /> : (
           <>
             <div className="reports-table-wrap">
-              <table className="reports-table">
+              <table className="reports-table mobile-cards">
               <caption>Historique des vidanges</caption>
               <thead>
                 <tr>

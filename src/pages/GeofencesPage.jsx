@@ -611,7 +611,7 @@ export function GeofencesPage() {
         {recipients.length === 0 && !loading && <EmptyBanner message="Aucun numéro configuré. Les alertes ne seront pas notifiées." />}
         {recipients.length > 0 && (
           <div className="recipient-table-wrap">
-            <table className="ops-table recipient-table">
+            <table className="ops-table recipient-table mobile-cards">
               <thead>
                 <tr><th>Destinataire</th><th>Numéro WhatsApp</th><th>Type</th><th>Actif</th><th><span className="visually-hidden">Actions</span></th></tr>
               </thead>
@@ -699,7 +699,7 @@ export function GeofencesPage() {
         )}
         {zoneMap.length > 0 && (
           <div className="recipient-table-wrap">
-            <table className="ops-table recipient-table">
+            <table className="ops-table recipient-table mobile-cards">
               <thead>
                 <tr><th>Texte du BL</th><th>Zone</th><th><span className="visually-hidden">Actions</span></th></tr>
               </thead>
@@ -721,7 +721,7 @@ export function GeofencesPage() {
         )}
         {missionZones.length > 0 && (
           <div className="recipient-table-wrap">
-            <table className="ops-table recipient-table">
+            <table className="ops-table recipient-table mobile-cards">
               <thead>
                 <tr><th>Mission en cours</th><th>Camion</th><th>Zone de départ</th><th>Zone d’arrivée</th><th>Annonces client</th></tr>
               </thead>
@@ -763,7 +763,7 @@ export function GeofencesPage() {
         {events.length === 0 && !loading && <EmptyBanner message="Aucun événement pour l’instant. Les franchissements seront listés ici." />}
         {events.length > 0 && (
           <div className="geofence-events-table-wrap">
-            <table className="ops-table">
+            <table className="ops-table mobile-cards">
               <thead>
                 <tr><th>Heure</th><th>Zone</th><th>Camion</th><th>Événement</th><th>Position</th></tr>
               </thead>

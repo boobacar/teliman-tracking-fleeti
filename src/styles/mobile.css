@@ -1,0 +1,778 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Couche mobile — Teliman Tracking
+   Objectif : que les agents puissent ajouter des bons et consulter les tableaux
+   depuis leur téléphone. Chargée APRÈS App.css (voir main.jsx) pour gagner la
+   cascade à spécificité égale, sans réécrire les styles existants.
+
+   Audit du 13/10/2026 (390 × 844) : 181 éléments hors écran sur la page des bons,
+   tableaux de rapport à 1 100 px de large sur 390, aucune ligne de bon visible au
+   premier écran, formulaire de création coupé sans barre d'actions accessible.
+
+   Règles : 1) rien ne dépasse la largeur de l'écran ; 2) une liste d'enregistrements
+   devient une pile de cartes avec libellés ; 3) un tableau de rapport reste un
+   tableau mais défile proprement (en-tête et première colonne figées) ; 4) les
+   formulaires ont toujours leurs boutons à portée de pouce.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  /* ── 1. Fondations ───────────────────────────────────────────────────────── */
+  :root {
+    --m-gap: 12px;
+    --m-radius: 14px;
+  }
+
+  html, body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .main-content,
+  .page-stack,
+  .ops-page-stack {
+    max-width: 100%;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .page-stack,
+  .ops-page-stack {
+    gap: var(--m-gap);
+  }
+
+  /* Les blocs ne doivent jamais être plus larges que leur conteneur : c'est la
+     cause n°1 des bordures droites coupées relevées sur les captures. */
+  .page-stack > *,
+  .panel,
+  .panel-large,
+  section,
+  article,
+  .delivery-workspace,
+  .delivery-create-panel {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .panel,
+  .panel-large {
+    padding: 14px;
+    border-radius: var(--m-radius);
+  }
+
+  .panel-header {
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .panel-header h1,
+  .panel-header h2,
+  .panel-header h3 {
+    font-size: 18px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  img, canvas, video, svg {
+    max-width: 100%;
+  }
+
+  /* Champs de saisie : 16px minimum, sinon iOS zoome à la mise au point. */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  button,
+  .ghost-btn,
+  .primary-btn,
+  .chip,
+  .view-link,
+  .tab-btn {
+    min-height: 44px;
+  }
+
+  /* ── 2. En-têtes de page ─────────────────────────────────────────────────── */
+  h1 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 17px;
+  }
+
+  h3 {
+    font-size: 15px;
+  }
+
+  /* Les phrases d'explication coûtent un écran entier avant la première donnée. */
+  .page-subtitle,
+  .premium-subtitle,
+  .page-description,
+  .delivery-command-header p,
+  .panel-header p {
+    font-size: 12.5px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ── 3. Cartes d'indicateurs ─────────────────────────────────────────────── */
+  .delivery-kpi-grid,
+  .fuel-kpi-grid,
+  .kpi-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .delivery-kpi-card,
+  .fuel-kpi-card,
+  .kpi-card {
+    padding: 10px 11px;
+    gap: 9px;
+    border-radius: var(--m-radius);
+    min-width: 0;
+  }
+
+  .delivery-kpi-card strong,
+  .fuel-kpi-card strong,
+  .kpi-card strong {
+    font-size: 20px;
+    line-height: 1.1;
+  }
+
+  .delivery-kpi-card small,
+  .fuel-kpi-card small,
+  .kpi-card small {
+    font-size: 11px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .mission-highlight-grid,
+  .compact-mission-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* ── 4. Barres d'outils et filtres ───────────────────────────────────────── */
+  .delivery-filter-grid,
+  .fuel-filter-grid,
+  .filter-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Les puces de filtre défilent horizontalement au lieu de pousser la page :
+     la marge négative les colle aux bords, la barre de défilement est masquée. */
+  .filter-chips,
+  .chip-row,
+  .filters-row,
+  .status-filters,
+  .delivery-status-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 2px 12px 6px;
+    margin: 0 -12px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .filter-chips::-webkit-scrollbar,
+  .chip-row::-webkit-scrollbar,
+  .filters-row::-webkit-scrollbar,
+  .status-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-chips > *,
+  .chip-row > *,
+  .filters-row > *,
+  .status-filters > * {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .table-actions,
+  .delivery-command-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Les en-têtes de poste de travail passent en colonne : pas de largeur forcée,
+     sinon la marge intérieure fait déborder le bloc (audit : +42 px hors écran). */
+  .delivery-workspace-heading,
+  .delivery-create-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .table-actions > button,
+  .delivery-command-actions > button {
+    flex: 1 1 auto;
+  }
+
+  /* ── 5a. Une liste d'enregistrements devient une pile de cartes ────────────
+     Les libellés sont injectés dans data-label par src/lib/mobileTableLabels.js
+     (les en-têtes du tableau servent de libellés) : aucune réécriture des pages. */
+  table.mobile-cards {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  table.mobile-cards thead {
+    display: none;
+  }
+
+  table.mobile-cards tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  table.mobile-cards tr {
+    display: block;
+    padding: 12px;
+    border: 1px solid var(--ops-border);
+    border-radius: var(--m-radius);
+    background: var(--ops-panel-strong, rgba(15, 21, 32, 0.72));
+  }
+
+  table.mobile-cards td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    border: 0;
+    border-bottom: 1px dashed rgba(148, 163, 184, 0.16);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  table.mobile-cards td:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  table.mobile-cards td::before {
+    content: attr(data-label);
+    flex: 0 0 42%;
+    text-align: left;
+    color: var(--ops-muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  /* Première cellule = titre de la carte (référence du bon, nom de la règle…) */
+  table.mobile-cards td:first-child {
+    display: block;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 700;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  table.mobile-cards td:first-child::before {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 10.5px;
+  }
+
+  /* Cellules d'actions : boutons larges, faciles à viser au pouce. */
+  table.mobile-cards td[data-label="Actions"],
+  table.mobile-cards td[data-label="Action"] {
+    display: block;
+    padding-top: 10px;
+  }
+
+  table.mobile-cards td[data-label="Actions"]::before,
+  table.mobile-cards td[data-label="Action"]::before {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  table.mobile-cards td[data-label="Actions"] .table-actions {
+    justify-content: stretch;
+  }
+
+  table.mobile-cards td[data-label="Actions"] .table-actions > * {
+    flex: 1 1 0;
+    min-height: 42px;
+  }
+
+  /* ── 5b. Tableaux de rapport : défilement propre, colonne et en-tête figés ── */
+  .reports-table-wrap,
+  .recipient-table-wrap,
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    border-radius: var(--m-radius);
+  }
+
+  table.reports-table:not(.mobile-cards),
+  table.ops-table:not(.mobile-cards) {
+    font-size: 12.5px;
+  }
+
+  table.reports-table:not(.mobile-cards) th,
+  table.reports-table:not(.mobile-cards) td,
+  table.ops-table:not(.mobile-cards) th,
+  table.ops-table:not(.mobile-cards) td {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  table.reports-table:not(.mobile-cards) thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--ops-table-header, #1b3a19);
+  }
+
+  /* La première colonne reste visible pendant le défilement horizontal : c'est
+     elle qui identifie la ligne (camion, référence, date). */
+  table.reports-table:not(.mobile-cards) th:first-child,
+  table.reports-table:not(.mobile-cards) td:first-child,
+  table.ops-table:not(.mobile-cards) th:first-child,
+  table.ops-table:not(.mobile-cards) td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--ops-panel-strong, #0f1520);
+    box-shadow: 1px 0 0 rgba(148, 163, 184, 0.25);
+  }
+
+  table.reports-table:not(.mobile-cards) thead th:first-child {
+    z-index: 3;
+  }
+
+  /* ── 6. Formulaires : boutons toujours à portée de pouce ─────────────────── */
+  .delivery-form-grid,
+  .delivery-form-grid--planning,
+  .form-grid,
+  .field-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .field-stack {
+    gap: 5px;
+  }
+
+  .field-stack > span,
+  .field-stack label {
+    font-size: 12.5px;
+  }
+
+  /* Barre d'actions collante : on valide sans devoir chercher le bouton. */
+  .delivery-form-actions,
+  .form-actions,
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    gap: 8px;
+    padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+    margin-top: 6px;
+    background: linear-gradient(to top, var(--ops-panel-strong, #0f1520) 75%, rgba(15, 21, 32, 0));
+  }
+
+  .delivery-form-actions > button,
+  .form-actions > button {
+    flex: 1 1 0;
+    min-height: 46px;
+  }
+
+  .delivery-active-switch {
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* ── 7. Fenêtres (confirmations, photos) ─────────────────────────────────── */
+  .confirm-dialog,
+  .image-dialog,
+  [role="dialog"] {
+    max-height: 85dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 16px;
+  }
+
+  .confirm-dialog-backdrop,
+  .image-dialog-backdrop {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .image-dialog-image {
+    max-height: 70dvh;
+    width: auto;
+  }
+
+  /* ── 8. Notifications en bas, arrondies ──────────────────────────────────── */
+  .refresh-toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    transform: none;
+    border-radius: 999px;
+    text-align: center;
+    font-size: 12.5px;
+  }
+
+  /* ── 9. Menu latéral ────────────────────────────────────────────────────── */
+  .mobile-nav-toggle {
+    min-height: 52px;
+  }
+
+  .sidebar {
+    width: min(88vw, 320px);
+  }
+
+  .sidebar .view-link,
+  .sidebar .mobile-close-btn,
+  .sidebar .ghost-btn {
+    min-height: 46px;
+  }
+
+  .sidebar-version {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  /* ── 10. Divers ─────────────────────────────────────────────────────────── */
+  /* Causes racines mesurées sur la page des bons : la barre de statuts
+     (.delivery-status-tabs) n'était pas déclarée défilante. Comme ses six puces
+     ne peuvent pas se réduire, elle élargissait toute la colonne de la grille
+     (bloc de 389 px dans un conteneur de 306) et poussait 42 px hors écran. */
+  .delivery-status-tabs,
+  .fuel-status-tabs,
+  .reports-status-tabs,
+  .filters.filter-row,
+  .ops-filter-row,
+  .dashboard-toolbar__filters {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 2px 12px 6px;
+    margin: 0 -12px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .delivery-status-tabs::-webkit-scrollbar,
+  .filters.filter-row::-webkit-scrollbar,
+  .ops-filter-row::-webkit-scrollbar,
+  .dashboard-toolbar__filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .delivery-status-tabs > *,
+  .filters.filter-row > *,
+  .ops-filter-row > *,
+  .dashboard-toolbar__filters > * {
+    flex: 0 0 auto;
+  }
+
+  /* Tout élément de grille ou de flex doit pouvoir se réduire : un contenu large
+     (ligne de puces, tableau, badge) élargit sinon la colonne entière. */
+  .panel > *,
+  .panel-large > *,
+  .page-stack > *,
+  .delivery-workspace > *,
+  .delivery-create-panel > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* En-têtes de section : retour à la ligne au lieu de dépasser. */
+  .ui-section-header,
+  .panel-header,
+  .delivery-workspace-heading,
+  .delivery-command-header,
+  .delivery-create-heading {
+    flex-wrap: wrap;
+  }
+
+  .ui-section-header > *,
+  .panel-header > *,
+  .delivery-workspace-heading > * {
+    min-width: 0;
+  }
+
+  /* Rangées de badges / étiquettes (immatriculations, permis…) : on passe à la
+     ligne plutôt que de sortir de l'écran. */
+  [class*="chip-row"],
+  [class*="chips"],
+  [class*="tags"],
+  [class*="badges"] {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Cartes de chauffeur : la carte est une rangée flex de 5 éléments (nom,
+     téléphone, permis, date, camion) qui ne pouvait pas se réduire — mesurée à
+     446 px dans un conteneur de 334. On passe à la ligne. */
+  .stat-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px 12px;
+    padding: 14px;
+  }
+
+  .stat-card > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .mobile-cards-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .mobile-cards-grid > * {
+    min-width: 0;
+  }
+
+  /* ── 11. Compacité : ramener les données au premier écran ──────────────────
+     Mesure du 13/10 : la première carte de bon était à 1 026 px, donc invisible
+     sur un écran de 844 px. On récupère la place prise par le décor. */
+
+  /* Décalage sous la barre de navigation fixe. Le sélecteur composé est
+     nécessaire : `.main-content.premium-main` (spécificité 0,2,0) écrasait la
+     règle simple — mesuré à 5 px de chevauchement avec le titre de page. */
+  .main-content.premium-main {
+    padding: 68px 12px 16px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  /* Barre de navigation plus basse : elle reste fixe mais prend moins de place. */
+  .mobile-nav-toggle {
+    min-height: 48px;
+    padding: 8px 12px;
+  }
+
+  .mobile-nav-toggle__content strong {
+    font-size: 14px;
+  }
+
+  .mobile-nav-toggle__content small {
+    font-size: 11px;
+  }
+
+  /* Les deux actions du poste de travail tiennent sur une ligne (la règle
+     « écran étroit » les passait en grille pleine largeur). */
+  .delivery-command-actions,
+  .delivery-command-actions[class] {
+    display: flex;
+    flex-direction: row;
+  }
+
+  .delivery-command-actions > button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* Un bouton « Réinitialiser » désactivé n'apporte rien et coûte une ligne. */
+  .delivery-reset-filters:disabled {
+    display: none;
+  }
+
+  /* Ordre mobile : le poste de travail (recherche, filtres, liste des bons)
+     passe AVANT les cartes d'indicateurs — mesuré : la première carte de bon
+     était à 1 026 px, donc sous la ligne de flottaison. */
+  .delivery-command-header,
+  .delivery-create-heading {
+    order: 1;
+  }
+
+  .delivery-workspace,
+  .fuel-workspace {
+    order: 2;
+  }
+
+  .delivery-kpi-grid,
+  .fuel-kpi-grid {
+    order: 3;
+  }
+
+  /* Barres de filtres rendues en grille par une règle large écran : on repasse
+     en ligne défilante (sélecteur renforcé car la règle existante est plus
+     spécifique que `.filters.filter-row`). */
+  .filters.filter-row[class],
+  .filters.filter-row.ops-filter-row[class] {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 2px 12px 6px;
+    margin: 0 -12px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .filters.filter-row[class] > .chip {
+    width: auto;
+    min-width: max-content;
+    flex: 0 0 auto;
+  }
+
+  /* Les phrases de présentation coûtent un écran avant la première donnée. */
+  .page-subtitle,
+  .premium-subtitle,
+  .page-description,
+  .delivery-command-header p {
+    display: none;
+  }
+
+  .delivery-kpi-card,
+  .fuel-kpi-card {
+    padding: 8px 10px;
+  }
+
+  .delivery-kpi-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+    border-radius: 9px;
+  }
+
+  .delivery-kpi-card strong,
+  .fuel-kpi-card strong {
+    font-size: 18px;
+  }
+
+  .delivery-kpi-card small,
+  .fuel-kpi-card small {
+    font-size: 10.5px;
+  }
+
+  .delivery-section-index {
+    display: none;
+  }
+
+  .delivery-workspace-heading h2 {
+    font-size: 16px;
+  }
+
+  .delivery-workspace-heading p {
+    font-size: 11.5px;
+    margin: 0;
+  }
+
+  .delivery-reset-filters {
+    min-height: 38px;
+    padding: 0 12px;
+    font-size: 12.5px;
+    width: auto;
+    align-self: flex-start;
+  }
+
+  /* Les puces dans une barre défilante se dimensionnent sur leur texte : une
+     règle large écran les forçait à 100 % (mesuré : 280 px par puce). */
+  .delivery-status-tabs .chip,
+  .filters .chip,
+  .filter-chips .chip,
+  .chip-row .chip,
+  .reports-status-tabs .chip {
+    width: auto;
+    min-width: max-content;
+  }
+
+  .chip {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .page-stack,
+  .ops-page-stack {
+    gap: 10px;
+  }
+
+  /* Le bouton de navigation ne doit jamais dépasser la largeur de l'écran. */
+  .mobile-nav-toggle {
+    width: auto;
+    left: 12px;
+    right: 12px;
+    max-width: calc(100% - 24px);
+  }
+
+  .reports-table-wrap .pagination,
+  .pagination {
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    max-width: 100%;
+    gap: 6px;
+  }
+
+  .status-chip,
+  .badge {
+    white-space: nowrap;
+  }
+
+  .touch-link,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Le lien vers le détail d'un bon doit être une cible tactile confortable. */
+  .touch-link {
+    display: inline-block;
+    min-height: 32px;
+    line-height: 32px;
+  }
+}
+
+/* Très petits écrans (≤ 360 px) : on resserre encore d'un cran. */
+@media (max-width: 360px) {
+  .delivery-kpi-card strong,
+  .fuel-kpi-card strong {
+    font-size: 18px;
+  }
+
+  .delivery-kpi-card small,
+  .fuel-kpi-card small {
+    font-size: 10.5px;
+  }
+
+  table.mobile-cards td::before {
+    flex-basis: 45%;
+  }
+}

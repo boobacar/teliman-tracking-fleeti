@@ -368,7 +368,7 @@ export function DriversPage({ filteredTrackers }) {
         )}
 
         <div className="reports-table-wrap">
-          <table className="reports-table">
+          <table className="reports-table mobile-cards">
             <caption>Liste des chauffeurs</caption>
             <thead>
               <tr>

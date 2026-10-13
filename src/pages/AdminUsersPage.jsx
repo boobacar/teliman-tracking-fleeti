@@ -239,7 +239,7 @@ export function AdminUsersPage() {
         </div>
 
         <div className="reports-table-wrap">
-          <table className="reports-table">
+          <table className="reports-table mobile-cards">
             <caption className="sr-only">Utilisateurs et permissions configurés</caption>
             <thead><tr><th scope="col">Email</th><th scope="col">Rôle</th><th scope="col">Permissions</th><th scope="col">Actions</th></tr></thead>
             <tbody>

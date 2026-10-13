@@ -356,7 +356,7 @@ export function DashboardPage({
 
         {fleetSituation.length > 0 && (
           <div className="fleet-situation-table-wrap">
-            <table className="ops-table fleet-situation-table">
+            <table className="ops-table fleet-situation-table mobile-cards">
               <thead>
                 <tr>
                   <th>Camion</th>
