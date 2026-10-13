@@ -169,6 +169,30 @@ function createTables() {
       ON alert_subscriptions(recipientId, category, scopeType, scopeValue);
     CREATE INDEX IF NOT EXISTS idx_alert_subs_recipient ON alert_subscriptions(recipientId);
 
+    -- Heure d'envoi de chaque type de rapport (quotidien, hebdomadaire…).
+    -- Une ligne par type : l'utilisateur règle l'heure, la minute et le jour.
+    CREATE TABLE IF NOT EXISTS report_schedules (
+      reportKey TEXT PRIMARY KEY,
+      hour INTEGER NOT NULL,
+      minute INTEGER NOT NULL DEFAULT 0,
+      weekday INTEGER,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updatedAt TEXT NOT NULL DEFAULT ''
+    );
+
+    -- Journal des envois : garantit qu'un rapport ne part qu'une fois par jour,
+    -- même si le serveur redémarre pendant la minute d'envoi.
+    CREATE TABLE IF NOT EXISTS report_sends (
+      id INTEGER PRIMARY KEY,
+      reportKey TEXT NOT NULL,
+      dayKey TEXT NOT NULL,
+      sentAt TEXT NOT NULL DEFAULT '',
+      recipients TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_report_sends_unique ON report_sends(reportKey, dayKey);
+
 
     CREATE TABLE IF NOT EXISTS geofence_events (
       id INTEGER PRIMARY KEY,
@@ -880,6 +904,85 @@ export function updateAlertSubscription(id, updates = {}) {
 export function deleteAlertSubscription(id) {
   const result = getDatabase().prepare('DELETE FROM alert_subscriptions WHERE id = ?').run(id)
   if (result.changes !== 1) throw new Error('Règle introuvable')
+}
+
+// ── Rapports programmés (heure d'envoi par type de rapport) ──
+
+export function readReportSchedules() {
+  const rows = getDatabase().prepare('SELECT * FROM report_schedules').all()
+  return rows.map((row) => ({
+    reportKey: String(row.reportKey),
+    hour: Number(row.hour),
+    minute: Number(row.minute),
+    weekday: row.weekday === null || row.weekday === undefined ? null : Number(row.weekday),
+    enabled: Boolean(row.enabled),
+    updatedAt: row.updatedAt || '',
+  }))
+}
+
+export function readReportSchedule(reportKey) {
+  return readReportSchedules().find((row) => row.reportKey === String(reportKey)) || null
+}
+
+export function upsertReportSchedule(schedule) {
+  const payload = {
+    reportKey: String(schedule.reportKey || '').trim(),
+    hour: Number(schedule.hour),
+    minute: Number(schedule.minute || 0),
+    weekday: schedule.weekday === null || schedule.weekday === undefined || schedule.weekday === '' ? null : Number(schedule.weekday),
+    enabled: schedule.enabled === false ? 0 : 1,
+    updatedAt: new Date().toISOString(),
+  }
+  if (!payload.reportKey) throw new Error('Type de rapport manquant')
+  if (!Number.isInteger(payload.hour) || payload.hour < 0 || payload.hour > 23) throw new Error('Heure invalide (0 à 23)')
+  getDatabase().prepare(`
+    INSERT INTO report_schedules (reportKey, hour, minute, weekday, enabled, updatedAt)
+    VALUES (@reportKey, @hour, @minute, @weekday, @enabled, @updatedAt)
+    ON CONFLICT(reportKey) DO UPDATE SET
+      hour = @hour, minute = @minute, weekday = @weekday, enabled = @enabled, updatedAt = @updatedAt
+  `).run(payload)
+  return readReportSchedule(payload.reportKey)
+}
+
+export function readReportSend(reportKey, dayKey) {
+  const row = getDatabase()
+    .prepare('SELECT * FROM report_sends WHERE reportKey = ? AND dayKey = ?')
+    .get(String(reportKey), String(dayKey))
+  if (!row) return null
+  return {
+    reportKey: String(row.reportKey),
+    dayKey: String(row.dayKey),
+    sentAt: row.sentAt || '',
+    recipients: (() => { try { return JSON.parse(row.recipients || '[]') } catch { return [] } })(),
+    status: row.status || '',
+    detail: row.detail || '',
+  }
+}
+
+// Journalise un envoi. Rejoue sans erreur si la ligne existe déjà (redémarrage
+// pendant la minute d'envoi) : le rapport ne part qu'une fois par jour.
+export function recordReportSend({ reportKey, dayKey, recipients = [], status = 'sent', detail = '' } = {}) {
+  getDatabase().prepare(`
+    INSERT INTO report_sends (reportKey, dayKey, sentAt, recipients, status, detail)
+    VALUES (@reportKey, @dayKey, @sentAt, @recipients, @status, @detail)
+    ON CONFLICT(reportKey, dayKey) DO UPDATE SET
+      sentAt = @sentAt, recipients = @recipients, status = @status, detail = @detail
+  `).run({
+    reportKey: String(reportKey),
+    dayKey: String(dayKey),
+    sentAt: new Date().toISOString(),
+    recipients: JSON.stringify(recipients || []),
+    status,
+    detail: String(detail || '').slice(0, 500),
+  })
+  return readReportSend(reportKey, dayKey)
+}
+
+export function readReportSends(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 200))
+  return getDatabase()
+    .prepare('SELECT reportKey, dayKey, sentAt, status, detail FROM report_sends ORDER BY id DESC LIMIT ?')
+    .all(safeLimit)
 }
 
 // ── Geofence Events ──

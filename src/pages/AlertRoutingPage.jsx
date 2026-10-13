@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BellRing, Plus, RefreshCw, Trash2, UserPlus, Power } from 'lucide-react'
+import { BellRing, Clock, Eye, Plus, RefreshCw, Trash2, UserPlus, Power } from 'lucide-react'
 import { EmptyBanner, ErrorBanner, LoadingBanner } from '../components/FeedbackBanners'
 import { PageStack, SectionHeader } from '../components/UIPrimitives'
 import {
@@ -10,9 +10,12 @@ import {
   loadAlertRouting,
   loadGeofences,
   loadMasterData,
+  loadReportPreview,
+  loadReportSchedules,
   loadVehicles,
   updateAlertRecipient,
   updateAlertSubscription,
+  updateReportSchedule,
 } from '../lib/fleeti'
 
 // Page « Alertes & Rapports » — contrôle de QUI REÇOIT QUOI.
@@ -49,16 +52,23 @@ export function AlertRoutingPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  // Rapports programmés : heure d'envoi par type + aperçu du texte réel
+  const [reports, setReports] = useState([])
+  const [reportDrafts, setReportDrafts] = useState({})
+  const [reportRecipientsCount, setReportRecipientsCount] = useState(0)
+  const [reportBusy, setReportBusy] = useState('')
+  const [preview, setPreview] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [routing, zones, master, vehicles] = await Promise.all([
+      const [routing, zones, master, vehicles, schedules] = await Promise.all([
         loadAlertRouting(),
         loadGeofences().catch(() => ({ geofences: [] })),
         loadMasterData().catch(() => ({})),
         loadVehicles().catch(() => ({ vehicles: [] })),
+        loadReportSchedules().catch(() => ({ schedules: [], recipients: [] })),
       ])
       setState({
         recipients: routing?.recipients || [],
@@ -66,6 +76,8 @@ export function AlertRoutingPage() {
         categories: routing?.categories || [],
         groups: routing?.groups || [],
       })
+      setReports(schedules?.schedules || [])
+      setReportRecipientsCount((schedules?.recipients || []).length)
       setGeofences(zones?.geofences || [])
       const clientNames = (master?.clients || master?.masterData?.clients || []).slice?.() || []
       setClients(clientNames)
@@ -79,6 +91,41 @@ export function AlertRoutingPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // ── Rapports programmés ────────────────────────────────────────────────────
+  const two = (value) => String(Number(value ?? 0)).padStart(2, '0')
+  const timeValueOf = (report) => reportDrafts[report.reportKey] ?? `${two(report.hour)}:${two(report.minute)}`
+
+  const saveReportSchedule = async (reportKey, payload) => {
+    setReportBusy(reportKey)
+    setError('')
+    setInfo('')
+    try {
+      const response = await updateReportSchedule(reportKey, payload)
+      const saved = response?.schedule
+      if (saved) {
+        setReports((current) => current.map((report) => (report.reportKey === reportKey ? { ...report, ...saved } : report)))
+        setInfo(`${saved.label} : envoi ${saved.scheduleLabel}.`)
+      }
+    } catch (saveError) {
+      setError(saveError?.message || 'Enregistrement de l’heure impossible.')
+    } finally {
+      setReportBusy('')
+    }
+  }
+
+  const showPreview = async (reportKey) => {
+    setReportBusy(reportKey)
+    setError('')
+    try {
+      const response = await loadReportPreview(reportKey)
+      setPreview({ reportKey, ...response })
+    } catch (previewError) {
+      setError(previewError?.message || 'Aperçu indisponible.')
+    } finally {
+      setReportBusy('')
+    }
+  }
 
   const subscriptionByKey = useMemo(() => {
     const map = new Map()
@@ -285,12 +332,85 @@ export function AlertRoutingPage() {
         )
       })}
 
+      <section className="panel panel-large report-schedule-panel">
+        <h2><Clock size={20} /> Heure d’envoi des rapports</h2>
+        <p className="muted">
+          Chaque type de rapport a sa propre heure : modifier le rapport quotidien ne touche pas l’hebdomadaire.
+          Les numéros qui reçoivent un rapport sont ceux cochés pour sa catégorie dans le tableau ci-dessus
+          {' '}({reportRecipientsCount} destinataire{reportRecipientsCount > 1 ? 's' : ''} pour le rapport quotidien).
+        </p>
+        <div className="report-schedule-grid">
+          {reports.map((report) => (
+            <article key={report.reportKey} className="report-schedule-card">
+              <header>
+                <div>
+                  <strong>{report.label}</strong>
+                  <small>{report.description}</small>
+                </div>
+                <label className="delivery-active-switch">
+                  <span>
+                    <strong>Actif</strong>
+                    <small>{report.enabled ? report.scheduleLabel : 'désactivé'}</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={report.enabled !== false}
+                    disabled={reportBusy === report.reportKey}
+                    onChange={(event) => saveReportSchedule(report.reportKey, { enabled: event.target.checked })}
+                  />
+                </label>
+              </header>
+              <div className="report-schedule-controls">
+                <label className="field-stack">
+                  <span>Heure d’envoi</span>
+                  <input
+                    type="time"
+                    value={timeValueOf(report)}
+                    disabled={reportBusy === report.reportKey}
+                    onChange={(event) => setReportDrafts((current) => ({ ...current, [report.reportKey]: event.target.value }))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  disabled={reportBusy === report.reportKey || !reportDrafts[report.reportKey]}
+                  onClick={() => {
+                    const [hour, minute] = String(reportDrafts[report.reportKey] || '').split(':')
+                    return saveReportSchedule(report.reportKey, { hour: Number(hour), minute: Number(minute) })
+                  }}
+                >
+                  Enregistrer l’heure
+                </button>
+                <button type="button" className="ghost-btn" disabled={reportBusy === report.reportKey} onClick={() => showPreview(report.reportKey)}>
+                  <Eye size={18} /> Voir le contenu
+                </button>
+              </div>
+            </article>
+          ))}
+          {!reports.length && <EmptyBanner message="Heures d’envoi indisponibles." />}
+        </div>
+        {preview && (
+          <div className="report-preview">
+            <div className="report-preview-head">
+              <strong>Aperçu — {reports.find((report) => report.reportKey === preview.reportKey)?.label || preview.reportKey}</strong>
+              <button type="button" className="ghost-btn" onClick={() => setPreview(null)}>Fermer</button>
+            </div>
+            <pre>{preview.text}</pre>
+            <small className="muted">
+              {preview.stats ? `${preview.stats.activeTrucks ?? preview.stats.trucks ?? 0} camion(s) · ${preview.stats.missions ?? 0} mission(s) · ${preview.text?.length ?? 0} caractères` : null}
+              {preview.notes?.length ? ` · ${preview.notes.join(' · ')}` : ''}
+            </small>
+          </div>
+        )}
+      </section>
+
       <section className="panel panel-large">
         <h2><BellRing size={20} /> À savoir</h2>
         <ul className="muted">
           <li>Les contacts clients saisis dans <strong>Données → clientPhones</strong> continuent de recevoir les bornes de leurs missions : ce réglage s’ajoute, il ne les remplace pas.</li>
           <li>Un destinataire désactivé ne reçoit plus rien, quelles que soient ses cases cochées.</li>
-          <li>Les rapports quotidiens/hebdomadaires listés ici désignent leurs destinataires : la génération du rapport sera branchée à l’étape suivante.</li>
+          <li>Les rapports partent à l’heure choisie ci-dessus, avec les données réellement enregistrées (missions, passages de zone, kilométrage et temps de conduite Fleeti, bons carburant).</li>
         </ul>
       </section>
     </PageStack>

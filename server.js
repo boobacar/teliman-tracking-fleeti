@@ -42,6 +42,7 @@ import {
   readMissionTimeline, appendMissionTimelineEvent,
   readGeofenceEvents, countGeofenceEvents, insertGeofenceEvent, markGeofenceEventNotified,
   readMissionZoneMap, insertMissionZoneMap, updateMissionZoneMap, deleteMissionZoneMap,
+  readReportSchedules, readReportSchedule, upsertReportSchedule, readReportSend, recordReportSend, readReportSends,
 } from './src/backend/database.js'
 import {
   ALERT_CATEGORIES,
@@ -50,6 +51,16 @@ import {
   resolveRoutedRecipients,
   validateSubscriptionInput,
 } from './src/backend/alertRouting.js'
+import { buildDailyReport, buildWeeklyReport } from './src/backend/dailyReport.js'
+import {
+  REPORT_TYPES,
+  defaultScheduleFor,
+  formatHourMinute,
+  formatScheduleLabel,
+  isReportDue,
+  normalizeSchedule,
+  reportDayKey,
+} from './src/backend/reportSchedules.js'
 
 dotenv.config()
 
@@ -540,6 +551,12 @@ function requiredRoutePermissions(req) {
   // écriture réservée à manage_data.
   if (pathName.startsWith('/api/alert-routing')) return ['manage_data', 'page_alerts']
   if (pathName.startsWith('/api/alert-subscriptions')) return ['manage_data']
+  // Rapports programmés : lecture (aperçu compris) pour les gestionnaires et la page
+  // alertes, écriture et envoi manuel réservés à manage_data.
+  if (pathName.startsWith('/api/report-schedules') || pathName.startsWith('/api/report-preview')) {
+    return mutation ? ['manage_data'] : ['manage_data', 'page_alerts']
+  }
+  if (pathName.startsWith('/api/report-send')) return ['manage_data']
   if (pathName.startsWith('/api/reports')) return ['page_reports']
   if (pathName.startsWith('/api/tracks') || pathName.startsWith('/api/positions-live')) return ['page_map']
   if (pathName.startsWith('/api/alerts') || pathName.startsWith('/api/rules-detail')) {
@@ -3392,6 +3409,257 @@ app.delete('/api/alert-subscriptions/:id', requirePermission('manage_data'), (re
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: 'Identifiant invalide' })
     deleteAlertSubscription(id)
     res.json({ ok: true })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rapports programmés (« quel camion a fait quoi »)
+//
+// Le contenu est assemblé à partir des données réellement enregistrées : missions
+// (bons de livraison), franchissements de zone, totaux Fleeti (km, conduite,
+// repos), bons carburant et alertes de conduite. Aucune valeur n'est estimée :
+// une donnée absente disparaît simplement de la ligne concernée.
+// Les destinataires sont ceux cochés pour la catégorie « Rapport quotidien »
+// (ou « Rapport hebdomadaire ») dans la page Alertes & Rapports.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Libellés des alertes de conduite retenues comme « incident » dans le rapport.
+// Les entrées/sorties de zone ne sont pas répétées ici : elles ont leur propre ligne.
+const REPORT_INCIDENT_LABELS = {
+  speedup: 'excès de vitesse',
+  excessive_parking: 'stationnement prolongé',
+  crash_alarm: 'alerte accident',
+  fuel_level_leap: 'variation de carburant',
+}
+
+function formatFrenchDate(date) {
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month}/${date.getFullYear()}`
+}
+
+function reportDayKeyOf(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// Rassemble les données du rapport pour une fenêtre de dates. Les échecs partiels
+// (API Fleeti indisponible, alertes illisibles) ne font pas échouer le rapport :
+// on envoie ce qu'on a, et on le signale.
+async function collectReportData({ period = 'today' } = {}) {
+  const notes = []
+  const orders = (() => { try { return readDeliveryOrders() || [] } catch (error) { notes.push(`bons indisponibles (${error.message})`); return [] } })()
+  const events = (() => { try { return readGeofenceEvents(500) || [] } catch (error) { notes.push(`événements de zone indisponibles (${error.message})`); return [] } })()
+  const vouchers = (() => { try { return readFuelVouchers() || [] } catch (error) { notes.push(`bons carburant indisponibles (${error.message})`); return [] } })()
+
+  let fleetRows = []
+  let fleetDetailsAvailable = false
+  try {
+    const situation = await buildFleetSituation(period)
+    fleetRows = (situation?.items || []).map((item) => ({
+      trackerId: item.trackerId,
+      truckLabel: item.label,
+      driver: item.employeeName && item.employeeName !== 'Non assigné' ? item.employeeName : '',
+      distanceKm: Number.isFinite(Number(item.distanceKm)) ? Number(item.distanceKm) : null,
+      drivingSeconds: Number.isFinite(Number(item.tripDurationSec)) ? Number(item.tripDurationSec) : null,
+      restSeconds: Number.isFinite(Number(item.parkingDurationSec)) ? Number(item.parkingDurationSec) : null,
+    }))
+    fleetDetailsAvailable = fleetRows.length > 0
+    if (!fleetDetailsAvailable) notes.push('aucune donnée de conduite reçue de Fleeti')
+  } catch (error) {
+    notes.push(`détails Fleeti indisponibles (${error.message})`)
+  }
+
+  let alerts = []
+  let knownTrucks = fleetRows.map((row) => ({ id: row.trackerId, label: row.truckLabel, driver: row.driver }))
+  try {
+    const data = await getDashboardData()
+    for (const truck of data?.trackers || []) {
+      const id = truck.trackerId ?? truck.id
+      if (id === undefined) continue
+      if (!knownTrucks.some((row) => String(row.id) === String(id))) knownTrucks.push({ id, label: truck.label || truck.name || '' })
+    }
+    alerts = (data?.history || [])
+      .map((alert) => {
+        const event = String(alert.event || alert.eventType || alert.type || '').trim()
+        const label = REPORT_INCIDENT_LABELS[event]
+        if (!label) return null
+        return {
+          trackerId: alert.tracker_id ?? alert.trackerId ?? null,
+          truckLabel: alert.tracker_label || alert.truckLabel || alert.label || '',
+          label,
+          createdAt: alert.time || alert.timestamp || alert.createdAt || null,
+        }
+      })
+      .filter(Boolean)
+  } catch (error) {
+    notes.push(`alertes indisponibles (${error.message})`)
+  }
+
+  return { orders, events, vouchers, fleetRows, fleetDetailsAvailable, alerts, knownTrucks, notes }
+}
+
+// Construit le texte du rapport demandé, à la date voulue.
+async function buildReportPayload(reportKey, { now = new Date() } = {}) {
+  if (reportKey === 'report_weekly') {
+    const to = new Date(now)
+    const from = new Date(now.getTime() - 6 * 24 * 3600 * 1000)
+    const data = await collectReportData({ period: '7d' })
+    const report = buildWeeklyReport({
+      dayFrom: reportDayKeyOf(from),
+      dayTo: reportDayKeyOf(to),
+      dateLabel: `du ${formatFrenchDate(from)} au ${formatFrenchDate(to)}`,
+      orders: data.orders,
+      events: data.events,
+      fleetRows: data.fleetRows,
+      vouchers: data.vouchers,
+      knownTrucks: data.knownTrucks,
+    })
+    return { ...report, notes: data.notes }
+  }
+
+  const schedule = readReportSchedule('report_daily') || defaultScheduleFor('report_daily')
+  const data = await collectReportData({ period: 'today' })
+  const report = buildDailyReport({
+    day: reportDayKeyOf(now),
+    dateLabel: formatFrenchDate(now),
+    hourLabel: Number(schedule.minute) ? formatHourMinute(schedule.hour, schedule.minute) : `${Number(schedule.hour)}h`,
+    orders: data.orders,
+    events: data.events,
+    fleetRows: data.fleetRows,
+    vouchers: data.vouchers,
+    alerts: data.alerts,
+    knownTrucks: data.knownTrucks,
+    fleetDetailsAvailable: data.fleetDetailsAvailable,
+  })
+  return { ...report, notes: data.notes }
+}
+
+function reportRecipients(reportKey) {
+  try {
+    return routedAlertPhones(reportKey)
+  } catch (error) {
+    console.warn(`[rapport] destinataires indisponibles (${reportKey}) :`, error?.message || error)
+    return []
+  }
+}
+
+// Envoie un rapport maintenant. `phones` permet un envoi ciblé (aperçu demandé par
+// un utilisateur) sans toucher à la liste des destinataires.
+async function sendReportNow(reportKey, { now = new Date(), phones = null, manual = false } = {}) {
+  const payload = await buildReportPayload(reportKey, { now })
+  const recipients = (Array.isArray(phones) && phones.length ? phones : reportRecipients(reportKey))
+    .map((phone) => String(phone || '').trim())
+    .filter(Boolean)
+  // Clé de journée : un envoi manuel porte une clé à part pour ne pas faire croire
+  // à l'ordonnanceur que le rapport programmé du jour est déjà parti.
+  const dayKey = manual ? `${reportDayKey(reportKey, now)}:manuel:${Date.now()}` : reportDayKey(reportKey, now)
+
+  if (!recipients.length) {
+    recordReportSend({ reportKey, dayKey, recipients: [], status: 'skipped', detail: 'Aucun destinataire sélectionné pour ce rapport.' })
+    return { ...payload, recipients: [], results: [], status: 'skipped', reason: 'Aucun destinataire sélectionné pour ce rapport.' }
+  }
+
+  const results = []
+  for (const phone of recipients) {
+    try {
+      const result = await sendWhatsAppTextMessage({
+        to: phone,
+        message: payload.text,
+        config: WHATSAPP_CONFIG,
+        baileysClient: baileysWhatsAppClient,
+        context: { source: 'report', reportKey, immediate: true },
+      })
+      results.push({ phone, ...result })
+    } catch (error) {
+      results.push({ phone, sent: false, error: error?.message || String(error) })
+    }
+  }
+
+  const queued = results.filter((result) => result.queued).length
+  const sent = results.filter((result) => result.sent).length
+  const failed = results.length - queued - sent
+  const status = sent || queued ? 'sent' : 'error'
+  recordReportSend({
+    reportKey,
+    dayKey,
+    recipients,
+    status,
+    detail: [`${sent} envoyé(s)`, queued ? `${queued} en file` : null, failed ? `${failed} en échec` : null].filter(Boolean).join(', '),
+  })
+  console.log(`[rapport] ${reportKey} ${status} — ${sent} envoyé(s), ${queued} en file, ${failed} en échec (${recipients.length} destinataire(s))`)
+  return { ...payload, recipients, results, status, sent, queued, failed }
+}
+
+// Ordonnanceur : vérifie toutes les 30 s si un rapport doit partir. Le journal
+// report_sends garantit l'unicité par jour, même après un redémarrage.
+async function runDueReports(now = new Date()) {
+  const stored = readReportSchedules()
+  for (const type of REPORT_TYPES) {
+    const storedSchedule = stored.find((row) => row.reportKey === type.key)
+    const schedule = storedSchedule || defaultScheduleFor(type.key)
+    if (!isReportDue(schedule, now)) continue
+    const dayKey = reportDayKey(type.key, now)
+    if (readReportSend(type.key, dayKey)) continue
+    try {
+      await sendReportNow(type.key, { now })
+    } catch (error) {
+      console.warn(`[rapport] ${type.key} en échec :`, error?.message || error)
+      recordReportSend({ reportKey: type.key, dayKey, recipients: [], status: 'error', detail: String(error?.message || error).slice(0, 400) })
+    }
+  }
+}
+
+setInterval(() => { void runDueReports().catch((error) => console.warn('[rapport] ordonnanceur :', error?.message || error)) }, 30_000)
+
+app.get('/api/report-schedules', (_req, res) => {
+  const stored = readReportSchedules()
+  const schedules = REPORT_TYPES.map((type) => {
+    const schedule = stored.find((row) => row.reportKey === type.key) || defaultScheduleFor(type.key)
+    return {
+      ...schedule,
+      label: type.label,
+      description: type.description,
+      scheduleLabel: schedule.enabled ? formatScheduleLabel(schedule) : 'désactivé',
+    }
+  })
+  res.json({ ok: true, schedules, lastSends: readReportSends(10), recipients: reportRecipients('report_daily') })
+})
+
+app.put('/api/report-schedules/:reportKey', requirePermission('manage_data'), (req, res) => {
+  try {
+    const reportKey = String(req.params.reportKey || '').trim()
+    const type = REPORT_TYPES.find((entry) => entry.key === reportKey)
+    if (!type) return res.status(400).json({ ok: false, error: 'Type de rapport inconnu.' })
+    const current = readReportSchedule(reportKey) || defaultScheduleFor(reportKey)
+    const next = normalizeSchedule(reportKey, req.body || {}, current)
+    const saved = upsertReportSchedule(next)
+    res.json({ ok: true, schedule: { ...saved, label: type.label, description: type.description, scheduleLabel: saved.enabled ? formatScheduleLabel(saved) : 'désactivé' } })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.get('/api/report-preview', async (req, res) => {
+  try {
+    const reportKey = String(req.query.type || 'report_daily').trim()
+    if (!REPORT_TYPES.some((type) => type.key === reportKey)) return res.status(400).json({ ok: false, error: 'Type de rapport inconnu.' })
+    const payload = await buildReportPayload(reportKey, {})
+    res.json({ ok: true, reportKey, text: payload.text, stats: payload.stats, notes: payload.notes, recipients: reportRecipients(reportKey) })
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+app.post('/api/report-send', requirePermission('manage_data'), async (req, res) => {
+  try {
+    const reportKey = String(req.body?.type || 'report_daily').trim()
+    if (!REPORT_TYPES.some((type) => type.key === reportKey)) return res.status(400).json({ ok: false, error: 'Type de rapport inconnu.' })
+    const phones = Array.isArray(req.body?.phones) ? req.body.phones : null
+    const manual = req.body?.manual === true || Boolean(phones)
+    const result = await sendReportNow(reportKey, { phones, manual })
+    res.json({ ok: true, text: result.text, stats: result.stats, recipients: result.recipients, status: result.status, sent: result.sent, queued: result.queued, failed: result.failed, results: result.results })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
   }

@@ -6546,3 +6546,65 @@ td .delivery-suspended-label {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Rapports programmés : heure d'envoi par type + aperçu du contenu ───────── */
+.report-schedule-panel .report-schedule-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin-top: 12px;
+}
+
+.report-schedule-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--ops-border);
+  border-radius: 14px;
+}
+
+.report-schedule-card header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.report-schedule-card header strong { display: block; }
+.report-schedule-card header small { display: block; color: var(--ops-muted); font-size: 12px; }
+
+.report-schedule-controls {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.report-schedule-controls .field-stack { min-width: 140px; }
+.report-schedule-controls .ghost-btn { min-height: 44px; }
+
+.report-preview {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--ops-border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.report-preview-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.report-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ops-text);
+}

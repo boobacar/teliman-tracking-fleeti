@@ -311,6 +311,15 @@ export const updateAlertRecipient = (id, payload) => fetchJson(`/api/alert-recip
 export const deleteAlertRecipient = (id) => fetchJson(`/api/alert-recipients/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...getSessionHeaders() } })
 // Qui reçoit quoi : abonnements d'alertes par destinataire (catégorie + portée)
 export const loadAlertRouting = () => getJson('/api/alert-routing')
+// Rapports programmés : heure d'envoi par type + aperçu du contenu réel.
+export const loadReportSchedules = () => getJson('/api/report-schedules')
+export const updateReportSchedule = (reportKey, payload) => fetchJson(`/api/report-schedules/${reportKey}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
+  body: JSON.stringify(payload),
+})
+export const loadReportPreview = (type = 'report_daily') => getJson(`/api/report-preview?type=${encodeURIComponent(type)}`)
+export const sendReportNow = (type = 'report_daily', phones = null) => postJson('/api/report-send', phones ? { type, phones } : { type })
 export const createAlertSubscription = (payload) => postJson('/api/alert-subscriptions', payload)
 export const updateAlertSubscription = (id, payload) => fetchJson(`/api/alert-subscriptions/${id}`, {
   method: 'PUT',
