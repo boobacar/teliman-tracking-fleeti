@@ -242,7 +242,6 @@ export function buildWeeklyReport({
   dayFrom,
   dayTo,
   dateLabel,
-  hourLabel = '08h',
   orders = [],
   events = [],
   fleetRows = [],
