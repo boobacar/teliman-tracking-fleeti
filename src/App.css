@@ -5633,6 +5633,21 @@ a.leaflet-control-zoom-out {
 .delivery-mobile-details dd { margin: 0; text-align: right; font-size: 13px; overflow-wrap: anywhere; }
 .delivery-mobile-empty { display: grid; place-items: center; gap: 8px; min-height: 140px; color: var(--ops-muted); }
 
+/* Un bon « En cours » mais inactif n'est pas cassé : une autre mission est active
+   sur le même camion. On l'indique pour que l'agent sache pourquoi il n'est plus
+   dans « Actifs », et on garde la clôture possible. */
+.delivery-suspended-label {
+  display: block;
+  margin: 6px 0 2px;
+  color: #f0b45f;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+td .delivery-suspended-label {
+  margin-top: 4px;
+}
+
 @media (max-width: 1180px) {
   .delivery-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .delivery-form-grid--planning { grid-template-columns: repeat(2, minmax(0, 1fr)); }

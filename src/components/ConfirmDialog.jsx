@@ -45,13 +45,25 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirmer'
 
 export function useAccessibleConfirm() {
   const [request, setRequest] = useState(null)
-  const confirm = useCallback((options) => new Promise((resolve) => setRequest({ ...options, resolve })), [])
+  // Le résolveur est gardé hors de l'état React : le résoudre depuis un updater
+  // (setRequest(current => { current.resolve() })) exécute un effet pendant la
+  // phase de rendu et, si une demande en remplace une autre, la première promesse
+  // n'est jamais résolue — l'appelant reste bloqué et le bouton semble ne rien faire.
+  const pendingRef = useRef(null)
+
+  const confirm = useCallback((options) => new Promise((resolve) => {
+    pendingRef.current?.(false)
+    pendingRef.current = resolve
+    setRequest({ ...options })
+  }), [])
+
   const close = useCallback((accepted) => {
-    setRequest((current) => {
-      current?.resolve(Boolean(accepted))
-      return null
-    })
+    const resolve = pendingRef.current
+    pendingRef.current = null
+    setRequest(null)
+    resolve?.(Boolean(accepted))
   }, [])
+
   const confirmationDialog = request ? (
     <ConfirmDialog
       open

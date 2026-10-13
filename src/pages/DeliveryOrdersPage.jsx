@@ -151,6 +151,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   const [pageLoading, setPageLoading] = useState(false)
   const [error, setError] = useState('')
   const [photoUploadNotice, setPhotoUploadNotice] = useState('')
+  const [deliveryNotice, setDeliveryNotice] = useState(null)
   const [photoUploadProgress, setPhotoUploadProgress] = useState(0)
   const [page, setPage] = useState(1)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -233,9 +234,18 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
   }
 
   const markDelivered = async (item) => {
-    if (!item.active || item.status === 'Livré') return
+    // Le bouton ne doit pas être bloqué par le seul état « active » : une nouvelle
+    // mission sur le même camion désactive la précédente sans changer son statut
+    // (setDeliveryOrderActiveOnTracker). Ces bons restaient « En cours », inactifs,
+    // et donc impossible à clôturer depuis la liste — le bouton semblait cassé.
+    if (item.status === 'Livré') {
+      setDeliveryNotice({ kind: 'info', message: `Bon ${item.reference || item.id} déjà livré.` })
+      setTimeout(() => setDeliveryNotice(null), 3000)
+      return
+    }
     if (!await confirm({ title: 'Clôturer le bon de livraison ?', message: `Le bon ${item.reference || item.id} sera marqué livré et désactivé.`, confirmLabel: 'Marquer livré' })) return
     setError('')
+    setSaving(true)
     try {
       await updateDeliveryOrder(item.id, { status: 'Livré', active: false })
       if (setDeliveryOrders && setDeliveryOrdersSummary) {
@@ -248,8 +258,12 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
       } else {
         await refreshData()
       }
+      setDeliveryNotice({ kind: 'success', message: `Bon ${item.reference || item.id} marqué livré.` })
+      setTimeout(() => setDeliveryNotice(null), 4000)
     } catch (err) {
       setError(err.message || 'Erreur lors du marquage livré.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -341,6 +355,16 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     pendingProofs: deliveryOrders.filter((item) => item.proofStatus === 'En attente').length,
   }
 
+  // Les statuts saisis depuis la fiche d'un bon (Validé, En route, Arrivé site,
+  // Déchargement, Annulé) n'étaient pas filtrables : ces bons devenaient
+  // introuvables depuis la liste. On ajoute toute valeur réellement présente.
+  const statusChips = useMemo(() => {
+    const base = [['all', 'Tous'], ['active', 'Actifs'], ['Prévu', 'Prévus'], ['En chargement', 'En chargement'], ['En cours', 'En cours'], ['Livré', 'Livrés']]
+    const listed = new Set(base.map(([value]) => value))
+    const extra = [...new Set(deliveryOrders.map((item) => item.status).filter((value) => value && !listed.has(value)))]
+    return [...base, ...extra.map((value) => [value, value])]
+  }, [deliveryOrders])
+
   return <PageStack className="ops-page-stack delivery-orders-page">
     {pageLoading && <SkeletonTable rows={4} cols={7} />}
     {error && <div className="info-banner delivery-error-banner" role="alert">{error}</div>}
@@ -417,7 +441,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
         <button type="button" className="ghost-btn delivery-reset-filters" disabled={!hasActiveFilters} onClick={() => { setStatusFilter('all'); setTrackerFilter('all'); setClientFilter('all'); setDateFilter(null); setSearchQuery('') }}><X size={18} /> Réinitialiser</button>
       </div>
       <div className="delivery-status-tabs" aria-label="Filtrer par statut">
-        {[['all', 'Tous'], ['active', 'Actifs'], ['Prévu', 'Prévus'], ['En chargement', 'En chargement'], ['En cours', 'En cours'], ['Livré', 'Livrés']].map(([value, label]) => <button key={value} type="button" className={`chip ${statusFilter === value ? 'selected' : ''}`} onClick={() => setStatusFilter(value)}>{label}</button>)}
+        {statusChips.map(([value, label]) => <button key={value} type="button" className={`chip ${statusFilter === value ? 'selected' : ''}`} onClick={() => setStatusFilter(value)}>{label}</button>)}
       </div>
       <div className="delivery-filter-grid">
         <label className="field-stack delivery-search-field"><span>Recherche BL</span><input aria-label="Recherche bons de livraison" className="filter-control" type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Référence, camion, chauffeur, client…" /></label>
@@ -444,9 +468,9 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
                 <td><strong>{item.client || '—'}</strong><small>{item.loadingPoint ? `${item.loadingPoint} → ` : ''}{item.destination || '—'}</small></td>
                 <td><strong>{item.goods || '—'}</strong><small>{formatDeliveryQuantity(item.quantity)}</small></td>
                 <td><div className="delivery-date-stack"><span><b>D</b>{formatMissionDate(item.departureDateTime)}</span><span><b>A</b>{formatMissionDate(item.arrivalDateTime)}</span><span><b>DC</b>{formatMissionDate(item.date)}</span></div></td>
-                <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span>{item.active && <small className="delivery-active-label">Mission active</small>}</td>
+                <td><span className={`status-chip ${statusClass}`}>{statusLabel}</span>{item.active && <small className="delivery-active-label">Mission active</small>}{!item.active && statusLabel !== 'Livré' && <small className="delivery-active-label delivery-suspended-label" title="Une autre mission est active sur ce camion. Le bon peut toujours être clôturé.">Mission suspendue</small>}</td>
                 <td><span className={`delivery-proof-state ${proofCount ? 'has-proof' : 'missing-proof'}`}><Camera size={17} /> {proofCount ? `${proofCount} photo${proofCount > 1 ? 's' : ''}` : 'En attente'}</span></td>
-                <td><div className="table-actions"><button type="button" className="ghost-btn icon-btn" title="Marquer livré" aria-label={`Marquer ${item.reference} livré`} disabled={saving || !item.active || item.status === 'Livré'} onClick={() => markDelivered(item)}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.reference}`} onClick={() => document.getElementById(pickerId)?.click()}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div></td>
+                <td><div className="table-actions"><button type="button" className="ghost-btn icon-btn" title={statusLabel === 'Livré' ? 'Bon déjà livré' : 'Marquer livré'} aria-label={`Marquer ${item.reference} livré`} disabled={saving || statusLabel === 'Livré'} onClick={() => markDelivered(item)}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" title="Ajouter une photo" aria-label={`Ajouter une photo au bon ${item.reference}`} onClick={() => document.getElementById(pickerId)?.click()}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div></td>
               </tr>
             })}
             {!paginatedOrders.length && <tr><td colSpan="8" className="delivery-empty-state"><ClipboardList size={28} /><strong>Aucun bon trouvé</strong><span>Modifiez les filtres ou créez un nouveau bon.</span></td></tr>}
@@ -461,9 +485,10 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
           const proofCount = Array.isArray(item.proofPhotoDataUrls) ? item.proofPhotoDataUrls.length : (item.proofPhotoDataUrl ? 1 : 0)
           return <article key={`mobile-${item.id}`} className="mobile-voucher-card delivery-mobile-card">
             <header className="mobile-voucher-head"><div><small>Bon de livraison</small><strong><Link className="touch-link" to={`/delivery-order/${item.id}`}>{item.reference || `BL-${item.id}`}</Link></strong></div><span className={`status-chip ${statusLabel === 'Livré' ? 'status-success' : statusLabel === 'Prévu' ? 'status-neutral' : 'status-warn'}`}>{statusLabel}</span></header>
+            {!item.active && statusLabel !== 'Livré' && <p className="delivery-suspended-label">Mission suspendue — une autre mission est active sur ce camion. Le bon peut toujours être clôturé.</p>}
             <div className="delivery-mobile-route"><Truck size={20} /><div><strong>{item.truckLabel || 'Camion non renseigné'}</strong><small>{item.driver || enrichedTrackers.find((t) => String(t.id) === String(item.trackerId))?.employeeName || 'Chauffeur non renseigné'}</small><span>{item.loadingPoint || 'Départ non renseigné'} → {item.destination || 'Destination non renseignée'}</span></div></div>
             <dl className="delivery-mobile-details"><div><dt>Client</dt><dd>{item.client || '—'}</dd></div><div><dt>Chargement</dt><dd>{item.goods || '—'} · {formatDeliveryQuantity(item.quantity)}</dd></div><div><dt>Déchargement</dt><dd>{formatMissionDate(item.date)}</dd></div><div><dt>Preuve</dt><dd className={proofCount ? 'has-proof' : 'missing-proof'}>{proofCount ? `${proofCount} photo${proofCount > 1 ? 's' : ''}` : 'En attente'}</dd></div></dl>
-            <div className="table-actions"><button type="button" className="ghost-btn icon-btn" disabled={saving || !item.active || item.status === 'Livré'} onClick={() => markDelivered(item)} title="Marquer livré" aria-label={`Marquer ${item.reference} livré`}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label={`Ajouter une photo au bon ${item.reference}`}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div>
+            <div className="table-actions"><button type="button" className="ghost-btn icon-btn" disabled={saving || statusLabel === 'Livré'} onClick={() => markDelivered(item)} title={statusLabel === 'Livré' ? 'Bon déjà livré' : 'Marquer livré'} aria-label={`Marquer ${item.reference} livré`}><CheckCircle size={22} /></button><button type="button" className="ghost-btn icon-btn" onClick={() => document.getElementById(pickerId)?.click()} title="Ajouter photo" aria-label={`Ajouter une photo au bon ${item.reference}`}><Camera size={22} /></button><input id={pickerId} type="file" accept="image/*" multiple hidden onChange={async (e) => { const files = Array.from(e.target.files || []); await uploadProofPhotos(item, files); e.target.value = '' }} /><button type="button" className="ghost-btn danger-btn icon-btn" onClick={() => removeOrder(item)} title="Supprimer" aria-label={`Supprimer le bon ${item.reference}`}><Trash2 size={22} /></button></div>
           </article>
         })}
         {!paginatedOrders.length && <div className="delivery-mobile-empty"><ClipboardList size={26} /><strong>Aucun bon trouvé</strong></div>}
@@ -473,6 +498,7 @@ export function DeliveryOrdersPage({ deliveryOrders, deliveryOrdersSummary, enri
     </section>
 
     {photoUploadNotice && <div className={`upload-toast ${photoUploadNotice.kind}`} role="status" aria-live="polite">{photoUploadNotice.message}</div>}
+    {deliveryNotice && <div className={`upload-toast ${deliveryNotice.kind}`} role="status" aria-live="polite">{deliveryNotice.message}</div>}
     {confirmationDialog}
   </PageStack>
 }

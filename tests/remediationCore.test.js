@@ -59,11 +59,20 @@ test('les routes Flotte et Chauffeurs resynchronisent leur mode et un tracker na
   assert.match(trackers, /navigate\(`\/tracker\/\$\{tracker\.id\}`\)/)
 })
 
-test('les invariants BL interdisent un bon Livré actif et verrouillent sa clôture', () => {
+test('les invariants BL interdisent un bon Livré actif et ne verrouillent que les bons déjà livrés', () => {
   const source = read('src/pages/DeliveryOrdersPage.jsx')
   assert.match(source, /form\.status === 'Livré' \? \{ \.\.\.form, active: false \} : form/)
-  assert.match(source, /disabled=\{saving \|\| !item\.active \|\| item\.status === 'Livré'\}/)
   assert.match(source, /Clôturer le bon de livraison/)
+  // Le bouton de clôture n'est verrouillé que par l'état « déjà livré ». Il ne doit
+  // pas l'être par la désactivation automatique du bon (setDeliveryOrderActiveOnTracker
+  // désactive la mission précédente du camion sans changer son statut) : c'est ce
+  // verrou qui rendait les bons « En cours » suspendus inclôturables.
+  const conditions = [...source.matchAll(/disabled=\{saving \|\| ([^}]+)\}/g)].map((match) => match[1])
+  assert.ok(conditions.length >= 2, 'bouton bureau et bouton mobile attendus')
+  for (const condition of conditions) {
+    assert.match(condition, /statusLabel === 'Livré'/)
+    assert.doesNotMatch(condition, /!item\.active/)
+  }
 })
 
 test('App charge les domaines autorisés indépendamment et la suspension démonte le shell métier', () => {
