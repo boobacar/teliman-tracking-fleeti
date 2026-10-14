@@ -1,107 +1,246 @@
-// Génération du rapport « quel camion a fait quoi » : le texte doit être exact,
-// borné en longueur, et ne jamais inventer une valeur absente des données.
+// Rapport journalier TLM : structure demandée par la direction de Teliman Logistique
+// (document « TRACKING RAPPORT ») — suivi général, camions actifs (avec position et
+// temps), camions inactifs, quantités par client.
 import assert from 'node:assert/strict'
-import test from 'node:test'
-
-import { buildDailyReport, buildWeeklyReport, formatClock, shortTruckLabel } from '../src/backend/dailyReport.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import {
+  buildDailyReport,
+  buildWeeklyReport,
+  formatQuantity,
+  parseQuantity,
+} from '../src/backend/dailyReport.js'
+import { OFFICIAL_TRUCKS, driverFor, loadTruckRegistry, plateFor } from '../src/backend/truckRegistry.js'
 
 const DAY = '2026-10-13'
 
-const orders = [
+const ORDERS = [
   {
-    id: 1, trackerId: 3487539, truckLabel: '39151WWCI01', driver: 'YACOUBA SARIA', client: 'LAFARGE',
-    loadingPoint: 'BOUAKE', destination: 'KORHOGO', goods: 'CIMENT CPJ 42,5', status: 'Livré',
-    date: '2026-10-13T13:57:00.000Z', departureDateTime: '2026-10-13T11:44:00.000Z', completedAt: '2026-10-13T13:57:00.000Z',
+    id: 1,
+    trackerId: 3487539,
+    truckLabel: '39151WWCI01',
+    driver: 'SARIA YACOUBA',
+    reference: '31011328363',
+    client: 'LAFARGE',
+    loadingPoint: 'BOUAKE',
+    destination: 'KORHOGO',
+    goods: 'CIMENT CPJ 42,5',
+    quantity: '40,000',
+    status: 'Livré',
+    date: `${DAY}T08:00:00.000Z`,
+    departureDateTime: `${DAY}T11:44:00.000Z`,
+    completedAt: `${DAY}T13:57:00.000Z`,
   },
   {
-    id: 2, trackerId: 3537761, truckLabel: '3100WWCI01', driver: 'MAMADOU', client: 'K1 MINE',
-    loadingPoint: 'MINE', destination: 'USINE', goods: 'CLINKER', status: 'En cours',
-    date: '2026-10-13T06:10:00.000Z', departureDateTime: '2026-10-13T06:10:00.000Z',
+    id: 2,
+    trackerId: 3487539,
+    truckLabel: '39151WWCI01',
+    client: 'LAFARGE',
+    loadingPoint: 'BOUAKE',
+    destination: 'KORHOGO',
+    goods: 'CIMENT CPJ 42,5',
+    quantity: '40,000',
+    status: 'En cours',
+    date: `${DAY}T09:00:00.000Z`,
+    departureDateTime: `${DAY}T12:05:00.000Z`,
   },
-  // Bon d'hier : ne doit pas apparaître dans le rapport du jour
-  { id: 3, trackerId: 3537762, truckLabel: '3216WWCI01', client: 'LAFARGE', status: 'Livré', date: '2026-10-12T09:00:00.000Z' },
+  {
+    id: 3,
+    trackerId: 999,
+    truckLabel: '3952WWCI01',
+    client: 'K1',
+    loadingPoint: 'BOUAKE',
+    destination: 'KORHOGO',
+    goods: 'CIMENT CPA 52,5',
+    quantity: '52,940',
+    status: 'Livré',
+    date: `${DAY}T07:00:00.000Z`,
+    departureDateTime: `${DAY}T07:30:00.000Z`,
+    completedAt: `${DAY}T09:00:00.000Z`,
+  },
+  {
+    id: 4,
+    trackerId: 999,
+    truckLabel: '3952WWCI01',
+    client: 'K1',
+    quantity: '',
+    status: 'Validé',
+    date: `${DAY}T06:00:00.000Z`,
+  },
 ]
 
-const events = [
-  { trackerId: 3488325, truckLabel: '45791WWCI01', eventType: 'exit', geofenceName: 'Bouaké', createdAt: '2026-10-13T15:07:00.000Z' },
-  { trackerId: 3537762, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Bouaké', createdAt: '2026-10-13T10:08:00.000Z' },
-  { trackerId: 3488325, truckLabel: '45791WWCI01', eventType: 'enter', geofenceName: 'Korhogo, client', createdAt: '2026-10-12T18:48:00.000Z' },
+const EVENTS = [
+  { trackerId: 3487539, truckLabel: '39151WWCI01', eventType: 'exit', geofenceName: 'Bouaké', createdAt: `${DAY}T15:07:00.000Z` },
+  { trackerId: 111, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Bouaké', createdAt: `${DAY}T10:08:00.000Z` },
+  { trackerId: 111, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Korhogo, client', createdAt: `${DAY}T14:00:00.000Z` },
+  { trackerId: 111, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Fadyadougou, mine', createdAt: `${DAY}T16:00:00.000Z` },
+  { trackerId: 111, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Abidjan, carrière', createdAt: `${DAY}T17:00:00.000Z` },
+  { trackerId: 111, truckLabel: '3216WWCI01', eventType: 'enter', geofenceName: 'Bouaké', createdAt: `2026-10-12T10:00:00.000Z` },
 ]
 
-const fleetRows = [
-  { trackerId: 3487539, truckLabel: '39151WWCI01', driver: 'YACOUBA SARIA', distanceKm: 412, drivingSeconds: 6 * 3600 + 20 * 60, restSeconds: 2 * 3600 + 5 * 60 },
-  { trackerId: 3537761, truckLabel: '3100WWCI01', driver: 'MAMADOU', distanceKm: 268.4, drivingSeconds: 4 * 3600 + 10 * 60, restSeconds: 90 * 60 },
+const FLEET_ROWS = [
+  { trackerId: 3487539, truckLabel: '39151WWCI01', distanceKm: 153.4, drivingSeconds: 4 * 3600 + 1 * 60, restSeconds: 14 * 3600 + 40 * 60 },
+  { trackerId: 111, truckLabel: '3216WWCI01', distanceKm: 0, drivingSeconds: 0, restSeconds: 0 },
 ]
 
-const vouchers = [{ trackerId: 3487539, truckLabel: '39151WWCI01', liters: 250, voucherNumber: 'C-118', date: '2026-10-13T07:00:00.000Z' }]
-
-const alerts = [
-  { trackerId: 3537761, truckLabel: '3100WWCI01', label: 'stationnement prolongé', createdAt: '2026-10-13T09:30:00.000Z' },
+const ALERTS = [
+  { trackerId: 3487539, truckLabel: '39151WWCI01', event: 'excessive_parking', createdAt: `${DAY}T11:00:00.000Z` },
+  { trackerId: 3487539, truckLabel: '39151WWCI01', event: 'speedup', createdAt: `${DAY}T12:30:00.000Z` },
+  { trackerId: 500, truckLabel: '3100WWC101', event: 'excessive_parking', createdAt: `${DAY}T18:00:00.000Z` },
+  { trackerId: 3487539, truckLabel: '39151WWCI01', event: 'geofence_exit', createdAt: `${DAY}T15:07:00.000Z` },
 ]
 
-const knownTrucks = [
-  { id: 3487539, label: '39151WWCI01' }, { id: 3537761, label: '3100WWCI01' },
-  { id: 3537762, label: '3216WWCI01' }, { id: 3488325, label: '45791WWCI01' },
-  { id: 3487533, label: '3952WWCI01' },
+const POSITIONS = [
+  { trackerId: 3487539, truckLabel: '39151WWCI01', address: 'Korhogo, Savanes' },
 ]
 
-test('le rapport contient l’en-tête, le résumé et un bloc par camion actif', () => {
-  const { text, stats } = buildDailyReport({ day: DAY, dateLabel: '13/10/2026', hourLabel: '20h', orders, events, fleetRows, vouchers, alerts, knownTrucks })
-  assert.match(text, /^TELIMAN LOGISTIQUE - Rapport du 13\/10\/2026 à 20h/)
-  assert.match(text, /4 camions actifs · 2 missions · 2 passages de zone · 1 bon carburant/)
-  assert.match(text, /39151WWCI01 - YACOUBA SARIA/)
-  assert.match(text, /LAFARGE - BOUAKE → KORHOGO \(CIMENT CPJ 42,5\)/)
-  assert.match(text, /départ 11h44 · livré 13h57/)
-  assert.match(text, /Sortie de zone Bouaké à 15h07/)
-  assert.match(text, /Conduite 6h20 · repos 2h05 · 412 km/)
-  assert.match(text, /Carburant : 250 L · bon C-118/)
-  assert.match(text, /1 stationnement prolongé/)
-  assert.equal(stats.missions, 2)
-  assert.equal(stats.zoneEvents, 2)
+const build = (overrides = {}) => buildDailyReport({
+  day: DAY,
+  dateLabel: '13/10/2026',
+  hourLabel: '20h',
+  orders: ORDERS,
+  events: EVENTS,
+  fleetRows: FLEET_ROWS,
+  vouchers: [],
+  alerts: ALERTS,
+  trucks: [{ id: 3487539 }, { id: 111 }],
+  positions: POSITIONS,
+  ...overrides,
 })
 
-test('un bon d’un autre jour n’entre pas dans le rapport du jour', () => {
-  const { text } = buildDailyReport({ day: DAY, dateLabel: '13/10/2026', orders, events, fleetRows, knownTrucks })
-  // 3216WWCI01 n'a qu'un bon d'hier, mais deux passages de zone aujourd'hui
-  assert.doesNotMatch(text, /3216WWCI01 - chauffeur non renseigné\n- LAFARGE/)
-  assert.match(text, /Entrée de zone Bouaké à 10h08/)
+test('en-tête et suivi général conformes au modèle de la direction', () => {
+  const { text } = build()
+  assert.match(text, /^TELIMAN LOGISTIQUE - Rapport journalier du 13\/10\/2026 \(20h\)/)
+  assert.match(text, /SUIVI GÉNÉRAL/)
+  assert.ok(text.includes('Camions actifs : 3 / 4 · Missions : 4'), text.slice(0, 400))
+  assert.ok(text.includes('Zone Korhogo : 1 entrée'), text)
+  assert.ok(text.includes('Zone Fadiadougou : 1 entrée'), text)
+  assert.ok(text.includes('Zone Bouaké : 1 entrée'), text)
+  assert.ok(text.includes('Autres zones : 1'), 'la zone d’Abidjan reste comptée')
 })
 
-test('les camions sans activité sont regroupés sur une seule ligne', () => {
-  const { text, stats } = buildDailyReport({ day: DAY, dateLabel: '13/10/2026', orders, events, fleetRows, knownTrucks })
-  assert.match(text, /^Sans activité aujourd'hui : 3952$/m)
-  assert.equal(stats.inactiveTrucks, 1)
+test('les immatriculations officielles et les chauffeurs de la direction sont affichés', () => {
+  const { text } = build()
+  assert.ok(text.includes('AB246JJ - Yacouba SARIA'), text)
+  assert.ok(text.includes('AB229JJ - Tahirou KONE'), text)
+  assert.ok(text.includes('602605WWCI01 - Lamine BAMBA'), text)
+  assert.ok(!text.includes('39151WWCI01 -'), 'l’ancienne immatriculation n’apparaît plus en tête de bloc')
 })
 
-test('aucune valeur inventée : sans données Fleeti, la ligne de kilométrage disparaît', () => {
-  const { text } = buildDailyReport({ day: DAY, dateLabel: '13/10/2026', orders, events, vouchers, knownTrucks, fleetDetailsAvailable: false })
-  assert.doesNotMatch(text, /Conduite/)
-  assert.doesNotMatch(text, /\d+ km/)
-  assert.match(text, /Détails kilométrage\/conduite indisponibles/)
+test('camion actif : missions regroupées, heures, position, distance, conduite, repos', () => {
+  const { text } = build()
+  assert.ok(text.includes('LAFARGE : Bouaké → Korhogo — 2 missions (ciment cpj 42,5)'), text)
+  assert.ok(text.includes('départ 11h44 · 1/2 livrée'), text)
+  assert.ok(text.includes('Position : Korhogo, Savanes'), text)
+  assert.ok(text.includes('Zones : Bouaké à 15h07'), text)
+  assert.ok(text.includes('Position : Korhogo'), text)
+  assert.ok(text.includes('153 km · conduite 4h01 · repos 14h40'), text)
+  assert.ok(text.includes('Incidents : 1 stationnement prolongé, 1 excès de vitesse'), text)
 })
 
-test('un rapport trop long est tronqué en gardant les camions les plus actifs', () => {
-  const manyOrders = Array.from({ length: 30 }, (unused, index) => ({
-    id: 100 + index, trackerId: 9000 + index, truckLabel: `90${index}WWCI01`, client: `CLIENT ${index}`,
-    loadingPoint: 'A', destination: 'B', goods: 'MARCHANDISE', status: 'Livré', date: `${DAY}T08:00:00.000Z`,
+test('camion sans mission : annoncé inactif avec stationnement prolongé', () => {
+  const { text } = build()
+  assert.ok(text.includes('CAMIONS INACTIFS'), text)
+  assert.ok(text.includes('602607WWCI01 - Siriki Drabo : pas de mission — stationnement prolongé'), text)
+})
+
+test('position indisponible annoncée explicitement, jamais inventée', () => {
+  const { text } = build({ positions: [] })
+  assert.ok(text.includes('Position : indisponible'), text)
+})
+
+test('quantités par client : chargée, livrée, en cours', () => {
+  const { text, stats } = build()
+  assert.ok(text.includes('QUANTITÉS LIVRÉES OU CHARGÉES PAR CLIENT'), text)
+  assert.ok(text.includes('- LAFARGE (2 missions) : chargée 80 · livrée 40 · en cours 40'), text)
+  assert.ok(text.includes('- K1 (2 missions) : chargée 52,94 · livrée 52,94 · en cours 0'), text)
+  assert.equal(stats.clients.length, 2)
+  assert.equal(stats.clients.find((row) => row.client === 'K1').charged, 52.94)
+})
+
+test('aucune mission : le rapport le dit au lieu d’afficher du vide', () => {
+  const { text } = build({ orders: [], events: [], fleetRows: [], alerts: [], positions: [] })
+  assert.ok(text.includes('Missions : 0'), text)
+  assert.ok(text.includes('Aucun : tous les camions ont eu de l’activité'), text)
+  assert.ok(text.includes('Aucune mission enregistrée aujourd’hui'), text)
+})
+
+test("une alerte sans camion identifiable n'est pas affichée comme un camion", () => {
+  const { text, stats } = build({ alerts: [{ event: 'excessive_parking', createdAt: DAY + 'T09:00:00.000Z' }] })
+  assert.equal(stats.unattributedAlerts, 1)
+  assert.ok(!/^- stationnement prolongé/m.test(text), 'aucun bloc sans immatriculation')
+})
+
+test('les jours précédents ne polluent pas le rapport du jour', () => {
+  const { stats } = build()
+  assert.equal(stats.zoneEntries, 4, 'seules les entrées du jour sont comptées')
+  assert.equal(stats.zoneCounters.find((row) => row.label === 'Zone Bouaké').count, 1, 'l’entrée du 12/10 ne compte pas')
+  assert.equal(stats.missions, 4)
+})
+
+test('message borné : les camions en trop sont résumés', () => {
+  const many = Array.from({ length: 6 }, (_, index) => ({
+    trackerId: 900 + index,
+    truckLabel: `99${index}WWCI01`,
+    client: 'LAFARGE',
+    loadingPoint: 'BOUAKE',
+    destination: 'KORHOGO',
+    goods: 'CIMENT',
+    quantity: '40,000',
+    status: 'Livré',
+    date: `${DAY}T08:00:00.000Z`,
+    departureDateTime: `${DAY}T08:30:00.000Z`,
+    completedAt: `${DAY}T10:00:00.000Z`,
   }))
-  const { text, stats } = buildDailyReport({ day: DAY, dateLabel: '13/10/2026', orders: manyOrders, knownTrucks, maxChars: 600 })
-  assert.ok(text.length <= 600, `longueur ${text.length} au-delà de la limite`)
-  assert.match(text, /… et \d+ autres camions actifs/)
-  assert.ok(stats.removedBlocks > 0)
+  const { text, stats } = build({ orders: many, events: [], fleetRows: [], alerts: [], positions: [], maxChars: 700 })
+  assert.ok(text.length <= 900, `message trop long : ${text.length}`)
+  assert.ok(stats.truncatedTrucks > 0, 'des camions sont résumés')
+  assert.match(text, /… et \d+ autre(s)? camions? actifs? \(détail dans la plateforme\)/)
 })
 
-test('bilan hebdomadaire : agrégats par camion sur la semaine', () => {
-  const { text, stats } = buildWeeklyReport({ dayFrom: '2026-10-07', dayTo: '2026-10-13', dateLabel: 'du 07/10 au 13/10', fleetRows, orders, events, vouchers, knownTrucks })
-  assert.match(text, /^TELIMAN LOGISTIQUE - Bilan de la semaine \(du 07\/10 au 13\/10\)/)
-  assert.match(text, /4 camions en activité · 3 missions · 3 passages de zone/)
-  assert.match(text, /39151WWCI01 - YACOUBA SARIA\n- 1 mission · 412 km · conduite 6h20 · 1 bon carburant/)
-  assert.equal(stats.missions, 3)
+test('bilan hebdomadaire : agrégats par camion et quantités de la semaine', () => {
+  const { text, stats } = buildWeeklyReport({
+    dayFrom: '2026-10-07',
+    dayTo: DAY,
+    dateLabel: 'du 07/10/2026 au 13/10/2026',
+    orders: ORDERS,
+    events: EVENTS,
+    fleetRows: FLEET_ROWS,
+    vouchers: [],
+    alerts: ALERTS,
+  })
+  assert.match(text, /^TELIMAN LOGISTIQUE - Bilan hebdomadaire du 07\/10\/2026 au 13\/10\/2026/)
+  assert.ok(text.includes('Missions de la semaine : 4'), text)
+  assert.ok(text.includes('AB246JJ - Yacouba SARIA : 2 missions'), text)
+  assert.equal(stats.missions, 4)
 })
 
-test('formats élémentaires', () => {
-  assert.equal(shortTruckLabel('39151WWCI01'), '39151')
-  assert.equal(shortTruckLabel('3100WWCI01'), '3100')
-  assert.equal(formatClock('2026-10-13T15:07:00.000Z') !== null, true)
-  assert.equal(formatClock(null), null)
+test('parc officiel : correspondance des plaques et des chauffeurs', () => {
+  assert.equal(plateFor('39151WWCI01'), 'AB246JJ')
+  assert.equal(driverFor('39151WWCI01'), 'Yacouba SARIA')
+  assert.equal(plateFor('3100WWC101'), '602607WWCI01', 'coquille WWC101 corrigée')
+  assert.equal(plateFor('AB246JJ'), 'AB246JJ', 'une plaque déjà renommée reste stable')
+  assert.equal(plateFor('INCONNU'), 'INCONNU', 'un camion hors parc garde son étiquette')
+  assert.equal(OFFICIAL_TRUCKS.length, 7)
+})
+
+test('parc officiel : fichier de correspondance créé puis relu', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'truck-registry-'))
+  const created = loadTruckRegistry(dir)
+  assert.equal(created.length, 7)
+  const reloaded = loadTruckRegistry(dir)
+  assert.deepEqual(reloaded.map((row) => row.plate), OFFICIAL_TRUCKS.map((row) => row.plate))
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('nombres français : lecture et écriture', () => {
+  assert.equal(parseQuantity('52,940'), 52.94)
+  assert.equal(parseQuantity('40,000'), 40)
+  assert.equal(parseQuantity(''), null)
+  assert.equal(parseQuantity('quarante'), null)
+  assert.equal(formatQuantity(52.94), '52,94')
+  assert.equal(formatQuantity(1000), '1 000')
+  assert.equal(formatQuantity(null), '—')
 })

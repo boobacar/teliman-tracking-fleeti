@@ -35,7 +35,7 @@ import {
   readAuthUsers, createAuthUser, upsertAuthUser, deleteAuthUserAndSessions, createAuthSession, resolveAuthSession, revokeAuthSession, revokeUserSessions, purgeExpiredAuthSessions, checkDatabaseHealthFresh,
   readMasterData, writeMasterDataKey,
   readDriverOverrides, replaceDriverOverridesAtomic,
-  readGeofences, readActiveGeofences, readGeofenceById, insertGeofence, updateGeofence, deleteGeofence,
+  readGeofences, readActiveGeofences, insertGeofence, updateGeofence, deleteGeofence,
   readAlertRecipients, readActiveAlertRecipients, readAlertRecipientById, insertAlertRecipient, updateAlertRecipient, deleteAlertRecipient,
   readAlertSubscriptions, readAlertSubscriptionById, insertAlertSubscription, updateAlertSubscription, deleteAlertSubscription,
   readAlertActions, readAlertAction, upsertAlertAction, deleteAlertAction,
@@ -52,6 +52,7 @@ import {
   validateSubscriptionInput,
 } from './src/backend/alertRouting.js'
 import { buildDailyReport, buildWeeklyReport } from './src/backend/dailyReport.js'
+import { loadTruckRegistry } from './src/backend/truckRegistry.js'
 import {
   REPORT_TYPES,
   defaultScheduleFor,
@@ -3488,6 +3489,7 @@ async function collectReportData({ period = 'today' } = {}) {
         return {
           trackerId: alert.tracker_id ?? alert.trackerId ?? null,
           truckLabel: alert.tracker_label || alert.truckLabel || alert.label || '',
+          event,
           label,
           createdAt: alert.time || alert.timestamp || alert.createdAt || null,
         }
@@ -3497,7 +3499,25 @@ async function collectReportData({ period = 'today' } = {}) {
     notes.push(`alertes indisponibles (${error.message})`)
   }
 
-  return { orders, events, vouchers, fleetRows, fleetDetailsAvailable, alerts, knownTrucks, notes }
+  // Position actuelle de chaque camion (ligne « Position » du rapport de la direction).
+  let positions = []
+  try {
+    const live = await refreshPositionsLive({ force: false })
+    positions = (live?.data?.positions || []).map((position) => ({
+      trackerId: position.trackerId ?? position.tracker_id ?? null,
+      truckLabel: position.label || position.truckLabel || position.trackerLabel || '',
+      address: position.address || position.positionAddress || '',
+      geofence: (Array.isArray(position.geofenceNames) && position.geofenceNames[0]) || position.geofenceName || '',
+      lat: position.lat,
+      lng: position.lng,
+    }))
+    if (!positions.length) notes.push('aucune position reçue')
+    else if (!positions.some((position) => position.address || position.geofence)) notes.push('positions sans adresse ni zone')
+  } catch (error) {
+    notes.push(`positions indisponibles (${error.message})`)
+  }
+
+  return { orders, events, vouchers, fleetRows, fleetDetailsAvailable, alerts, knownTrucks, positions, notes }
 }
 
 // Construit le texte du rapport demandé, à la date voulue.
@@ -3514,7 +3534,9 @@ async function buildReportPayload(reportKey, { now = new Date() } = {}) {
       events: data.events,
       fleetRows: data.fleetRows,
       vouchers: data.vouchers,
-      knownTrucks: data.knownTrucks,
+      alerts: data.alerts,
+      trucks: data.knownTrucks,
+      registry: loadTruckRegistry(DATA_DIR),
     })
     return { ...report, notes: data.notes }
   }
@@ -3530,8 +3552,9 @@ async function buildReportPayload(reportKey, { now = new Date() } = {}) {
     fleetRows: data.fleetRows,
     vouchers: data.vouchers,
     alerts: data.alerts,
-    knownTrucks: data.knownTrucks,
-    fleetDetailsAvailable: data.fleetDetailsAvailable,
+    trucks: data.knownTrucks,
+    positions: data.positions,
+    registry: loadTruckRegistry(DATA_DIR),
   })
   return { ...report, notes: data.notes }
 }

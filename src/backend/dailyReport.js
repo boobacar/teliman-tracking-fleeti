@@ -1,243 +1,418 @@
-// Rapport « quel camion a fait quoi » — construction du message, sans aucune
-// dépendance : on lui donne des données déjà lues ailleurs, il rend un texte.
+// Rapport journalier « TLM » — structure demandée par la direction de Teliman
+// Logistique (document « TRACKING RAPPORT ») :
+//   1. Suivi général : camions actifs, missions, entrées par zone
+//   2. Camions actifs : immatriculation – chauffeur, missions, heures de départ et de
+//      livraison avec statut, position actuelle, distance / conduite / repos
+//   3. Camions inactifs : immatriculation – chauffeur, « pas de mission »
+//   4. Quantités livrées ou chargées par client : chargée / livrée / en cours
 //
-// Principe de rédaction (validé par l'utilisateur) :
-//  - une ligne d'en-tête et un résumé ;
-//  - un bloc par camion qui a bougé, 4 à 6 lignes maximum ;
-//  - les camions sans activité regroupés sur une seule ligne ;
-//  - sélection et non volume : on résume, on ne déverse pas.
-//
-// Règle absolue : aucune valeur inventée. Une donnée absente disparaît de la
-// ligne concernée (elle n'est jamais remplacée par un zéro ou une estimation).
+// Aucune valeur estimée : une donnée absente de la plateforme n'est pas inventée, elle
+// est soit omise, soit annoncée « indisponible » quand la direction l'attend.
+import { OFFICIAL_TRUCKS, driverFor, plateFor } from './truckRegistry.js'
 
-const ENTER_LABEL = 'Entrée'
-const EXIT_LABEL = 'Sortie'
+export const REPORTED_ZONES = [
+  { label: 'Zone Korhogo', patterns: ['korhogo'] },
+  { label: 'Zone Fadiadougou', patterns: ['fadyadougou', 'fadiadougou'] },
+  { label: 'Zone Bouaké', patterns: ['bouake'] },
+]
 
-function pad2(value) {
+// « 1 stationnement prolongé » / « 3 stationnements prolongés »
+function pluralise(count, label) {
+  if (count <= 1) return label
+  return label.endsWith('al') ? `${label.slice(0, -2)}aux` : `${label}s`
+}
+
+const ALERT_LABELS = {
+  speedup: 'excès de vitesse',
+  excessive_parking: 'stationnement prolongé',
+  crash_alarm: 'alerte accident',
+  fuel_level_leap: 'variation de carburant',
+  geofence_enter: 'entrée de zone',
+  geofence_exit: 'sortie de zone',
+}
+
+function pad(value) {
   return String(value).padStart(2, '0')
 }
 
-// Heure locale de la plateforme, format « 15h07 ».
-export function formatClock(isoString) {
-  if (!isoString) return null
-  const date = new Date(isoString)
-  if (Number.isNaN(date.getTime())) return null
-  return `${pad2(date.getHours())}h${pad2(date.getMinutes())}`
+export function formatDayKey(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-export function formatDayKey(isoString) {
-  if (!isoString) return null
-  const date = new Date(isoString)
-  if (Number.isNaN(date.getTime())) return null
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+export function formatDateLabel(day) {
+  const [year, month, date] = String(day || '').split('-')
+  return year && month && date ? `${date}/${month}/${year}` : String(day || '')
 }
 
-function formatMinutes(seconds) {
-  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null
-  const totalMinutes = Math.round(seconds / 60)
-  return `${Math.floor(totalMinutes / 60)}h${pad2(totalMinutes % 60)}`
+function formatClock(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getHours()}h${pad(date.getMinutes())}`
 }
 
-function formatKilometres(km) {
-  if (km == null || !Number.isFinite(km) || km <= 0) return null
-  return `${Math.round(km)} km`
+function dayKeyOfOrder(order) {
+  for (const candidate of [order?.date, order?.departureDateTime, order?.completedAt, order?.arrivalDateTime]) {
+    const key = formatDayKey(candidate)
+    if (key) return key
+  }
+  return ''
 }
 
-// « 39151WWCI01 » → « 39151 » : forme courte pour la ligne des camions sans activité.
-export function shortTruckLabel(label) {
-  const text = String(label || '').trim()
-  return text.replace(/WWCI0?\d*$/i, '').trim() || text
+// Les quantités sont saisies au format français (« 52,940 »). On les additionne
+// telles quelles, sans conversion d'unité inventée.
+export function parseQuantity(value) {
+  if (value === null || value === undefined) return null
+  const raw = String(value).trim()
+  if (!raw) return null
+  const cleaned = raw.replace(/\s|\u00a0/g, '').replace(/,/g, '.')
+  if (!/^\d+(\.\d+)?$/.test(cleaned)) return null
+  const number = Number(cleaned)
+  return Number.isFinite(number) ? number : null
 }
 
-function truckKeyOf(entry) {
-  const id = entry?.trackerId ?? entry?.tracker_id ?? entry?.id
-  if (id !== undefined && id !== null && String(id).trim()) return `id:${String(id).trim()}`
-  return `label:${String(entry?.truckLabel || entry?.label || entry?.truck || '').trim()}`
+export function formatQuantity(value) {
+  if (!Number.isFinite(value)) return '—'
+  const rounded = Math.round(value * 1000) / 1000
+  const [integer, decimals] = String(rounded).split('.')
+  const withSeparators = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return decimals ? `${withSeparators},${decimals}` : withSeparators
 }
 
-function resolvedLabel(bucket) {
-  return bucket.label || bucket.driver || 'Camion non renseigné'
+const PLACE_LABELS = {
+  bouake: 'Bouaké',
+  korhogo: 'Korhogo',
+  abidjan: 'Abidjan',
+  fadyadougou: 'Fadiadougou',
+  fadiadougou: 'Fadiadougou',
+  'san pedro': 'San Pédro',
+  yamoussoukro: 'Yamoussoukro',
+  ferkessedougou: 'Ferkessédougou',
 }
 
-// Découpe par camion tout ce qui s'est passé dans la journée.
-function bucketise({ day, orders, events, fleetRows, vouchers, alerts }) {
+export function displayPlace(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const key = raw.toLowerCase()
+  if (PLACE_LABELS[key]) return PLACE_LABELS[key]
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+}
+
+function normalizeZoneName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function inDay(value, day) {
+  const key = formatDayKey(value)
+  return Boolean(key) && key === day
+}
+
+function truckKeyOf(record) {
+  const trackerId = record?.trackerId ?? record?.tracker_id
+  if (trackerId !== null && trackerId !== undefined && String(trackerId).trim() !== '') return `id:${String(trackerId)}`
+  const label = String(record?.truckLabel || record?.trackerLabel || '').trim()
+  return label ? `label:${label.toUpperCase()}` : ''
+}
+
+function bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry }) {
   const buckets = new Map()
-
-  const ensure = (entry) => {
-    const key = truckKeyOf(entry)
+  const ensure = (key, seed = {}) => {
+    if (!key) return null
     if (!buckets.has(key)) {
       buckets.set(key, {
         key,
-        label: String(entry?.truckLabel || entry?.label || '').trim(),
-        driver: '',
+        trackerId: seed.trackerId ?? seed.tracker_id ?? null,
+        rawLabel: seed.truckLabel || seed.trackerLabel || '',
         missions: [],
-        zoneEvents: [],
-        incidentCounts: new Map(),
-        fuel: [],
+        enters: [],
+        exits: [],
+        incidents: [],
+        vouchers: [],
         distanceKm: null,
         drivingSeconds: null,
         restSeconds: null,
       })
     }
     const bucket = buckets.get(key)
-    const label = String(entry?.truckLabel || entry?.label || '').trim()
-    if (label && !bucket.label) bucket.label = label
+    if (!bucket.rawLabel && (seed.truckLabel || seed.trackerLabel)) bucket.rawLabel = seed.truckLabel || seed.trackerLabel
+    if (bucket.trackerId === null && seed.trackerId !== undefined) bucket.trackerId = seed.trackerId
     return bucket
   }
 
-  for (const row of fleetRows || []) {
-    const bucket = ensure(row)
-    if (row.driver) bucket.driver = row.driver
-    if (Number.isFinite(Number(row.distanceKm))) bucket.distanceKm = Number(row.distanceKm)
-    if (Number.isFinite(Number(row.drivingSeconds))) bucket.drivingSeconds = Number(row.drivingSeconds)
-    if (Number.isFinite(Number(row.restSeconds))) bucket.restSeconds = Number(row.restSeconds)
+  for (const order of orders) {
+    if (dayKeyOfOrder(order) !== day) continue
+    const bucket = ensure(truckKeyOf(order), order)
+    if (bucket) bucket.missions.push(order)
   }
 
-  for (const order of orders || []) {
-    const dayKeys = [formatDayKey(order.date), formatDayKey(order.departureDateTime), formatDayKey(order.completedAt), formatDayKey(order.arrivalDateTime)]
-    if (!dayKeys.includes(day)) continue
-    const bucket = ensure(order)
-    if (order.driver && !bucket.driver) bucket.driver = order.driver
-    bucket.missions.push(order)
+  for (const event of events) {
+    if (!inDay(event?.createdAt ?? event?.timestamp, day)) continue
+    const type = String(event?.eventType || event?.type || '')
+    if (type !== 'enter' && type !== 'exit') continue
+    const bucket = ensure(truckKeyOf(event), event)
+    if (!bucket) continue
+    const entry = { zone: String(event?.geofenceName || event?.zone || ''), at: event?.createdAt ?? event?.timestamp }
+    if (type === 'enter') bucket.enters.push(entry)
+    else bucket.exits.push(entry)
   }
 
-  for (const event of events || []) {
-    if (formatDayKey(event.createdAt) !== day) continue
-    const bucket = ensure(event)
-    bucket.zoneEvents.push(event)
+  for (const alert of alerts) {
+    if (!inDay(alert?.createdAt ?? alert?.timestamp ?? alert?.time, day)) continue
+    const type = String(alert?.event || alert?.type || '')
+    if (type === 'geofence_enter' || type === 'geofence_exit') continue
+    // Sans identifiant ni étiquette, l'alerte est regroupée à part (comptée, jamais
+    // attribuée à un camion).
+    const bucket = ensure(truckKeyOf(alert) || 'orphan', alert)
+    if (bucket) bucket.incidents.push(type)
   }
 
-  for (const voucher of vouchers || []) {
-    const dayKey = formatDayKey(voucher.date) || formatDayKey(voucher.createdAt)
-    if (dayKey !== day) continue
-    const bucket = ensure(voucher)
-    bucket.fuel.push(voucher)
+  for (const voucher of vouchers) {
+    if (!inDay(voucher?.date ?? voucher?.createdAt, day)) continue
+    const bucket = ensure(truckKeyOf(voucher), voucher)
+    if (bucket) bucket.vouchers.push(voucher)
   }
 
-  for (const alert of alerts || []) {
-    const dayKey = formatDayKey(alert.createdAt || alert.timestamp || alert.time)
-    if (dayKey !== day) continue
-    const bucket = ensure(alert)
-    const label = String(alert.label || alert.type || alert.eventType || 'alerte').trim()
-    bucket.incidentCounts.set(label, (bucket.incidentCounts.get(label) || 0) + 1)
+  for (const row of fleetRows) {
+    const bucket = ensure(truckKeyOf(row), row)
+    if (!bucket) continue
+    const distance = Number(row?.distanceKm)
+    const driving = Number(row?.drivingSeconds ?? row?.tripDurationSec)
+    const rest = Number(row?.restSeconds ?? row?.parkingDurationSec)
+    if (Number.isFinite(distance)) bucket.distanceKm = distance
+    if (Number.isFinite(driving)) bucket.drivingSeconds = driving
+    if (Number.isFinite(rest)) bucket.restSeconds = rest
   }
 
   for (const bucket of buckets.values()) {
-    bucket.zoneEvents.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    bucket.missions.sort((a, b) => new Date(a.departureDateTime || a.date || 0) - new Date(b.departureDateTime || b.date || 0))
-    bucket.hasActivity = Boolean(
-      bucket.missions.length
-      || bucket.zoneEvents.length
-      || bucket.fuel.length
-      || bucket.incidentCounts.size
-      || (bucket.distanceKm || 0) > 0
-      || (bucket.drivingSeconds || 0) > 0,
-    )
+    bucket.plate = plateFor(bucket.rawLabel, { registry, fallback: bucket.rawLabel })
+    bucket.driver = driverFor(bucket.rawLabel, { registry, fallback: '' })
+    const active = bucket.missions.length > 0
+      || bucket.enters.length + bucket.exits.length > 0
+      || (Number.isFinite(bucket.distanceKm) && bucket.distanceKm > 0)
+      || (Number.isFinite(bucket.drivingSeconds) && bucket.drivingSeconds > 0)
+    bucket.active = active
+    bucket.score = bucket.missions.length * 1000 + (bucket.enters.length + bucket.exits.length) * 10 + Math.round(bucket.distanceKm || 0)
   }
 
-  return buckets
+  return [...buckets.values()].sort((a, b) => b.score - a.score || a.plate.localeCompare(b.plate))
 }
 
-function activityScore(bucket) {
-  return bucket.missions.length * 100 + bucket.zoneEvents.length * 5 + bucket.incidentCounts.size * 10 + (bucket.distanceKm || 0) / 10
+function durationLabel(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return ''
+  const total = Math.round(seconds / 60)
+  return `${Math.floor(total / 60)}h${pad(total % 60)}`
 }
 
-function missionLines(bucket, maxGroups = 3) {
-  // Les agents créent parfois plusieurs bons identiques (même client, même trajet,
-  // même marchandise) : plutôt que de répéter la ligne, on l'annonce une fois avec
-  // le nombre de missions et l'amplitude horaire réelle.
+// Missions regroupées : plusieurs bons identiques (même client, même trajet, même
+// marchandise) sont annoncés une seule fois avec leur nombre.
+function missionGroups(bucket, maxGroups = 2) {
   const groups = new Map()
   for (const mission of bucket.missions) {
-    const route = [mission.loadingPoint, mission.destination].filter(Boolean).join(' → ')
+    const route = [displayPlace(mission.loadingPoint), displayPlace(mission.destination)].filter(Boolean).join(' → ')
     const signature = [String(mission.client || '').trim(), route, String(mission.goods || '').trim()].join('|')
-    if (!groups.has(signature)) groups.set(signature, { mission, route, count: 0, missions: [] })
+    if (!groups.has(signature)) groups.set(signature, { route, client: String(mission.client || '').trim(), goods: String(mission.goods || '').trim(), count: 0, missions: [] })
     const group = groups.get(signature)
     group.count += 1
     group.missions.push(mission)
   }
-
   const selected = [...groups.values()].slice(0, maxGroups)
   const lines = []
   for (const group of selected) {
-    const { mission, route } = group
-    const client = String(mission.client || '').trim()
-    const goods = String(mission.goods || '').trim()
-    const head = [client, route].filter(Boolean).join(' - ')
-    const countSuffix = group.count > 1 ? ` — ${group.count} missions` : ''
-    lines.push(`- ${head}${countSuffix}${goods ? ` (${goods})` : ''}`.trim())
-
+    const head = [group.client, group.route].filter(Boolean).join(' : ')
+    const count = group.count > 1 ? ` — ${group.count} missions` : ''
+    const goods = group.goods ? ` (${group.goods.toLowerCase()})` : ''
+    lines.push(`${head}${count}${goods}`.trim())
     const sorted = [...group.missions].sort((a, b) => new Date(a.departureDateTime || a.date || 0) - new Date(b.departureDateTime || b.date || 0))
     const first = sorted[0]
     const last = sorted[sorted.length - 1]
-    const times = []
     const departure = formatClock(first.departureDateTime)
+    const delivered = group.missions.filter((mission) => String(mission.status || '') === 'Livré').length
+    const closingRaw = last.completedAt || last.arrivalDateTime
+    const closing = formatClock(closingRaw)
+    const departureTime = first.departureDateTime ? new Date(first.departureDateTime).getTime() : null
+    const closingTime = closingRaw ? new Date(closingRaw).getTime() : null
+    const coherent = closing && (departureTime === null || closingTime === null || closingTime >= departureTime)
+    const times = []
     if (departure) times.push(`départ ${departure}`)
-    const deliveredCount = group.missions.filter((item) => String(item.status || '') === 'Livré').length
-    const lastDoneRaw = last.completedAt || last.arrivalDateTime
-    const done = formatClock(lastDoneRaw)
-    const departureDate = first.departureDateTime ? new Date(first.departureDateTime).getTime() : null
-    const doneDate = lastDoneRaw ? new Date(lastDoneRaw).getTime() : null
-    // Une heure de clôture antérieure au départ vient d'une saisie ou d'une clôture
-    // administrative : on ne l'affiche pas plutôt que d'écrire l'absurde.
-    const coherent = done && (departureDate === null || doneDate === null || doneDate >= departureDate)
-    if (deliveredCount === group.count) times.push(coherent ? `${group.count > 1 ? 'livrées jusqu’à' : 'livré'} ${done}` : `${group.count > 1 ? `${group.count} livrées` : 'livré'}`)
-    else if (deliveredCount > 0) times.push(`${deliveredCount}/${group.count} livrée${deliveredCount > 1 ? 's' : ''}`)
-    else times.push(`statut ${String(first.status || 'en cours').toLowerCase()}`)
+    if (delivered === group.count) times.push(coherent ? `livraison ${closing} (livré)` : 'livré')
+    else if (delivered > 0) times.push(`${delivered}/${group.count} livrée${delivered > 1 ? 's' : ''}`)
+    else times.push(`en cours (${String(first.status || 'en cours').toLowerCase()})`)
     lines.push(`  ${times.join(' · ')}`)
   }
   const remaining = groups.size - selected.length
-  if (remaining > 0) lines.push(`- … et ${remaining} autre${remaining > 1 ? 's' : ''} mission${remaining > 1 ? 's' : ''}`)
+  if (remaining > 0) lines.push(`  … et ${remaining} autre${remaining > 1 ? 's' : ''} mission${remaining > 1 ? 's' : ''}`)
   return lines
 }
 
-function zoneLines(bucket, maxEvents = 3) {
-  const events = bucket.zoneEvents.slice(-maxEvents)
-  const lines = events.map((event) => {
-    const kind = String(event.eventType || '').toLowerCase() === 'exit' ? EXIT_LABEL : ENTER_LABEL
-    const zone = String(event.geofenceName || event.zoneName || 'zone').trim()
-    const clock = formatClock(event.createdAt)
-    return `- ${kind} de zone ${zone}${clock ? ` à ${clock}` : ''}`
-  })
-  if (bucket.zoneEvents.length > events.length) {
-    const rest = bucket.zoneEvents.length - events.length
-    lines.push(`- … et ${rest} autre${rest > 1 ? 's' : ''} passage${rest > 1 ? 's' : ''} de zone`)
+function zoneSummary(events, day) {
+  const counters = REPORTED_ZONES.map((zone) => ({ label: zone.label, count: 0 }))
+  let other = 0
+  for (const event of events) {
+    const type = String(event?.eventType || event?.type || '')
+    if (type !== 'enter') continue
+    if (!inDay(event?.createdAt ?? event?.timestamp, day)) continue
+    const name = normalizeZoneName(event?.geofenceName || event?.zone)
+    const zone = REPORTED_ZONES.find((candidate) => candidate.patterns.some((pattern) => name.includes(pattern)))
+    if (zone) counters.find((counter) => counter.label === zone.label).count += 1
+    else other += 1
   }
-  return lines
+  return { counters, other }
 }
 
-function incidentLines(bucket) {
-  return [...bucket.incidentCounts.entries()].map(([label, count]) => `- ${count} ${label}${count > 1 ? 's' : ''}`)
+function clientQuantities(orders, day) {
+  const byClient = new Map()
+  for (const order of orders) {
+    if (dayKeyOfOrder(order) !== day) continue
+    const client = String(order.client || '').trim() || 'Client non renseigné'
+    const quantity = parseQuantity(order.quantity)
+    if (!byClient.has(client)) byClient.set(client, { client, charged: null, delivered: null, inProgress: null, missions: 0 })
+    const row = byClient.get(client)
+    row.missions += 1
+    if (quantity !== null) {
+      row.charged = (row.charged || 0) + quantity
+      if (String(order.status || '') === 'Livré') row.delivered = (row.delivered || 0) + quantity
+    }
+  }
+  for (const row of byClient.values()) {
+    if (row.charged !== null && row.delivered !== null) row.inProgress = Math.max(0, Math.round((row.charged - row.delivered) * 1000) / 1000)
+    else if (row.charged !== null) row.inProgress = null
+  }
+  return [...byClient.values()].sort((a, b) => (b.charged || 0) - (a.charged || 0) || a.client.localeCompare(b.client))
 }
 
-function fuelLines(bucket) {
-  return bucket.fuel.map((voucher) => {
-    const litres = Number(voucher.liters ?? voucher.quantity ?? 0)
-    const reference = String(voucher.voucherNumber || voucher.reference || '').trim()
-    const parts = [litres > 0 ? `${Math.round(litres)} L` : null, reference ? `bon ${reference}` : null].filter(Boolean)
-    return `- Carburant${parts.length ? ` : ${parts.join(' · ')}` : ''}`
-  })
+export function buildDailyReport({
+  day,
+  dateLabel,
+  hourLabel = '',
+  orders = [],
+  events = [],
+  fleetRows = [],
+  vouchers = [],
+  alerts = [],
+  trucks = [],
+  positions = [],
+  registry = OFFICIAL_TRUCKS,
+  maxChars = 2400,
+}) {
+  const buckets = bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry })
+  // Les alertes sans étiquette de camion ne peuvent être attribuées : elles sont
+  // comptées à part plutôt que d'afficher un bloc sans immatriculation.
+  const unattributed = buckets.filter((bucket) => !bucket.rawLabel).reduce((sum, bucket) => sum + bucket.incidents.length, 0)
+  const identifiable = buckets.filter((bucket) => bucket.rawLabel)
+  const active = identifiable.filter((bucket) => bucket.active)
+  const inactive = identifiable.filter((bucket) => !bucket.active)
+  const { counters, other } = zoneSummary(events, day)
+  const quantities = clientQuantities(orders, day)
+  const positionByKey = new Map()
+  for (const position of positions) {
+    const key = truckKeyOf(position)
+    if (!key) continue
+    const address = String(position?.address || '').trim()
+    const zone = String(position?.geofence || position?.geofenceName || '').trim()
+    const lat = Number(position?.lat)
+    const lng = Number(position?.lng)
+    if (address) positionByKey.set(key, address)
+    else if (zone) positionByKey.set(key, displayPlace(zone))
+    else if (Number.isFinite(lat) && Number.isFinite(lng)) positionByKey.set(key, `hors zone (${lat.toFixed(3)}, ${lng.toFixed(3)})`)
+  }
+
+  const header = `TELIMAN LOGISTIQUE - Rapport journalier du ${dateLabel}${hourLabel ? ` (${hourLabel})` : ''}`
+  const lines = [header, '']
+  lines.push('SUIVI GÉNÉRAL')
+  const fleetSize = Math.max(buckets.length, trucks.length)
+  lines.push(`Camions actifs : ${active.length}${fleetSize ? ` / ${fleetSize}` : ''} · Missions : ${active.reduce((sum, bucket) => sum + bucket.missions.length, 0)}`)
+  const zoneLine = counters.map((counter) => `${counter.label} : ${counter.count} entrée${counter.count > 1 ? 's' : ''}`).join(' · ')
+  lines.push(other > 0 ? `${zoneLine} · Autres zones : ${other}` : zoneLine)
+
+  const renderActive = (bucket) => {
+    const block = [`${bucket.plate}${bucket.driver ? ` - ${bucket.driver}` : ' - chauffeur non renseigné'}`]
+    if (bucket.missions.length) {
+      block.push(...missionGroups(bucket))
+    } else {
+      block.push(bucket.enters.length || bucket.exits.length ? 'Pas de mission — passages de zone uniquement' : 'Pas de mission')
+    }
+    const movements = [...bucket.enters, ...bucket.exits]
+      .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0))
+      .slice(-2)
+      .map((movement) => `${displayPlace(movement.zone)} à ${formatClock(movement.at)}`)
+    if (movements.length) block.push(`  Zones : ${movements.join(' · ')}`)
+    const address = positionByKey.get(bucket.key)
+    block.push(`  Position : ${address || 'indisponible'}`)
+    const metrics = []
+    if (Number.isFinite(bucket.distanceKm)) metrics.push(`${Math.round(bucket.distanceKm).toLocaleString('fr-FR')} km`)
+    const driving = durationLabel(bucket.drivingSeconds)
+    if (driving) metrics.push(`conduite ${driving}`)
+    const rest = durationLabel(bucket.restSeconds)
+    if (rest) metrics.push(`repos ${rest}`)
+    if (metrics.length) block.push(`  ${metrics.join(' · ')}`)
+    if (bucket.incidents.length) {
+      const counted = new Map()
+      for (const type of bucket.incidents) counted.set(type, (counted.get(type) || 0) + 1)
+      block.push(`  Incidents : ${[...counted.entries()].map(([type, count]) => `${count} ${pluralise(count, ALERT_LABELS[type] || type)}`).join(', ')}`)
+    }
+    return block
+  }
+
+  const renderInactive = (bucket) => {
+    const parking = bucket.incidents.filter((type) => type === 'excessive_parking').length
+    const suffix = parking ? `${pluralise(parking, 'stationnement prolongé')}${parking > 1 ? ` (${parking})` : ''}` : 'pas de mouvement enregistré'
+    return `- ${bucket.plate}${bucket.driver ? ` - ${bucket.driver}` : ''} : pas de mission — ${suffix}`
+  }
+
+  const activeBlocks = active.map(renderActive)
+  lines.push('', 'CAMIONS ACTIFS')
+  let kept = 0
+  for (const block of activeBlocks) {
+    const candidate = [...lines, ...block].join('\n')
+    if (candidate.length > maxChars && kept > 0) break
+    lines.push(...block)
+    kept += 1
+  }
+  const skipped = active.length - kept
+  if (skipped > 0) lines.push(`… et ${skipped} autre${skipped > 1 ? 's' : ''} camion${skipped > 1 ? 's' : ''} actif${skipped > 1 ? 's' : ''} (détail dans la plateforme)`)
+
+  lines.push('', 'CAMIONS INACTIFS')
+  if (inactive.length) lines.push(...inactive.map(renderInactive))
+  else lines.push('- Aucun : tous les camions ont eu de l’activité')
+
+  lines.push('', 'QUANTITÉS LIVRÉES OU CHARGÉES PAR CLIENT')
+  if (quantities.length) {
+    for (const row of quantities) {
+      const parts = []
+      parts.push(`chargée ${row.charged === null ? 'non renseignée' : formatQuantity(row.charged)}`)
+      parts.push(`livrée ${row.delivered === null ? 'aucune mission livrée' : formatQuantity(row.delivered)}`)
+      parts.push(`en cours ${row.inProgress === null ? 'non renseignée' : formatQuantity(row.inProgress)}`)
+      lines.push(`- ${row.client} (${row.missions} mission${row.missions > 1 ? 's' : ''}) : ${parts.join(' · ')}`)
+    }
+  } else {
+    lines.push('- Aucune mission enregistrée aujourd’hui')
+  }
+
+  const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return {
+    text,
+    stats: {
+      activeTrucks: active.length,
+      inactiveTrucks: inactive.length,
+      missions: active.reduce((sum, bucket) => sum + bucket.missions.length, 0),
+      zoneEntries: counters.reduce((sum, counter) => sum + counter.count, 0) + other,
+      zoneCounters: counters,
+      otherZones: other,
+      clients: quantities.map((row) => ({ client: row.client, charged: row.charged, delivered: row.delivered, inProgress: row.inProgress, missions: row.missions })),
+      truncatedTrucks: skipped,
+      unattributedAlerts: unattributed,
+      length: text.length,
+    },
+  }
 }
 
-function metricsLine(bucket) {
-  const parts = [formatMinutes(bucket.drivingSeconds) && `Conduite ${formatMinutes(bucket.drivingSeconds)}`, formatMinutes(bucket.restSeconds) && `repos ${formatMinutes(bucket.restSeconds)}`, formatKilometres(bucket.distanceKm)].filter(Boolean)
-  return parts.length ? [`- ${parts.join(' · ')}`] : []
-}
-
-function renderBlock(bucket) {
-  const title = [resolvedLabel(bucket), bucket.driver && bucket.label ? bucket.driver : ''].filter(Boolean).join(' - ')
-  const lines = [
-    ...missionLines(bucket),
-    ...zoneLines(bucket),
-    ...incidentLines(bucket),
-    ...fuelLines(bucket),
-    ...metricsLine(bucket),
-  ]
-  if (!lines.length) lines.push('- Aucun mouvement enregistré')
-  return `${title}\n${lines.join('\n')}`
-}
-
-// Bilan de la semaine : une ligne par camion, agrégats uniquement (le détail
-// mission par mission reste dans le rapport quotidien).
+// Bilan hebdomadaire : agrégats par camion sur la semaine (le détail mission par
+// mission reste dans le rapport journalier).
 export function buildWeeklyReport({
   dayFrom,
   dayTo,
@@ -246,164 +421,63 @@ export function buildWeeklyReport({
   events = [],
   fleetRows = [],
   vouchers = [],
-  knownTrucks = [],
-  title = 'TELIMAN LOGISTIQUE',
-} = {}) {
-  if (!dayFrom || !dayTo) throw new Error('Semaine du rapport manquante (dayFrom, dayTo).')
-  const inWeek = (isoString) => {
-    const key = formatDayKey(isoString)
-    return Boolean(key) && key >= dayFrom && key <= dayTo
-  }
-
-  const rows = new Map()
-  const ensure = (entry) => {
-    const key = truckKeyOf(entry)
-    if (!rows.has(key)) rows.set(key, { key, label: '', driver: '', missions: 0, zones: 0, fuel: 0, distanceKm: 0, drivingSeconds: 0, restSeconds: 0, hasKm: false, hasDrive: false })
-    const row = rows.get(key)
-    const label = String(entry?.truckLabel || entry?.label || '').trim()
-    if (label && !row.label) row.label = label
-    if (entry?.driver && !row.driver) row.driver = entry.driver
-    return row
-  }
-
-  for (const row of fleetRows || []) {
-    const bucket = ensure(row)
-    if (Number.isFinite(Number(row.distanceKm))) { bucket.distanceKm = Number(row.distanceKm); bucket.hasKm = true }
-    if (Number.isFinite(Number(row.drivingSeconds))) { bucket.drivingSeconds = Number(row.drivingSeconds); bucket.hasDrive = true }
-    if (Number.isFinite(Number(row.restSeconds))) bucket.restSeconds = Number(row.restSeconds)
-  }
-  for (const order of orders || []) {
-    if (![order.date, order.departureDateTime, order.completedAt, order.arrivalDateTime].some(inWeek)) continue
-    ensure(order).missions += 1
-  }
-  for (const event of events || []) {
-    if (!inWeek(event.createdAt)) continue
-    ensure(event).zones += 1
-  }
-  for (const voucher of vouchers || []) {
-    if (!inWeek(voucher.date) && !inWeek(voucher.createdAt)) continue
-    ensure(voucher).fuel += 1
-  }
-  for (const truck of knownTrucks || []) ensure(truck)
-
-  const list = [...rows.values()].filter((row) => row.missions || row.zones || row.fuel || row.hasKm || row.hasDrive)
-  list.sort((a, b) => (b.missions - a.missions) || (b.zones - a.zones) || (b.distanceKm - a.distanceKm))
-
-  const totals = list.reduce((acc, row) => ({
-    missions: acc.missions + row.missions,
-    zones: acc.zones + row.zones,
-    fuel: acc.fuel + row.fuel,
-    km: acc.km + (row.hasKm ? row.distanceKm : 0),
-  }), { missions: 0, zones: 0, fuel: 0, km: 0 })
-
-  const header = `${title} - Bilan de la semaine${dateLabel ? ` (${dateLabel})` : ''}`
-  const summary = [
-    `${list.length} camion${list.length > 1 ? 's' : ''} en activité`,
-    `${totals.missions} mission${totals.missions > 1 ? 's' : ''}`,
-    `${totals.zones} passage${totals.zones > 1 ? 's' : ''} de zone`,
-    totals.fuel ? `${totals.fuel} bon${totals.fuel > 1 ? 's' : ''} carburant` : null,
-  ].filter(Boolean).join(' · ')
-
-  const blocks = list.map((row) => {
-    const parts = [
-      `${row.missions} mission${row.missions > 1 ? 's' : ''}`,
-      row.hasKm ? formatKilometres(row.distanceKm) : null,
-      row.hasDrive ? `conduite ${formatMinutes(row.drivingSeconds)}` : null,
-      row.zones ? `${row.zones} passage${row.zones > 1 ? 's' : ''} de zone` : null,
-      row.fuel ? `${row.fuel} bon${row.fuel > 1 ? 's' : ''} carburant` : null,
-    ].filter(Boolean)
-    const title = [row.label || 'Camion non renseigné', row.driver].filter(Boolean).join(' - ')
-    return `${title}\n- ${parts.join(' · ')}`
-  })
-
-  return {
-    text: [header, '', summary, '', ...blocks.flatMap((block) => [block, ''])].join('\n').replace(/\n{3,}/g, '\n\n').trim(),
-    stats: { trucks: list.length, missions: totals.missions, zoneEvents: totals.zones, fuelVouchers: totals.fuel, distanceKm: Math.round(totals.km) },
-  }
-}
-export function buildDailyReport({
-  day,
-  dateLabel,
-  hourLabel = '20h',
-  orders = [],
-  events = [],
-  fleetRows = [],
-  vouchers = [],
   alerts = [],
-  knownTrucks = [],
-  hour = 20,
-  fleetDetailsAvailable = true,
-  maxChars = 1800,
-  title = 'TELIMAN LOGISTIQUE',
-} = {}) {
-  if (!day) throw new Error('Journée du rapport manquante (day).')
-  const bucketMap = bucketise({ day, orders, events, fleetRows, vouchers, alerts })
-
-  // Les camions du parc sans aucune donnée du jour sont listés comme sans activité.
-  for (const truck of knownTrucks || []) {
-    const bucket = bucketMap.get(truckKeyOf(truck))
-    if (bucket && !bucket.hasActivity) continue
-    if (bucket) continue
-    bucketMap.set(truckKeyOf(truck), {
-      key: truckKeyOf(truck),
-      label: String(truck.label || truck.truckLabel || '').trim(),
-      driver: '', missions: [], zoneEvents: [], incidentCounts: new Map(), fuel: [],
-      distanceKm: null, drivingSeconds: null, restSeconds: null, hasActivity: false,
-    })
+  registry = OFFICIAL_TRUCKS,
+  maxChars = 2400,
+}) {
+  const days = []
+  const cursor = new Date(`${dayFrom}T12:00:00`)
+  const end = new Date(`${dayTo}T12:00:00`)
+  while (cursor <= end && days.length < 14) {
+    days.push(formatDayKey(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  const rows = []
+  for (const day of days) {
+    const result = buildDailyReport({ day, dateLabel: formatDateLabel(day), orders, events, fleetRows, vouchers, alerts, registry, maxChars: Number.MAX_SAFE_INTEGER })
+    for (const client of result.stats.clients) {
+      const existing = rows.find((row) => row.client === client.client)
+      if (existing) {
+        existing.missions += client.missions
+        existing.charged = (existing.charged || 0) + (client.charged || 0)
+        existing.delivered = (existing.delivered || 0) + (client.delivered || 0)
+      } else {
+        rows.push({ ...client })
+      }
+    }
   }
 
-  const active = [...bucketMap.values()].filter((bucket) => bucket.hasActivity).sort((a, b) => activityScore(b) - activityScore(a))
-  const inactive = [...bucketMap.values()].filter((bucket) => !bucket.hasActivity)
+  const buckets = bucketise({ orders, events: [], fleetRows, vouchers, alerts, day: '', registry })
+  const lines = [`TELIMAN LOGISTIQUE - Bilan hebdomadaire ${dateLabel}`, '']
+  const totalMissions = orders.filter((order) => days.includes(dayKeyOfOrder(order))).length
+  lines.push(`Missions de la semaine : ${totalMissions} · Camions suivis : ${buckets.length}`)
 
-  const missionTotal = active.reduce((sum, bucket) => sum + bucket.missions.length, 0)
-  const zoneTotal = active.reduce((sum, bucket) => sum + bucket.zoneEvents.length, 0)
-  const fuelTotal = active.reduce((sum, bucket) => sum + bucket.fuel.length, 0)
-
-  const summaryParts = [
-    `${active.length} camion${active.length > 1 ? 's' : ''} actif${active.length > 1 ? 's' : ''}`,
-    `${missionTotal} mission${missionTotal > 1 ? 's' : ''}`,
-    `${zoneTotal} passage${zoneTotal > 1 ? 's' : ''} de zone`,
-  ]
-  if (fuelTotal) summaryParts.push(`${fuelTotal} bon${fuelTotal > 1 ? 's' : ''} carburant`)
-
-  const header = `${title} - Rapport du ${dateLabel || day} à ${hourLabel || `${hour}h`}`
-  const footerLine = inactive.length
-    ? `Sans activité aujourd'hui : ${inactive.map((bucket) => shortTruckLabel(bucket.label) || 'camion non renseigné').join(', ')}`
-    : 'Tous les camions ont eu de l’activité.'
-
-  // Le message doit rester lisible sur un téléphone : on retire les blocs les
-  // moins actifs tant que la longueur dépasse la limite, et on les compte.
-  let blocks = active.map((bucket) => ({ bucket, text: renderBlock(bucket) }))
-  let removed = 0
-  const assemble = () => {
-    const parts = [header, '', summaryParts.join(' · '), '']
-    for (const block of blocks) { parts.push(block.text, '') }
-    if (removed) parts.push(`… et ${removed} autre${removed > 1 ? 's' : ''} camion${removed > 1 ? 's' : ''} actif${removed > 1 ? 's' : ''} (détail sur la plateforme)`, '')
-    parts.push(footerLine)
-    if (!fleetDetailsAvailable) parts.push('', 'Détails kilométrage/conduite indisponibles (données Fleeti non reçues).')
-    return parts.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  const volumeText = (bucket) => {
+    const parts = []
+    if (Number.isFinite(bucket.distanceKm)) parts.push(`${Math.round(bucket.distanceKm).toLocaleString('fr-FR')} km`)
+    return parts
   }
 
-  let text = assemble()
-  while (text.length > maxChars && blocks.length > 1) {
-    blocks = blocks.slice(0, blocks.length - 1)
-    removed += 1
-    text = assemble()
+  for (const bucket of buckets) {
+    const missions = orders.filter((order) => truckKeyOf(order) === bucket.key && days.includes(dayKeyOfOrder(order))).length
+    const vouchersWeek = vouchers.filter((voucher) => truckKeyOf(voucher) === bucket.key && days.includes(formatDayKey(voucher?.date ?? voucher?.createdAt))).length
+    const weekEvents = events.filter((event) => truckKeyOf(event) === bucket.key && days.includes(formatDayKey(event?.createdAt ?? event?.timestamp))).length
+    const parts = [`${missions} mission${missions > 1 ? 's' : ''}`]
+    parts.push(...volumeText(bucket))
+    if (weekEvents) parts.push(`${weekEvents} passage${weekEvents > 1 ? 's' : ''} de zone`)
+    if (vouchersWeek) parts.push(`${vouchersWeek} bon${vouchersWeek > 1 ? 's' : ''} carburant`)
+    lines.push(`- ${bucket.plate}${bucket.driver ? ` - ${bucket.driver}` : ''} : ${parts.join(' · ')}`)
   }
 
-  return {
-    text,
-    day,
-    stats: {
-      activeTrucks: active.length,
-      inactiveTrucks: inactive.length,
-      missions: missionTotal,
-      zoneEvents: zoneTotal,
-      fuelVouchers: fuelTotal,
-      incidents: active.reduce((sum, bucket) => sum + [...bucket.incidentCounts.values()].reduce((a, b) => a + b, 0), 0),
-      blocks: blocks.length,
-      removedBlocks: removed,
-      length: text.length,
-    },
+  lines.push('', 'QUANTITÉS PAR CLIENT (semaine)')
+  if (rows.length) {
+    for (const row of rows) {
+      lines.push(`- ${row.client} (${row.missions} mission${row.missions > 1 ? 's' : ''}) : chargée ${formatQuantity(row.charged || 0)} · livrée ${formatQuantity(row.delivered || 0)} · en cours ${formatQuantity(Math.max(0, (row.charged || 0) - (row.delivered || 0)))}`)
+    }
+  } else {
+    lines.push('- Aucune mission enregistrée sur la période')
   }
+
+  const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars)
+  return { text, stats: { days: days.length, missions: totalMissions, clients: rows.length, length: text.length } }
 }
