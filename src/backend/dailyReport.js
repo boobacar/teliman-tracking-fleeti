@@ -375,8 +375,6 @@ export function buildDailyReport({
     } else {
       block.push(bucket.enters.length || bucket.exits.length ? 'Pas de mission — passages de zone uniquement' : 'Pas de mission')
     }
-    const movements = summariseZones([...bucket.enters, ...bucket.exits])
-    if (movements.length) block.push(`  Zones : ${movements.join(' · ')}`)
     const address = positionByKey.get(bucket.key)
     block.push(`  Position : ${address || 'indisponible'}`)
     const metrics = []
@@ -386,11 +384,6 @@ export function buildDailyReport({
     const rest = durationLabel(bucket.restSeconds)
     if (rest) metrics.push(`repos ${rest}`)
     if (metrics.length) block.push(`  ${metrics.join(' · ')}`)
-    if (bucket.incidents.length) {
-      const counted = new Map()
-      for (const type of bucket.incidents) counted.set(type, (counted.get(type) || 0) + 1)
-      block.push(`  Incidents : ${[...counted.entries()].map(([type, count]) => `${count} ${pluralise(count, ALERT_LABELS[type] || type, type)}`).join(', ')}`)
-    }
     return block
   }
 

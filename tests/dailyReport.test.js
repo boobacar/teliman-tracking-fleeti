@@ -134,10 +134,20 @@ test('camion actif : missions regroupées, heures, position, distance, conduite,
   assert.ok(text.includes('LAFARGE : Bouaké → Korhogo — 2 missions (ciment cpj 42,5)'), text)
   assert.ok(text.includes('départ 11h44 · 1/2 livrée'), text)
   assert.ok(text.includes('Position : Korhogo, Savanes'), text)
-  assert.ok(text.includes('Zones : Bouaké — sortie 15h07'), text)
+  assert.ok(!/Zones :/.test(text), 'plus de ligne Zones dans le message')
+  assert.ok(!/Incidents :/.test(text), 'plus de ligne Incidents dans le message')
   assert.ok(text.includes('Position : Korhogo'), text)
   assert.ok(text.includes('153 km · conduite 4h01 · repos 14h40'), text)
-  assert.ok(text.includes('Incidents : 1 stationnement prolongé, 1 excès de vitesse'), text)
+  assert.ok(!text.includes('Incidents :'), text)
+})
+
+test('le PDF conserve zones et incidents, le message ne les affiche plus', () => {
+  const { text, sections } = build()
+  assert.ok(!/Zones :|Incidents :/.test(text), 'message sans lignes Zones / Incidents')
+  const actif = sections.actives.find((camion) => camion.plate === 'AB246JJ')
+  assert.ok(actif.zones.length > 0, 'les passages de zone restent dans le PDF')
+  assert.ok(actif.incidents.length > 0, 'les incidents restent dans le PDF')
+  assert.match(actif.zones[0].text, /Bouaké/)
 })
 
 test('camion sans mission : annoncé inactif avec stationnement prolongé', () => {
