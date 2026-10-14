@@ -203,7 +203,5 @@
         [#q.at("inProgress", default: "—")],
       )).flatten(),
     )
-    #v(4pt)
-    #text(size: 8pt, fill: gris)[Quantités additionnées telles qu'elles sont saisies dans les bons de livraison.]
   ]
 ]
