@@ -183,6 +183,37 @@ test("une alerte sans camion identifiable n'est pas affichée comme un camion", 
   assert.ok(!/^- stationnement prolongé/m.test(text), 'aucun bloc sans immatriculation')
 })
 
+test('un véhicule exclu (bus) disparaît du rapport et de tous les compteurs', () => {
+  // Le bus partage les mêmes données que les camions : rien de lui ne doit subsister.
+  const bus = {
+    id: 77, trackerId: 5273, truckLabel: '5273WWCI01', client: 'LAFARGE', loadingPoint: 'BOUAKE',
+    destination: 'KORHOGO', goods: 'CIMENT', quantity: '40,000', status: 'Livré',
+    date: `${DAY}T07:00:00.000Z`, departureDateTime: `${DAY}T07:30:00.000Z`, completedAt: `${DAY}T09:00:00.000Z`,
+  }
+  const withBus = {
+    orders: [...ORDERS, bus],
+    events: [...EVENTS, { trackerId: 5273, truckLabel: '5273WWCI01', eventType: 'enter', geofenceName: 'Bouaké', createdAt: `${DAY}T08:00:00.000Z` }],
+    alerts: [...ALERTS, { trackerId: 5273, truckLabel: '5273WWCI01', event: 'excessive_parking', createdAt: `${DAY}T08:10:00.000Z` }],
+    fleetRows: [...FLEET_ROWS, { trackerId: 5273, truckLabel: '5273WWCI01', distanceKm: 90, drivingSeconds: 3600, restSeconds: 7200 }],
+    positions: [...POSITIONS, { trackerId: 5273, truckLabel: '5273WWCI01', address: 'Bouaké' }],
+    trucks: [{ id: 3487539 }, { id: 111 }, { id: 5273 }],
+  }
+  const avant = build(withBus)
+  assert.ok(avant.text.includes('5273WWCI01'), 'sans exclusion, le bus apparaît')
+  assert.ok(avant.stats.zoneCounters.find((row) => row.label === 'Zone Bouaké').count === 2)
+
+  const apres = build({ ...withBus, excludedTrucks: ['5273WWCI01'] })
+  assert.ok(!apres.text.includes('5273WWCI01'), 'exclu : plus aucune trace dans le message')
+  assert.ok(!apres.sections.actives.some((camion) => camion.plate === '5273WWCI01'))
+  assert.ok(!apres.sections.inactives.some((camion) => camion.plate === '5273WWCI01'))
+  assert.equal(apres.stats.zoneCounters.find((row) => row.label === 'Zone Bouaké').count, 1, 'ses entrées de zone ne comptent plus')
+  assert.equal(apres.stats.missions, avant.stats.missions - 1, 'sa mission ne compte plus')
+  assert.ok(apres.text.includes('Camions actifs : 3 / 4'), 'la taille de flotte exclut le bus')
+  assert.equal(apres.stats.excludedTrucks, 1)
+  // Les camions normaux restent intacts.
+  assert.ok(apres.text.includes('AB246JJ - Yacouba SARIA'), apres.text)
+})
+
 test('les jours précédents ne polluent pas le rapport du jour', () => {
   const { stats } = build()
   assert.equal(stats.zoneEntries, 4, 'seules les entrées du jour sont comptées')

@@ -11,8 +11,11 @@ import {
   canonicalLabel,
   driverFor,
   getTruckRegistry,
+  isReportExcluded,
+  loadReportExclusions,
   normalizeTruckLabel,
   plateFor,
+  saveReportExclusions,
 } from '../src/backend/truckRegistry.js'
 
 test('affichage : immatriculations remplacées dans les champs concernés', () => {
@@ -66,6 +69,24 @@ test('parc officiel : plaques, chauffeurs, formats et coquilles', () => {
   assert.equal(canonicalLabel('602606WWCI01'), '4400WWCI01')
   assert.equal(canonicalLabel('PLAQUE-HORS-PARC'), 'PLAQUE-HORS-PARC')
   assert.equal(OFFICIAL_TRUCKS.length, 7)
+})
+
+test('véhicules exclus des rapports : lecture, enregistrement, correspondance', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parc-exclus-'))
+  // Fichier absent : la liste par défaut s'applique (le bus du parc).
+  assert.deepEqual(loadReportExclusions(dir), ['5273WWCI01'])
+  assert.equal(isReportExcluded('5273WWCI01'), true)
+  assert.equal(isReportExcluded('5276WWCI01'), false, 'un numéro proche n’est pas exclu par erreur')
+  assert.equal(isReportExcluded('39151WWCI01'), false)
+  assert.equal(isReportExcluded('AB246JJ'), false)
+  // Exclusions écrites, puis relues.
+  const saved = saveReportExclusions(dir, ['5273WWCI01', 'AB154GR'])
+  assert.deepEqual(saved, ['5273WWCI01', 'AB154GR'])
+  const relu = loadReportExclusions(dir)
+  assert.equal(isReportExcluded('45792WWCI01', { exclusions: relu }), true, 'exclusion par plaque officielle')
+  assert.equal(isReportExcluded('AB154GR', { exclusions: relu }), true)
+  assert.equal(isReportExcluded('3952WWCI01', { exclusions: relu }), false)
+  rmSync(dir, { recursive: true, force: true })
 })
 
 test('parc officiel : fichier de données prioritaire et cache', () => {

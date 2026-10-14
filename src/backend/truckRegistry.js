@@ -162,11 +162,61 @@ export function loadTruckRegistry(dataDir) {
       if (cleaned.length) return cleaned
     }
     mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, `${JSON.stringify({ trucks: OFFICIAL_TRUCKS, updatedAt: new Date().toISOString() }, null, 2)}\n`)
+    writeFileSync(file, `${JSON.stringify({ trucks: OFFICIAL_TRUCKS, reportExcluded: DEFAULT_REPORT_EXCLUSIONS, updatedAt: new Date().toISOString() }, null, 2)}\n`)
   } catch (error) {
     console.warn('[truck-registry] lecture impossible, valeurs par défaut utilisées :', error?.message || error)
   }
   return OFFICIAL_TRUCKS
+}
+
+// ── Véhicules exclus des rapports ───────────────────────────────────────────────
+// Certains véhicules du suivi GPS ne font pas partie de l'exploitation rapportée
+// (ex. un bus) : leurs passages faussent les compteurs. Ils sont listés à part, dans le
+// même fichier de parc, et retirés des rapports (message et PDF) avant tout calcul.
+const DEFAULT_REPORT_EXCLUSIONS = ['5273WWCI01']
+
+export function loadReportExclusions(dataDir) {
+  const file = dataDir ? join(dataDir, 'truck-registry.json') : ''
+  try {
+    if (file && existsSync(file)) {
+      const parsed = JSON.parse(readFileSync(file, 'utf8'))
+      if (!Array.isArray(parsed?.reportExcluded)) return [...DEFAULT_REPORT_EXCLUSIONS]
+      return parsed.reportExcluded.map((item) => String(item || '').trim()).filter(Boolean)
+    }
+  } catch (error) {
+    console.warn('[parc] exclusions de rapport illisibles :', error?.message || error)
+  }
+  return [...DEFAULT_REPORT_EXCLUSIONS]
+}
+
+export function saveReportExclusions(dataDir, list = []) {
+  const file = join(dataDir, 'truck-registry.json')
+  let payload = { trucks: OFFICIAL_TRUCKS, updatedAt: new Date().toISOString() }
+  try {
+    if (existsSync(file)) payload = { ...JSON.parse(readFileSync(file, 'utf8')) }
+  } catch { /* fichier illisible : on repart des valeurs initiales */ }
+  payload.reportExcluded = list.map((item) => String(item || '').trim()).filter(Boolean)
+  payload.updatedAt = new Date().toISOString()
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`)
+  registryCache = { dir: null, entries: null, ts: 0 }
+  return loadReportExclusions(dataDir)
+}
+
+// Une exclusion peut être écrite avec l'étiquette GPS ou avec la plaque officielle.
+export function isReportExcluded(label, { exclusions = DEFAULT_REPORT_EXCLUSIONS, entries = OFFICIAL_TRUCKS } = {}) {
+  const key = normalizeTruckLabel(label)
+  if (!key) return false
+  // On compare l'étiquette demandée à l'étiquette exclue ET à sa plaque officielle :
+  // une exclusion écrite avec la nouvelle plaque fonctionne aussi.
+  const officialKey = normalizeTruckLabel(plateFor(label, { entries, fallback: '' }))
+  return exclusions.some((item) => {
+    const excludedKey = normalizeTruckLabel(item)
+    if (!excludedKey) return false
+    if (excludedKey === key) return true
+    const excludedPlate = normalizeTruckLabel(plateFor(item, { entries, fallback: '' }))
+    return Boolean(excludedPlate) && (excludedPlate === key || excludedPlate === officialKey)
+  })
 }
 
 // Accès caché (les réponses HTTP sont converties à chaque requête : inutile de relire

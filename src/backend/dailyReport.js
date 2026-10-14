@@ -8,7 +8,7 @@
 //
 // Aucune valeur estimée : une donnée absente de la plateforme n'est pas inventée, elle
 // est soit omise, soit annoncée « indisponible » quand la direction l'attend.
-import { OFFICIAL_TRUCKS, driverFor, plateFor } from './truckRegistry.js'
+import { OFFICIAL_TRUCKS, driverFor, isReportExcluded, plateFor } from './truckRegistry.js'
 
 export const REPORTED_ZONES = [
   { label: 'Zone Korhogo', patterns: ['korhogo'] },
@@ -118,6 +118,15 @@ function normalizeZoneName(name) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+function labelOfRecord(record) {
+  return String(record?.truckLabel || record?.trackerLabel || record?.label || record?.plate || '').trim()
+}
+
+export function filterExcludedTrucks(records = [], { excludedTrucks = [], registry = OFFICIAL_TRUCKS } = {}) {
+  if (!excludedTrucks.length) return records
+  return records.filter((record) => !isReportExcluded(labelOfRecord(record), { exclusions: excludedTrucks, entries: registry }))
 }
 
 function inDay(value, day) {
@@ -335,9 +344,19 @@ export function buildDailyReport({
   alerts = [],
   trucks = [],
   positions = [],
+  excludedTrucks = [],
   registry = OFFICIAL_TRUCKS,
   maxChars = 2400,
 }) {
+  // Véhicules exclus (ex. le bus) : retirés avant tout calcul.
+  const exclus = { excludedTrucks, registry }
+  orders = filterExcludedTrucks(orders, exclus)
+  events = filterExcludedTrucks(events, exclus)
+  fleetRows = filterExcludedTrucks(fleetRows, exclus)
+  vouchers = filterExcludedTrucks(vouchers, exclus)
+  alerts = filterExcludedTrucks(alerts, exclus)
+  positions = filterExcludedTrucks(positions, exclus)
+  trucks = filterExcludedTrucks(trucks, exclus)
   const buckets = bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry })
   // Les alertes sans étiquette de camion ne peuvent être attribuées : elles sont
   // comptées à part plutôt que d'afficher un bloc sans immatriculation.
@@ -436,6 +455,7 @@ export function buildDailyReport({
       clients: quantities.map((row) => ({ client: row.client, charged: row.charged, delivered: row.delivered, inProgress: row.inProgress, missions: row.missions })),
       truncatedTrucks: skipped,
       unattributedAlerts: unattributed,
+      excludedTrucks: excludedTrucks.length,
       length: text.length,
     },
   }
@@ -452,9 +472,16 @@ export function buildWeeklyReport({
   fleetRows = [],
   vouchers = [],
   alerts = [],
+  excludedTrucks = [],
   registry = OFFICIAL_TRUCKS,
   maxChars = 2400,
 }) {
+  const exclus = { excludedTrucks, registry }
+  orders = filterExcludedTrucks(orders, exclus)
+  events = filterExcludedTrucks(events, exclus)
+  fleetRows = filterExcludedTrucks(fleetRows, exclus)
+  vouchers = filterExcludedTrucks(vouchers, exclus)
+  alerts = filterExcludedTrucks(alerts, exclus)
   const days = []
   const cursor = new Date(`${dayFrom}T12:00:00`)
   const end = new Date(`${dayTo}T12:00:00`)
