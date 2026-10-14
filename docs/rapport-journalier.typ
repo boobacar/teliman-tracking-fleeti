@@ -20,7 +20,7 @@
     #grid(
       columns: (1fr, 1fr),
       align: (left, right),
-      [TELIMAN LOGISTIQUE — document généré automatiquement],
+      [TELIMAN LOGISTIQUE],
       [Page #counter(page).display() / #counter(page).final().first()],
     )
   ],
