@@ -16,12 +16,6 @@ export const REPORTED_ZONES = [
   { label: 'Zone Bouaké', patterns: ['bouake'] },
 ]
 
-// « 1 stationnement prolongé » / « 3 stationnements prolongés »
-function pluralise(count, label) {
-  if (count <= 1) return label
-  return label.endsWith('al') ? `${label.slice(0, -2)}aux` : `${label}s`
-}
-
 const ALERT_LABELS = {
   speedup: 'excès de vitesse',
   excessive_parking: 'stationnement prolongé',
@@ -29,6 +23,22 @@ const ALERT_LABELS = {
   fuel_level_leap: 'variation de carburant',
   geofence_enter: 'entrée de zone',
   geofence_exit: 'sortie de zone',
+}
+
+const ALERT_LABELS_PLURAL = {
+  speedup: 'excès de vitesse',
+  excessive_parking: 'stationnements prolongés',
+  crash_alarm: 'alertes accident',
+  fuel_level_leap: 'variations de carburant',
+  geofence_enter: 'entrées de zone',
+  geofence_exit: 'sorties de zone',
+}
+
+// « 1 stationnement prolongé » / « 3 stationnements prolongés »
+function pluralise(count, label, type = '') {
+  if (count <= 1) return label
+  if (type && ALERT_LABELS_PLURAL[type]) return ALERT_LABELS_PLURAL[type]
+  return label.endsWith('al') ? `${label.slice(0, -2)}aux` : `${label}s`
 }
 
 function pad(value) {
@@ -95,9 +105,12 @@ const PLACE_LABELS = {
 export function displayPlace(value) {
   const raw = String(value || '').trim()
   if (!raw) return ''
-  const key = raw.toLowerCase()
-  if (PLACE_LABELS[key]) return PLACE_LABELS[key]
-  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+  // « Fadyadougou, mine » : on garde le site (mine, client, carrière) mais on écrit le
+  // nom de la ville comme la direction l'écrit.
+  const [head, ...rest] = raw.split(',')
+  const key = head.trim().toLowerCase()
+  const place = PLACE_LABELS[key] || head.trim().charAt(0).toUpperCase() + head.trim().slice(1).toLowerCase()
+  return [place, ...rest.map((part) => part.trim().toLowerCase())].join(', ')
 }
 
 function normalizeZoneName(name) {
@@ -156,7 +169,7 @@ function bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry 
     if (type !== 'enter' && type !== 'exit') continue
     const bucket = ensure(truckKeyOf(event), event)
     if (!bucket) continue
-    const entry = { zone: String(event?.geofenceName || event?.zone || ''), at: event?.createdAt ?? event?.timestamp }
+    const entry = { zone: String(event?.geofenceName || event?.zone || ''), at: event?.createdAt ?? event?.timestamp, type }
     if (type === 'enter') bucket.enters.push(entry)
     else bucket.exits.push(entry)
   }
@@ -249,6 +262,32 @@ function missionGroups(bucket, maxGroups = 2) {
   return lines
 }
 
+// Regroupe les passages par site : « Fadiadougou, mine — 4 passages (5h48 → 8h26) ».
+export function summariseZones(movements = []) {
+  const order = []
+  const grouped = new Map()
+  for (const movement of [...movements].sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0))) {
+    const zone = displayPlace(movement.zone)
+    if (!zone) continue
+    if (!grouped.has(zone)) {
+      grouped.set(zone, { zone, steps: [] })
+      order.push(zone)
+    }
+    grouped.get(zone).steps.push({ type: movement.type === 'exit' ? 'sortie' : 'entrée', at: formatClock(movement.at), raw: movement.at })
+  }
+  return order.map((zone) => {
+    const { steps } = grouped.get(zone)
+    const times = steps.map((step) => step.at).filter(Boolean)
+    if (steps.length <= 2) {
+      return `${zone} — ${steps.map((step) => `${step.type} ${step.at}`).filter((text) => !text.endsWith(' ')).join(' puis ')}`
+    }
+    const entries = steps.filter((step) => step.type === 'entrée').length
+    const exits = steps.length - entries
+    const parts = [entries ? `${entries} entrée${entries > 1 ? 's' : ''}` : null, exits ? `${exits} sortie${exits > 1 ? 's' : ''}` : null].filter(Boolean)
+    return `${zone} — ${parts.join(', ')} (${times[0]} → ${times[times.length - 1]})`
+  })
+}
+
 function zoneSummary(events, day) {
   const counters = REPORTED_ZONES.map((zone) => ({ label: zone.label, count: 0 }))
   let other = 0
@@ -336,10 +375,7 @@ export function buildDailyReport({
     } else {
       block.push(bucket.enters.length || bucket.exits.length ? 'Pas de mission — passages de zone uniquement' : 'Pas de mission')
     }
-    const movements = [...bucket.enters, ...bucket.exits]
-      .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0))
-      .slice(-2)
-      .map((movement) => `${displayPlace(movement.zone)} à ${formatClock(movement.at)}`)
+    const movements = summariseZones([...bucket.enters, ...bucket.exits])
     if (movements.length) block.push(`  Zones : ${movements.join(' · ')}`)
     const address = positionByKey.get(bucket.key)
     block.push(`  Position : ${address || 'indisponible'}`)
@@ -353,7 +389,7 @@ export function buildDailyReport({
     if (bucket.incidents.length) {
       const counted = new Map()
       for (const type of bucket.incidents) counted.set(type, (counted.get(type) || 0) + 1)
-      block.push(`  Incidents : ${[...counted.entries()].map(([type, count]) => `${count} ${pluralise(count, ALERT_LABELS[type] || type)}`).join(', ')}`)
+      block.push(`  Incidents : ${[...counted.entries()].map(([type, count]) => `${count} ${pluralise(count, ALERT_LABELS[type] || type, type)}`).join(', ')}`)
     }
     return block
   }
@@ -396,6 +432,7 @@ export function buildDailyReport({
   const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return {
     text,
+    sections: buildSections({ header, buckets, active, inactive, positions: positionByKey, counts: { counters, other }, quantities, day }),
     stats: {
       activeTrucks: active.length,
       inactiveTrucks: inactive.length,
@@ -480,4 +517,94 @@ export function buildWeeklyReport({
 
   const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxChars)
   return { text, stats: { days: days.length, missions: totalMissions, clients: rows.length, length: text.length } }
+}
+
+// Version structurée du rapport (utilisée par le PDF officiel) : mêmes données, mises
+// en forme pour un document tabulaire.
+function buildSections({ header, buckets, active, inactive, positions, counts, quantities, day }) {
+  const truckBlock = (bucket) => {
+    const missions = []
+    const seen = new Map()
+    for (const mission of bucket.missions) {
+      const route = [displayPlace(mission.loadingPoint), displayPlace(mission.destination)].filter(Boolean).join(' → ')
+      const signature = [String(mission.client || '').trim(), route, String(mission.goods || '').trim()].join('|')
+      if (!seen.has(signature)) {
+        seen.set(signature, { client: String(mission.client || '').trim(), route, goods: String(mission.goods || '').trim(), count: 0, missions: [], quantity: 0 })
+        missions.push(seen.get(signature))
+      }
+      const group = seen.get(signature)
+      group.count += 1
+      group.missions.push(mission)
+      const parsed = parseQuantity(mission.quantity)
+      if (parsed !== null) group.quantity += parsed
+    }
+    const missionRows = []
+    for (const group of missions) {
+      const sorted = [...group.missions].sort((a, b) => new Date(a.departureDateTime || a.date || 0) - new Date(b.departureDateTime || b.date || 0))
+      const first = sorted[0]
+      const last = sorted[sorted.length - 1]
+      group.departure = formatClock(first.departureDateTime)
+      const raw = last.completedAt || last.arrivalDateTime
+      const closing = formatClock(raw)
+      const depTime = first.departureDateTime ? new Date(first.departureDateTime).getTime() : null
+      const closeTime = raw ? new Date(raw).getTime() : null
+      group.closing = closing && (depTime === null || closeTime === null || closeTime >= depTime) ? closing : ''
+      const delivered = group.missions.filter((mission) => String(mission.status || '') === 'Livré').length
+      group.status = delivered === group.count ? 'Livré' : delivered > 0 ? `${delivered}/${group.count} livrée` : (String(first.status || 'En cours'))
+      missionRows.push({
+        client: group.client,
+        route: group.route,
+        goods: group.goods,
+        count: group.count,
+        departure: group.departure,
+        closing: group.closing,
+        status: group.status,
+        quantity: group.quantity ? formatQuantity(group.quantity) : '',
+      })
+    }
+    const incidents = new Map()
+    for (const type of bucket.incidents) incidents.set(type, (incidents.get(type) || 0) + 1)
+    return {
+      plate: bucket.plate,
+      oldPlate: bucket.rawLabel && bucket.rawLabel !== bucket.plate ? bucket.rawLabel : '',
+      driver: bucket.driver || '',
+      missions: missionRows,
+      zones: summariseZones([...bucket.enters, ...bucket.exits]).map((text) => ({ text })),
+      hasMissions: bucket.missions.length > 0,
+      position: positions.get(bucket.key) || 'indisponible',
+      distanceKm: Number.isFinite(bucket.distanceKm) ? Math.round(bucket.distanceKm) : null,
+      driving: durationLabel(bucket.drivingSeconds),
+      rest: durationLabel(bucket.restSeconds),
+      incidents: [...incidents.entries()].map(([type, count]) => ({ label: pluralise(count, ALERT_LABELS[type] || type, type), count })),
+      vouchers: bucket.vouchers.length,
+    }
+  }
+
+  return {
+    header,
+    day,
+    general: {
+      activeTrucks: active.length,
+      fleetSize: Math.max(buckets.length, active.length),
+      missions: active.reduce((sum, bucket) => sum + bucket.missions.length, 0),
+      zones: [
+        ...counts.counters.map((counter) => ({ label: counter.label.replace(/^Zone /, ''), count: counter.count })),
+        ...(counts.other > 0 ? [{ label: 'Autres zones', count: counts.other }] : []),
+      ],
+    },
+    actives: active.map(truckBlock),
+    inactives: inactive.map((bucket) => ({
+      plate: bucket.plate,
+      oldPlate: bucket.rawLabel && bucket.rawLabel !== bucket.plate ? bucket.rawLabel : '',
+      driver: bucket.driver || '',
+      reason: bucket.incidents.some((type) => type === 'excessive_parking') ? 'Pas de mission — stationnement prolongé' : 'Pas de mission',
+    })),
+    quantities: quantities.map((row) => ({
+      client: row.client,
+      missions: row.missions,
+      charged: row.charged === null ? '' : formatQuantity(row.charged),
+      delivered: row.delivered === null ? '' : formatQuantity(row.delivered),
+      inProgress: row.inProgress === null ? '' : formatQuantity(row.inProgress),
+    })),
+  }
 }

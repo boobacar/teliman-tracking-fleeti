@@ -432,7 +432,7 @@ export function createBaileysWhatsAppClient({
   // `imagePath` (optionnel) : image jointe (logo Teliman) avec le message en
   // légende. Sans image — ou si l'image est illisible — l'envoi reste en texte
   // seul : une alerte ne doit JAMAIS être perdue à cause du logo.
-  async function sendText(to, message, { imagePath = '' } = {}) {
+  async function sendText(to, message, { imagePath = '', documentPath = '', documentName = '' } = {}) {
     const jid = toBaileysJid(to)
     if (!jid) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
     if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
@@ -467,10 +467,37 @@ export function createBaileysWhatsAppClient({
           await sleep(resolveTypingDelay(typingDelayMs))
         } catch { /* presence best-effort */ }
       }
-      const imagePayload = await resolveOutgoingImagePayload({ imagePath, caption: message, logger })
+      // Document joint (PDF de rapport) : prioritaire sur le logo — le texte passé en
+      // `message` sert alors de légende.
+      let documentPayload = null
+      if (documentPath) {
+        try {
+          const { readFile } = await import('node:fs/promises')
+          const bytes = await readFile(documentPath)
+          documentPayload = {
+            document: bytes,
+            mimetype: 'application/pdf',
+            fileName: documentName || documentPath.split('/').pop() || 'document.pdf',
+          }
+          if (message) documentPayload.caption = message
+        } catch (error) {
+          logger.warn?.(`[baileys] document illisible (${error?.message || error}) — repli sans pièce jointe.`)
+          documentPayload = null
+        }
+      }
       let mediaKind = 'text'
       let result = null
-      if (imagePayload) {
+      if (documentPayload) {
+        try {
+          result = await socket.sendMessage(recipientJid, documentPayload)
+          mediaKind = 'document'
+        } catch (error) {
+          if (extractErrorStatusCode(error) === 463) throw error
+          logger.warn?.(`[baileys] envoi du document impossible (${error?.message || error}) — repli en texte seul.`)
+        }
+      }
+      const imagePayload = documentPayload ? null : await resolveOutgoingImagePayload({ imagePath, caption: message, logger })
+      if (!result && imagePayload) {
         try {
           result = await socket.sendMessage(recipientJid, imagePayload)
           mediaKind = 'logo'

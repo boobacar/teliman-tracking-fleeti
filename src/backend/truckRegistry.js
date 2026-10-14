@@ -45,7 +45,7 @@ export function buildRegistryIndex(entries = OFFICIAL_TRUCKS) {
       driver: String(entry.driver || '').trim(),
     }
     if (oldKey) index.set(oldKey, record)
-    if (newKey && !index.has(newKey)) index.set(newKey, { ...record, oldLabel: newKey })
+    if (newKey && !index.has(newKey)) index.set(newKey, record)
   }
   return index
 }
@@ -58,6 +58,90 @@ export function plateFor(label, { entries = OFFICIAL_TRUCKS, fallback = '' } = {
 export function driverFor(label, { entries = OFFICIAL_TRUCKS, fallback = '' } = {}) {
   const record = buildRegistryIndex(entries).get(registryKeyFor(label))
   return record?.driver || fallback || ''
+}
+
+// Champs susceptibles de porter une immatriculation. La correspondance ne s'applique
+// qu'aux valeurs qui sont EXACTEMENT une plaque connue : un nom de client, une note
+// libre ou un numéro ne sont jamais touchés.
+const LABEL_KEYS = new Set([
+  'label',
+  'trucklabel',
+  'trackerlabel',
+  'truck_label',
+  'tracker_label',
+  'vehiclelabel',
+  'vehicle_label',
+  'plate',
+  'plaque',
+  'registration',
+  'immatriculation',
+  'truck',
+  'vehicle',
+])
+
+export function isLabelKey(key) {
+  return LABEL_KEYS.has(String(key || '').toLowerCase())
+}
+
+// Parcours récursif d'une charge utile JSON. direction 'display' : ancienne plaque du
+// GPS → plaque officielle. direction 'storage' : plaque officielle → étiquette GPS,
+// pour que la base reste alignée sur le fournisseur quand un formulaire renvoie la
+// plaque affichée.
+export function applyRegistryToPayload(payload, { entries = OFFICIAL_TRUCKS, direction = 'display' } = {}) {
+  const index = buildRegistryIndex(entries)
+  const forward = new Map()
+  const reverse = new Map()
+  for (const record of index.values()) {
+    if (record.oldLabel) forward.set(record.oldLabel, record.plate)
+    if (record.plate) reverse.set(normalizeTruckLabel(record.plate), record.oldLabel)
+  }
+  const table = direction === 'storage' ? reverse : forward
+  const seen = new WeakSet()
+
+  // Le nom du chauffeur officiel accompagne la plaque officielle (affichage seulement :
+  // l'enregistrement conserve ce que le formulaire envoie, le lien reste le trackerId).
+  const applyDriver = (record) => {
+    if (direction !== 'display') return
+    const label = record.truckLabel || record.trackerLabel || record.label || ''
+    const official = driverFor(label, { entries })
+    if (official) record.driver = official
+  }
+
+  const walk = (value, key = '') => {
+    if (value === null || value === undefined) return value
+    if (typeof value === 'string') {
+      const normalized = normalizeTruckLabel(value)
+      const mapped = table.get(normalized)
+      return mapped && mapped !== value ? mapped : value
+    }
+    if (typeof value !== 'object') return value
+    if (Array.isArray(value)) return value.map((item) => walk(item, key))
+    if (seen.has(value)) return value
+    seen.add(value)
+    for (const [childKey, childValue] of Object.entries(value)) {
+      if (typeof childValue === 'string') {
+        // Une chaîne n'est convertie que dans un champ d'immatriculation : une plaque
+        // citée dans un commentaire ou un message reste intacte.
+        if (isLabelKey(childKey)) value[childKey] = walk(childValue, childKey)
+        continue
+      }
+      walk(childValue, childKey)
+    }
+    applyDriver(value)
+    return value
+  }
+
+  return walk(payload)
+}
+
+// Étiquette GPS correspondant à une plaque officielle (pour l'enregistrement).
+export function canonicalLabel(plate, { entries = OFFICIAL_TRUCKS, fallback = '' } = {}) {
+  const normalized = normalizeTruckLabel(plate)
+  if (!normalized) return fallback
+  for (const entry of entries) {
+    if (normalizeTruckLabel(entry.plate) === normalized) return normalizeTruckLabel(entry.oldLabel)
+  }
+  return fallback || String(plate || '').trim()
 }
 
 // Lit (ou crée) le fichier de correspondance dans le dossier de données.
@@ -83,4 +167,16 @@ export function loadTruckRegistry(dataDir) {
     console.warn('[truck-registry] lecture impossible, valeurs par défaut utilisées :', error?.message || error)
   }
   return OFFICIAL_TRUCKS
+}
+
+// Accès caché (les réponses HTTP sont converties à chaque requête : inutile de relire
+// le fichier à chaque fois).
+let registryCache = { dir: null, entries: null, ts: 0 }
+
+export function getTruckRegistry(dataDir, ttlMs = 30000) {
+  const now = Date.now()
+  if (registryCache.dir === dataDir && registryCache.entries && (now - registryCache.ts) < ttlMs) return registryCache.entries
+  const entries = loadTruckRegistry(dataDir)
+  registryCache = { dir: dataDir, entries, ts: now }
+  return entries
 }

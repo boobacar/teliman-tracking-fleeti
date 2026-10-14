@@ -111,7 +111,9 @@ test('buildFleetAlertWhatsAppMessage masque le chauffeur quand il est non assign
 
   assert.doesNotMatch(message, /^Teliman Logistique/)
   assert.match(message, /est à l'arrêt/)
-  assert.match(message, /3100WWCI01/)
+  // Le parc officiel remplace l'ancienne étiquette GPS dans les messages sortants.
+  assert.match(message, /602607WWCI01/)
+  assert.doesNotMatch(message, /3100WWCI01/)
   assert.doesNotMatch(message, /Chauffeur:/)
   assert.doesNotMatch(message, /Non assigné/)
   assert.match(message, /L'équipe Teliman Logistique$/)
@@ -460,7 +462,7 @@ test('createBaileysWhatsAppClient simule la frappe (composing) avant l’envoi',
       ev: { on: (name, handler) => { handlers[name] = handler } },
       onWhatsApp: async (jid) => [{ jid, exists: true }],
       sendPresenceUpdate: async (type, jid) => { events.push(`presence:${type}:${jid.split('@')[0]}`) },
-      sendMessage: async (jid, payload) => { events.push(`send:${jid.split('@')[0]}`); return { key: { id: 'MSG-TYPING' } } },
+      sendMessage: async (jid, _payload) => { events.push(`send:${jid.split('@')[0]}`); return { key: { id: 'MSG-TYPING' } } },
     }),
     authStateFactory: async () => ({ state: {}, saveCreds: async () => {} }),
     qrCodeFactory: async () => 'data:image/png;base64,x',

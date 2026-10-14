@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import dns from 'dns'
+import { join } from 'node:path'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -52,7 +53,8 @@ import {
   validateSubscriptionInput,
 } from './src/backend/alertRouting.js'
 import { buildDailyReport, buildWeeklyReport } from './src/backend/dailyReport.js'
-import { loadTruckRegistry } from './src/backend/truckRegistry.js'
+import { applyRegistryToPayload, getTruckRegistry, loadTruckRegistry } from './src/backend/truckRegistry.js'
+import { renderReportPdf } from './src/backend/reportPdf.js'
 import {
   REPORT_TYPES,
   defaultScheduleFor,
@@ -75,6 +77,7 @@ dns.setDefaultResultOrder('ipv4first')
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DATA_DIR = process.env.TELIMAN_DATA_DIR || __dirname
+const REPORT_PDF_DIR = process.env.TELIMAN_REPORT_DIR || join(DATA_DIR, 'reports')
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
 // Initialiser la base de donnees SQLite
@@ -265,6 +268,34 @@ app.use((req, res, next) => {
 })
 
 app.use(express.json({ limit: '10mb' }))
+
+// Immatriculations officielles (document de la direction) appliquées à toute l'API :
+// - en sortie : l'interface affiche la nouvelle plaque partout ;
+// - en entrée : une plaque affichée est reconvertie vers l'étiquette GPS, pour que la
+//   base reste alignée sur le fournisseur (aucune donnée n'est réécrite en masse).
+app.use((req, res, next) => {
+  if (!String(req.path || '').startsWith('/api/')) return next()
+  const registry = getTruckRegistry(DATA_DIR)
+  if (req.body && typeof req.body === 'object' && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    try {
+      applyRegistryToPayload(req.body, { entries: registry, direction: 'storage' })
+    } catch (error) {
+      console.warn('[parc] conversion du corps de requête impossible :', error?.message || error)
+    }
+  }
+  if (typeof res.json === 'function') {
+    const originalJson = res.json.bind(res)
+    res.json = (payload) => {
+      try {
+        return originalJson(applyRegistryToPayload(payload, { entries: registry, direction: 'display' }))
+      } catch (error) {
+        console.warn('[parc] conversion de la réponse impossible :', error?.message || error)
+        return originalJson(payload)
+      }
+    }
+  }
+  return next()
+})
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -554,7 +585,7 @@ function requiredRoutePermissions(req) {
   if (pathName.startsWith('/api/alert-subscriptions')) return ['manage_data']
   // Rapports programmés : lecture (aperçu compris) pour les gestionnaires et la page
   // alertes, écriture et envoi manuel réservés à manage_data.
-  if (pathName.startsWith('/api/report-schedules') || pathName.startsWith('/api/report-preview')) {
+  if (pathName.startsWith('/api/report-schedules') || pathName.startsWith('/api/report-preview') || pathName.startsWith('/api/report-pdf')) {
     return mutation ? ['manage_data'] : ['manage_data', 'page_alerts']
   }
   if (pathName.startsWith('/api/report-send')) return ['manage_data']
@@ -774,7 +805,7 @@ async function whatsAppQueueOnResult(result, job) {
 // File Baileys : protections anti-ban actives uniquement en provider baileys.
 const whatsappBaileysQueue = WHATSAPP_CONFIG.enabled && WHATSAPP_CONFIG.provider === 'baileys' && WHATSAPP_CONFIG.queueEnabled && baileysWhatsAppClient
   ? createWhatsAppQueue({
-      sendFn: async (job) => sendWhatsAppTextMessage({ to: job.to, message: job.message, imagePath: job.imagePath, config: job.config, baileysClient: baileysWhatsAppClient, fetchImpl: job.fetchImpl }),
+      sendFn: async (job) => sendWhatsAppTextMessage({ to: job.to, message: job.message, imagePath: job.imagePath, documentPath: job.documentPath, documentName: job.documentName, config: job.config, baileysClient: baileysWhatsAppClient, fetchImpl: job.fetchImpl }),
       onResult: whatsAppQueueOnResult,
       minIntervalMs: { min: 3000, max: 6000 },
       maxRetries: 1,
@@ -3584,6 +3615,24 @@ async function sendReportNow(reportKey, { now = new Date(), phones = null, manua
     return { ...payload, recipients: [], results: [], status: 'skipped', reason: 'Aucun destinataire sélectionné pour ce rapport.' }
   }
 
+  // PDF officiel joint au message (même contenu, mise en page A4). Si le rendu échoue,
+  // le message texte part quand même : le rapport ne doit jamais être perdu.
+  let pdf = null
+  if (reportKey === 'report_daily') {
+    try {
+      const day = payload?.sections?.day || reportDayKeyOf(now)
+      const [year, month, date] = String(day).split('-')
+      pdf = await renderReportPdf(payload.sections, {
+        dateLabel: `${date}/${month}/${year}`,
+        title: 'Rapport journalier',
+        outPath: join(REPORT_PDF_DIR, `rapport-journalier-${day}.pdf`),
+      })
+      console.log(`[rapport] PDF prêt (${pdf.bytes} octets) : ${pdf.path}`)
+    } catch (error) {
+      console.warn('[rapport] PDF indisponible, envoi du message seul :', error?.message || error)
+    }
+  }
+
   const results = []
   for (const phone of recipients) {
     try {
@@ -3595,6 +3644,23 @@ async function sendReportNow(reportKey, { now = new Date(), phones = null, manua
         context: { source: 'report', reportKey, immediate: true },
       })
       results.push({ phone, ...result })
+      // Puis le PDF, en document, avec une légende courte (WhatsApp limite les légendes).
+      if (pdf) {
+        try {
+          const pdfResult = await sendWhatsAppTextMessage({
+            to: phone,
+            message: `Rapport journalier du ${payload?.sections?.day ? formatFrenchDate(new Date(`${payload.sections.day}T12:00:00`)) : ''} — version PDF`,
+            documentPath: pdf.path,
+            documentName: `rapport-journalier-${payload?.sections?.day || 'jour'}.pdf`,
+            config: WHATSAPP_CONFIG,
+            baileysClient: baileysWhatsAppClient,
+            context: { source: 'report_pdf', reportKey, immediate: true },
+          })
+          results.push({ phone, document: true, ...pdfResult })
+        } catch (error) {
+          results.push({ phone, document: true, sent: false, error: error?.message || String(error) })
+        }
+      }
     } catch (error) {
       results.push({ phone, sent: false, error: error?.message || String(error) })
     }
@@ -3611,8 +3677,8 @@ async function sendReportNow(reportKey, { now = new Date(), phones = null, manua
     status,
     detail: [`${sent} envoyé(s)`, queued ? `${queued} en file` : null, failed ? `${failed} en échec` : null].filter(Boolean).join(', '),
   })
-  console.log(`[rapport] ${reportKey} ${status} — ${sent} envoyé(s), ${queued} en file, ${failed} en échec (${recipients.length} destinataire(s))`)
-  return { ...payload, recipients, results, status, sent, queued, failed }
+  console.log(`[rapport] ${reportKey} ${status} — ${sent} envoyé(s), ${queued} en file, ${failed} en échec (${recipients.length} destinataire(s))${pdf ? ` · PDF ${Math.round(pdf.bytes / 1024)} Ko` : ''}`)
+  return { ...payload, recipients, results, status, sent, queued, failed, pdf: pdf ? { path: pdf.path, bytes: pdf.bytes } : null }
 }
 
 // Ordonnanceur : vérifie toutes les 30 s si un rapport doit partir. Le journal
@@ -3661,6 +3727,32 @@ app.put('/api/report-schedules/:reportKey', requirePermission('manage_data'), (r
     res.json({ ok: true, schedule: { ...saved, label: type.label, description: type.description, scheduleLabel: saved.enabled ? formatScheduleLabel(saved) : 'désactivé' } })
   } catch (error) {
     res.status(400).json({ ok: false, error: error.message })
+  }
+})
+
+// PDF officiel du rapport journalier : mêmes données que le message WhatsApp.
+app.get('/api/report-pdf', async (req, res) => {
+  try {
+    const type = String(req.query.type || 'report_daily')
+    if (type !== 'report_daily') {
+      return res.status(400).json({ ok: false, error: 'Le PDF n’est disponible que pour le rapport journalier.' })
+    }
+    const payload = await buildReportPayload(type)
+    const day = payload?.sections?.day || reportDayKeyOf(new Date())
+    const [year, month, date] = String(day).split('-')
+    const outPath = join(REPORT_PDF_DIR, `rapport-journalier-${day}.pdf`)
+    const file = await renderReportPdf(payload.sections, {
+      dateLabel: `${date}/${month}/${year}`,
+      title: 'Rapport journalier',
+      outPath,
+    })
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `inline; filename="rapport-journalier-${day}.pdf"`)
+    console.log(`[rapport] PDF généré (${file.bytes} octets) : ${file.path}`)
+    return res.sendFile(file.path)
+  } catch (error) {
+    console.error('[rapport] PDF :', error?.message || error)
+    return res.status(500).json({ ok: false, error: 'Génération du PDF impossible.' })
   }
 })
 

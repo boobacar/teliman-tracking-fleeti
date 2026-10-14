@@ -1,5 +1,7 @@
 // Notifications WhatsApp — canal Baileys uniquement (le canal Meta Cloud API a été retiré).
 // Envois : BL (création / arrivée), alertes flotte (vitesse, stationnement), alertes géofence.
+import { driverFor, plateFor } from './truckRegistry.js'
+
 const EVENT_TITLES = {
   created: 'Création de BL',
   status_changed: 'Changement de statut',
@@ -174,7 +176,7 @@ export function buildLegacyDeliveryOrderWhatsAppMessage(eventType, order = {}) {
     `Client: ${display(order.client)}`,
     `Statut: ${display(order.status)}`,
     `Camion: ${display(order.truckLabel)}`,
-    `Chauffeur: ${display(order.driver)}`,
+    `Chauffeur: ${driverNameOf(order) || '-'}`,
     `Point de chargement: ${display(order.loadingPoint)}`,
     `Destination: ${display(order.destination)}`,
     `Marchandise: ${display(order.goods)}`,
@@ -256,7 +258,7 @@ export function buildWhatsAppConfigFromEnv(env = {}) {
   }
 }
 
-export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null, context = null, imagePath = '' } = {}) {
+export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchImpl = fetch, baileysClient = null, context = null, imagePath = '', documentPath = '', documentName = '' } = {}) {
   const recipient = normalizeWhatsAppPhone(to)
   if (!recipient) return { sent: false, skipped: true, reason: 'Destinataire WhatsApp manquant.' }
   if (!message) return { sent: false, skipped: true, reason: 'Message WhatsApp vide.' }
@@ -273,11 +275,11 @@ export async function sendWhatsAppTextMessage({ to, message, config = {}, fetchI
   // File dédiée Baileys : throttle avec jitter, warm-up, circuit-breaker, fenêtre
   // horaire (protection anti-ban). La file envoie sans baileysQueue pour éviter la récursion.
   if (config.baileysQueue) {
-    const job = { to: recipient, message, imagePath: logoPath, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !(isImmediate || context?.immediate === true) }
+    const job = { to: recipient, message, imagePath: logoPath, documentPath, documentName, config: { ...config, baileysQueue: null }, fetchImpl, context, deferrable: !(isImmediate || context?.immediate === true) }
     config.baileysQueue.enqueue(job)
     return { sent: false, queued: true, reason: 'En file d\u2019attente WhatsApp (Baileys).', recipient, media: logoPath ? 'logo' : 'text' }
   }
-  return baileysClient.sendText(recipient, message, { imagePath: logoPath })
+  return baileysClient.sendText(recipient, message, { imagePath: logoPath, documentPath, documentName })
 }
 
 export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = null, order, masterData = {}, config, fetchImpl = fetch, baileysClient = null, templates = DEFAULT_WHATSAPP_TEMPLATES, context = null } = {}) {
@@ -308,6 +310,7 @@ export async function sendDeliveryOrderWhatsAppNotifications({ previousOrder = n
 
 function templateValue(key, order = {}) {
   if (key === 'date' || key === 'departureDateTime' || key === 'arrivalDateTime') return formatDateTime(order[key])
+  if (key === 'driver') return driverNameOf(order) || '-'
   return display(order[key])
 }
 
@@ -371,9 +374,19 @@ function isUnassignedDriver(value) {
   return ['non assigne', 'non-assigne', 'non affecte', 'non-affecte'].includes(normalized)
 }
 
+// Les messages sortants affichent les immatriculations officielles du parc (document
+// de la direction) : le suivi GPS envoie encore les anciennes étiquettes.
 function display(value) {
   const text = String(value ?? '').trim()
-  return text || '-'
+  if (!text) return '-'
+  return plateFor(text, { fallback: text })
+}
+
+// Nom du chauffeur officiel du camion quand le parc le connaît.
+function driverNameOf(source = {}) {
+  const label = source?.truckLabel || source?.trackerLabel || source?.label || ''
+  const official = driverFor(label, { fallback: '' })
+  return official || String(source?.driver ?? '').trim()
 }
 
 // Bloc « Mission en cours » attaché aux alertes : contexte du bon de livraison actif

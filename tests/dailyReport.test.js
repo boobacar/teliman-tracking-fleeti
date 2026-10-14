@@ -134,7 +134,7 @@ test('camion actif : missions regroupées, heures, position, distance, conduite,
   assert.ok(text.includes('LAFARGE : Bouaké → Korhogo — 2 missions (ciment cpj 42,5)'), text)
   assert.ok(text.includes('départ 11h44 · 1/2 livrée'), text)
   assert.ok(text.includes('Position : Korhogo, Savanes'), text)
-  assert.ok(text.includes('Zones : Bouaké à 15h07'), text)
+  assert.ok(text.includes('Zones : Bouaké — sortie 15h07'), text)
   assert.ok(text.includes('Position : Korhogo'), text)
   assert.ok(text.includes('153 km · conduite 4h01 · repos 14h40'), text)
   assert.ok(text.includes('Incidents : 1 stationnement prolongé, 1 excès de vitesse'), text)
