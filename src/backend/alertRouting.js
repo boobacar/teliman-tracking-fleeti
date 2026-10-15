@@ -26,6 +26,7 @@ export const ALERT_CATEGORIES = [
   { key: 'bl_arrived', label: 'Arrivée mission (client)', group: 'bl', scopes: ['all', 'client'], scopeSource: 'client' },
   { key: 'report_daily', label: 'Rapport quotidien', group: 'report', scopes: ['all'] },
   { key: 'report_weekly', label: 'Rapport hebdomadaire', group: 'report', scopes: ['all'] },
+  { key: 'report_bus', label: 'Rapport bus', group: 'report', scopes: ['all'] },
 ]
 
 export const ALERT_GROUPS = [

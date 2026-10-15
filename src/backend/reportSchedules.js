@@ -24,6 +24,16 @@ export const REPORT_TYPES = [
     defaultMinute: 0,
     defaultWeekday: 1, // lundi
   },
+  {
+    // Rapport du bus (activité, vitesses, kilométrage, alertes, vidange) — demandé par
+    // l'exploitation, tous les jours à 19h.
+    key: 'report_bus',
+    label: 'Rapport bus',
+    description: 'Activité du bus, vitesses, kilométrage, alertes et rappel de vidange',
+    defaultHour: 19,
+    defaultMinute: 0,
+    defaultWeekday: null, // tous les jours
+  },
 ]
 
 export const REPORT_TYPES_BY_KEY = Object.fromEntries(REPORT_TYPES.map((type) => [type.key, type]))

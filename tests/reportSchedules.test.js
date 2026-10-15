@@ -12,12 +12,14 @@ import {
 } from '../src/backend/reportSchedules.js'
 
 test('chaque type de rapport a sa propre heure par défaut', () => {
-  assert.equal(REPORT_TYPES.length, 2)
+  assert.equal(REPORT_TYPES.length, 3, 'quotidien, hebdomadaire et bus')
   const daily = defaultScheduleFor('report_daily')
   const weekly = defaultScheduleFor('report_weekly')
   assert.deepEqual({ hour: daily.hour, minute: daily.minute, weekday: daily.weekday }, { hour: 20, minute: 0, weekday: null })
   assert.deepEqual({ hour: weekly.hour, minute: weekly.minute, weekday: weekly.weekday }, { hour: 8, minute: 0, weekday: 1 })
-  assert.equal(defaultSchedules().length, 2)
+  assert.equal(defaultSchedules().length, 3)
+  const bus = defaultScheduleFor('report_bus')
+  assert.deepEqual({ hour: bus.hour, minute: bus.minute, weekday: bus.weekday }, { hour: 19, minute: 0, weekday: null }, 'le rapport bus part à 19h')
   assert.equal(reportTypeExists('report_daily'), true)
   assert.equal(reportTypeExists('report_hourly'), false)
 })
