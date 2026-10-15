@@ -74,23 +74,35 @@ test('trajets : seules les entrées de zone, dans l’ordre, avec heures', () =>
   assert.equal(itinerary[0].time, '5h12')
 })
 
-test('vidange : niveaux d’alerte selon le compteur et la référence', () => {
-  assert.match(maintenanceStatus(null).text, /indisponible/)
-  assert.match(maintenanceStatus(12000).text, /référence de la dernière vidange non renseignée/)
-  assert.match(maintenanceStatus(12000, { lastServiceOdometerKm: 9000 }).text, /rien à prévoir/, '3000 km : sous le seuil de surveillance')
-  assert.match(maintenanceStatus(13400, { lastServiceOdometerKm: 9000 }).text, /à programmer/, '4400 km : premier seuil')
-  assert.equal(maintenanceStatus(13400, { lastServiceOdometerKm: 9000 }).level, 'warn')
-  assert.match(maintenanceStatus(13900, { lastServiceOdometerKm: 9000 }).text, /Vidange à faire/)
-  assert.match(maintenanceStatus(14500, { lastServiceOdometerKm: 9000 }).text, /Vidange dépassée/)
-  assert.equal(maintenanceStatus(14500, { lastServiceOdometerKm: 9000 }).level, 'overdue')
+test('vidange : seuils 4000 / 4800 / 5000 km selon le compteur', () => {
+  assert.match(maintenanceStatus({}).text, /indisponible/)
+  assert.match(maintenanceStatus({ kmSinceService: 3000 }).text, /rien à prévoir/)
+  assert.match(maintenanceStatus({ odometerKm: 12000 }).text, /Référence de vidange non renseignée/)
+  assert.match(maintenanceStatus({ odometerKm: 12000 }, { lastServiceOdometerKm: 9000 }).text, /rien à prévoir/, '3000 km : sous le seuil')
+  assert.match(maintenanceStatus({ odometerKm: 13400 }, { lastServiceOdometerKm: 9000 }).text, /à programmer/, '4400 km : premier seuil')
+  assert.equal(maintenanceStatus({ odometerKm: 13400 }, { lastServiceOdometerKm: 9000 }).level, 'warn')
+  assert.match(maintenanceStatus({ odometerKm: 13900 }, { lastServiceOdometerKm: 9000 }).text, /Vidange à faire/)
+  assert.match(maintenanceStatus({ odometerKm: 14500 }, { lastServiceOdometerKm: 9000 }).text, /Vidange dépassée/)
+  assert.equal(maintenanceStatus({ odometerKm: 14500 }, { lastServiceOdometerKm: 9000 }).level, 'overdue')
+})
+
+test('vidange : distance cumulée du suivi (sans compteur véhicule)', () => {
+  const cumul = maintenanceStatus({ kmSinceService: 4200 }, { lastServiceDate: '01/09/2026' })
+  assert.match(cumul.text, /à programmer/)
+  assert.match(cumul.text, /cumul des kilométrages du suivi depuis le 01\/09\/2026/)
+  assert.equal(cumul.sinceServiceKm, 4200)
+  assert.equal(maintenanceStatus({ kmSinceService: 5200 }).level, 'overdue')
+  assert.equal(maintenanceStatus({ kmSinceService: 1200 }).level, 'ok')
+  // Une distance cumulée absente ne doit pas être comptée comme zéro kilomètre.
+  assert.match(maintenanceStatus({ kmSinceService: null, odometerKm: 13900 }, { lastServiceOdometerKm: 9000 }).text, /Vidange à faire/)
 })
 
 test('rapport complet : activité, trajets, alertes, entretien', () => {
-  const { text, stats } = build()
+  const { text, stats } = build({ mileageKm: 276.71 })
   assert.match(text, /^TELIMAN LOGISTIQUE - Rapport bus 5273WWCI01 du 15\/10\/2026 \(19h\)/)
   assert.ok(text.includes('ACTIVITÉ'), text)
   assert.ok(text.includes('Début : 5h14 · Fin : 18h20'), text)
-  assert.ok(text.includes('Kilométrage : 4,4 km'), text)
+  assert.ok(text.includes('Kilométrage : 276,71 km'), text)
   assert.ok(text.includes('vitesse maximale 85 km/h'), text)
   assert.ok(text.includes('TRAJETS ENREGISTRÉS'), text)
   assert.ok(text.includes('- 5h12 : Kani'), text)
@@ -106,7 +118,7 @@ test('rapport sans données : le dit clairement', () => {
   assert.ok(text.includes('Aucun point GPS reçu sur la journée.'), text)
   assert.ok(text.includes('Aucun passage de zone enregistré'), text)
   assert.ok(text.includes('Excès de vitesse : aucun'), text)
-  assert.ok(text.includes('référence de la dernière vidange non renseignée'), text)
+  assert.match(text, /Référence de vidange non renseignée — enregistrer la dernière vidange \(date et compteur : 12\s345 km\)/)
   assert.equal(DEFAULT_BUS_MAINTENANCE.intervalKm, 5000)
 })
 

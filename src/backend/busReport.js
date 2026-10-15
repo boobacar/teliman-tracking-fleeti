@@ -116,37 +116,45 @@ export function buildBusItinerary(events = []) {
     .map((step) => ({ zone: step.zone, time: clockOf(step.at) }))
 }
 
-// Rappel de vidange : le compteur vient de Fleeti, la référence de la dernière vidange
-// est renseignée par l'exploitation (aucune valeur inventée).
-export function maintenanceStatus(odometerKm, maintenance = DEFAULT_BUS_MAINTENANCE) {
+// Rappel de vidange. Deux sources possibles, dans cet ordre :
+//   1. la distance cumulée depuis la dernière vidange, additionnée sur les kilométrages
+//      quotidiens du suivi GPS (fonctionne même si le boîtier ne remonte pas de compteur) ;
+//   2. le compteur du véhicule moins le compteur relevé à la dernière vidange.
+// Aucune valeur n'est inventée : sans référence, le rapport le dit.
+export function maintenanceStatus(source = {}, maintenance = DEFAULT_BUS_MAINTENANCE) {
   const settings = { ...DEFAULT_BUS_MAINTENANCE, ...maintenance }
-  const reference = Number(settings.lastServiceOdometerKm)
-  if (!Number.isFinite(odometerKm)) {
-    return { level: 'unknown', text: 'Kilométrage compteur indisponible (API Fleeti).', sinceServiceKm: null }
+  const rawCumulated = source?.kmSinceService
+  const rawOdometer = source?.odometerKm
+  const cumulated = rawCumulated === null || rawCumulated === undefined ? null : Number(rawCumulated)
+  const odometerKm = rawOdometer === null || rawOdometer === undefined ? null : Number(rawOdometer)
+  const hasCumulated = cumulated !== null && Number.isFinite(cumulated) && cumulated >= 0
+  if (!hasCumulated && !Number.isFinite(odometerKm)) {
+    return { level: 'unknown', text: 'Kilométrage indisponible (ni compteur, ni kilométrages du suivi).', sinceServiceKm: null }
   }
-  const odometerText = `${Math.round(odometerKm).toLocaleString('fr-FR')} km`
-  if (!Number.isFinite(reference) || reference <= 0) {
+  const reference = Number(settings.lastServiceOdometerKm)
+  if (!hasCumulated && (!Number.isFinite(reference) || reference <= 0)) {
     return {
       level: 'unknown',
-      odometerKm: Math.round(odometerKm),
+      odometerKm: odometerKm === null ? null : Math.round(odometerKm),
       sinceServiceKm: null,
-      text: `Compteur : ${odometerText} — référence de la dernière vidange non renseignée, rappel non calculé.`,
+      text: `Référence de vidange non renseignée — enregistrer la dernière vidange (date${odometerKm !== null ? ` et compteur : ${Math.round(odometerKm).toLocaleString('fr-FR')} km` : ''}) dans la plateforme pour activer le rappel (vidange à 5 000 km, alerte dès 4 000 km).`,
     }
   }
-  const since = Math.round(odometerKm - reference)
+  const since = hasCumulated ? Math.round(cumulated) : Math.round(odometerKm - reference)
   const interval = Number(settings.intervalKm) || 5000
   const alert = Number(settings.alertFromKm) || 4800
   const warn = Number(settings.warnFromKm) || 4000
+  const suffix = hasCumulated ? ` (cumul des kilométrages du suivi${settings.lastServiceDate ? ` depuis le ${settings.lastServiceDate}` : ''})` : ''
   if (since >= interval) {
-    return { level: 'overdue', odometerKm: Math.round(odometerKm), sinceServiceKm: since, text: `Vidange dépassée : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (intervalle ${interval.toLocaleString('fr-FR')} km).` }
+    return { level: 'overdue', sinceServiceKm: since, text: `Vidange dépassée : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (intervalle ${interval.toLocaleString('fr-FR')} km)${suffix}.` }
   }
   if (since >= alert) {
-    return { level: 'due', odometerKm: Math.round(odometerKm), sinceServiceKm: since, text: `Vidange à faire : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (seuil d'alerte ${alert.toLocaleString('fr-FR')} km, vidange à ${interval.toLocaleString('fr-FR')} km).` }
+    return { level: 'due', sinceServiceKm: since, text: `Vidange à faire : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (seuil d’alerte ${alert.toLocaleString('fr-FR')} km, vidange à ${interval.toLocaleString('fr-FR')} km)${suffix}.` }
   }
   if (since >= warn) {
-    return { level: 'warn', odometerKm: Math.round(odometerKm), sinceServiceKm: since, text: `Vidange à programmer : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (seuil ${warn.toLocaleString('fr-FR')} km, vidange à ${interval.toLocaleString('fr-FR')} km).` }
+    return { level: 'warn', sinceServiceKm: since, text: `Vidange à programmer : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange (seuil ${warn.toLocaleString('fr-FR')} km, vidange à ${interval.toLocaleString('fr-FR')} km)${suffix}.` }
   }
-  return { level: 'ok', odometerKm: Math.round(odometerKm), sinceServiceKm: since, text: `Vidange : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange — rien à prévoir avant ${(warn - since).toLocaleString('fr-FR')} km.` }
+  return { level: 'ok', sinceServiceKm: since, text: `Vidange : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange — rien à prévoir avant ${(warn - since).toLocaleString('fr-FR')} km${suffix}.` }
 }
 
 // Seuil de surveillance des excès de vitesse (km/h) — la plateforme signale elle-même
@@ -173,6 +181,8 @@ export function buildBusReport({
   events = [],
   alerts = [],
   odometerKm = null,
+  mileageKm = null,
+  kmSinceService = null,
   maintenance = DEFAULT_BUS_MAINTENANCE,
   usualRoute = BUS_USUAL_ROUTE,
   speedLimitKmh = BUS_SPEED_WATCH_KMH,
@@ -183,7 +193,7 @@ export function buildBusReport({
 
   const speedAlerts = alerts.filter((alert) => String(alert?.event || alert?.type || '') === 'speedup')
   const crashAlerts = alerts.filter((alert) => String(alert?.event || alert?.type || '') === 'crash_alarm')
-  const maintenanceInfo = maintenanceStatus(odometerKm, maintenance)
+  const maintenanceInfo = maintenanceStatus({ odometerKm, kmSinceService }, maintenance)
 
   const lines = [`TELIMAN LOGISTIQUE - Rapport bus ${plate} du ${dateLabel}${hourLabel ? ` (${hourLabel})` : ''}`, '']
 
@@ -193,7 +203,14 @@ export function buildBusReport({
   } else {
     lines.push('- Aucun point GPS reçu sur la journée.')
   }
-  lines.push(`- Kilométrage : ${telemetry.distanceKm === null ? 'indisponible' : `${telemetry.distanceKm.toLocaleString('fr-FR')} km`}`)
+  const officialMileage = Number.isFinite(Number(mileageKm)) ? Number(mileageKm) : null
+  if (officialMileage !== null) {
+    // Valeur du suivi GPS (référence de l'exploitation) ; le calcul sur les points sert de contrôle.
+    const ecart = telemetry.distanceKm === null ? null : Math.abs(officialMileage - telemetry.distanceKm)
+    lines.push(`- Kilométrage : ${officialMileage.toLocaleString('fr-FR')} km${ecart !== null && ecart > 5 ? ` (contrôle GPS : ${telemetry.distanceKm.toLocaleString('fr-FR')} km)` : ''}`)
+  } else {
+    lines.push(`- Kilométrage : ${telemetry.distanceKm === null ? 'indisponible' : `${telemetry.distanceKm.toLocaleString('fr-FR')} km (calculé sur les points GPS)`}`)
+  }
   const speedParts = []
   speedParts.push(`vitesse moyenne ${telemetry.avgSpeed === null ? 'indisponible' : `${telemetry.avgSpeed.toLocaleString('fr-FR')} km/h`}`)
   speedParts.push(`vitesse maximale ${telemetry.maxSpeed === null ? 'indisponible' : `${telemetry.maxSpeed.toLocaleString('fr-FR')} km/h`}`)
@@ -237,7 +254,8 @@ export function buildBusReport({
     text,
     stats: {
       points: telemetry.points,
-      distanceKm: telemetry.distanceKm,
+      distanceKm: Number.isFinite(Number(mileageKm)) ? Number(mileageKm) : telemetry.distanceKm,
+      gpsDistanceKm: telemetry.distanceKm,
       avgSpeed: telemetry.avgSpeed,
       maxSpeed: telemetry.maxSpeed,
       startTime: telemetry.startTime,
@@ -253,7 +271,12 @@ export function buildBusReport({
       plate,
       day,
       date: dateLabel,
-      activity: telemetry,
+      activity: {
+        ...telemetry,
+        gpsDistanceKm: telemetry.distanceKm,
+        distanceKm: Number.isFinite(Number(mileageKm)) ? Number(mileageKm) : telemetry.distanceKm,
+        mileageSource: Number.isFinite(Number(mileageKm)) ? 'fleeti' : 'gps',
+      },
       itinerary,
       usualRoute,
       speedAlerts,
