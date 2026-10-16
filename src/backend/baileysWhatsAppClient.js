@@ -248,6 +248,7 @@ export function createBaileysWhatsAppClient({
   typingSimulation = true,
   typingDelayMs = { min: 400, max: 1200 },
   reachoutCooldownHours = 24,
+  onReceipt = null,
 } = {}) {
   let socket = null
   let started = false
@@ -264,6 +265,8 @@ export function createBaileysWhatsAppClient({
   // re-tente PAS ce contact pendant N heures (marteler un contact sans historique
   // est le chemin le plus rapide vers un ban).
   const reachoutCooldowns = new Map()
+  // Accusés de réception des messages sortants (livré / lu).
+  const receiptTracker = createReceiptTracker()
   // Protection des creds : snapshots horodatés + restauration au démarrage.
   let credsRestoredFrom = ''
   let lastSnapshotName = ''
@@ -412,6 +415,26 @@ export function createBaileysWhatsAppClient({
       socket = await resolveSocketFactory(socketFactory)({ auth: authState, getMessage: handleRetryRequest })
       socket.ev.on('creds.update', saveCreds)
       socket.ev.on('connection.update', handleConnectionUpdate)
+      // Accusés de réception : WhatsApp nous prévient quand le destinataire a reçu ou lu.
+      socket.ev.on('messages.update', (updates) => {
+        try {
+          for (const item of updates || []) {
+            const id = item?.key?.id
+            const nextStatus = receiptTracker.classify(item?.update?.status)
+            if (!id || !nextStatus) continue
+            const known = receiptTracker.resolve(id)
+            if (!known) continue
+            if (known.status === nextStatus) continue
+            if (known.status === 'read') continue
+            logger.log?.(`[baileys] accusé de réception (${nextStatus}) pour ${known.to} — ${known.kind}`)
+            onReceipt?.({ messageId: id, to: known.to, kind: known.kind, status: nextStatus, at: new Date().toISOString() })
+            if (nextStatus === 'read') receiptTracker.forget(id)
+            else receiptTracker.remember(id, { ...known, status: nextStatus })
+          }
+        } catch (error) {
+          logger.warn?.(`[baileys] mise à jour d'accusé ignorée (${error?.message || error})`)
+        }
+      })
       state = 'connecting'
       return getStatus()
     } catch (error) {
@@ -513,6 +536,7 @@ export function createBaileysWhatsAppClient({
       // renvoyer si le destinataire n'a pas su le déchiffrer.
       outboundMessages.remember(result?.key?.id, result?.message)
       persistOutboundSoon()
+      receiptTracker.remember(result?.key?.id, { to: jid, kind: mediaKind, status: 'sent' })
       if (typingSimulation && typeof socket.sendPresenceUpdate === 'function') {
         try { await socket.sendPresenceUpdate('paused', recipientJid) } catch { /* best-effort */ }
       }
@@ -819,7 +843,7 @@ export function createBaileysWhatsAppClient({
     return start()
   }
 
-  return { start, reconnect, disconnect, sendText, getStatus, getQr }
+  return { start, reconnect, disconnect, sendText, getStatus, getQr, receiptTracker }
 }
 
 // Charge le logo à joindre (image + légende = texte de l'alerte). Renvoie null
@@ -882,6 +906,41 @@ function resolveImageMimeType(filePath) {
 
 function extractErrorStatusCode(error) {
   return error?.output?.statusCode ?? error?.statusCode ?? error?.data?.statusCode ?? error?.data?.error
+}
+
+// Accusés de réception : chaque message envoyé est mémorisé par son identifiant, puis
+// rapproché des mises à jour de statut WhatsApp (3 = livré, 4 = lu, 5 = lu/média).
+// Sans cette mémoire, un rapport marqué « envoyé » peut ne jamais atteindre le destinataire
+// sans que rien ne le signale.
+export function createReceiptTracker({ maxEntries = 2000 } = {}) {
+  const pending = new Map()
+  return {
+    remember(messageId, info = {}) {
+      const id = String(messageId || '').trim()
+      if (!id) return
+      if (pending.size >= maxEntries) {
+        const oldest = pending.keys().next().value
+        pending.delete(oldest)
+      }
+      pending.set(id, { ...info, at: info.at || new Date().toISOString() })
+    },
+    resolve(messageId) {
+      return pending.get(String(messageId || '').trim()) || null
+    },
+    forget(messageId) {
+      pending.delete(String(messageId || '').trim())
+    },
+    get size() {
+      return pending.size
+    },
+    // Statut WhatsApp : 3 = livré au téléphone, 4/5 = lu. On ne recule jamais un statut.
+    classify(status) {
+      const code = Number(status)
+      if (code >= 4) return 'read'
+      if (code === 3) return 'delivered'
+      return ''
+    },
+  }
 }
 
 async function resolveWhatsAppAccountJid(socket, jid) {
