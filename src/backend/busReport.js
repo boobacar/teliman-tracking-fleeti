@@ -5,6 +5,10 @@
 // Les chiffres viennent de la télémétrie Fleeti (points horodatés avec vitesse) et des
 // passages de zone : rien n'est estimé. Une donnée absente est annoncée comme telle.
 import { displayPlace } from './dailyReport.js'
+import { clockOf, detectSpeedBreaches, formatSpeedEpisode, groupSpeedBreaches } from './speedEpisodes.js'
+
+// Réexposés pour les appelants historiques (serveur, tests).
+export { detectSpeedBreaches, groupSpeedBreaches, formatSpeedEpisode }
 
 // Trajets habituels du bus (relevé par l'exploitation, sert de référence au rapport).
 export const BUS_USUAL_ROUTE = [
@@ -27,12 +31,6 @@ function pad(value) {
   return String(value).padStart(2, '0')
 }
 
-function clockOf(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getHours()}h${pad(date.getMinutes())}`
-}
 
 function haversineKm(a, b) {
   const toRad = (degrees) => (degrees * Math.PI) / 180
@@ -157,73 +155,9 @@ export function maintenanceStatus(source = {}, maintenance = DEFAULT_BUS_MAINTEN
   return { level: 'ok', sinceServiceKm: since, text: `Vidange : ${since.toLocaleString('fr-FR')} km depuis la dernière vidange — rien à prévoir avant ${(warn - since).toLocaleString('fr-FR')} km${suffix}.` }
 }
 
-// Seuil de surveillance des excès de vitesse (km/h) — la plateforme signale elle-même
-// les dépassements constatés dans la télémétrie, sans dépendre des règles du fournisseur.
+// Seuil de surveillance des excès de vitesse (km/h) — détection et regroupement dans
+// speedEpisodes.js, partagés par tous les rapports.
 export const BUS_SPEED_WATCH_KMH = 90
-
-export function detectSpeedBreaches(points = [], limitKmh = BUS_SPEED_WATCH_KMH) {
-  return points
-    .filter((point) => Number(point?.speed) > limitKmh)
-    .map((point) => ({
-      speed: Math.round(Number(point.speed)),
-      at: point.time || point.timestamp || '',
-      time: clockOf(point.time || point.timestamp),
-      lat: Number(point?.lat),
-      lng: Number(point?.lng),
-    }))
-    .sort((a, b) => b.speed - a.speed)
-}
-
-// Un excès de vitesse n'est pas un point isolé mais un épisode : on regroupe les relevés
-// consécutifs (même trajet, moins de 5 minutes d'écart) pour n'afficher qu'une ligne.
-export function groupSpeedBreaches(breaches = [], { gapMinutes = 10 } = {}) {
-  const bornes = Number(gapMinutes) > 0 ? Number(gapMinutes) : 10
-  const propres = []
-  const vus = new Set()
-  for (const breach of Array.isArray(breaches) ? breaches : []) {
-    const at = breach?.at || breach?.time || ''
-    const cle = `${at}|${breach?.speed}|${breach?.lat}|${breach?.lng}`
-    if (vus.has(cle)) continue // le flux peut répéter le même point
-    vus.add(cle)
-    const date = at ? new Date(at) : null
-    if (date && !Number.isNaN(date.getTime())) propres.push({ ...breach, date })
-    else propres.push({ ...breach, date: null })
-  }
-  propres.sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))
-
-  const episodes = []
-  for (const breach of propres) {
-    const dernier = episodes[episodes.length - 1]
-    const ecart = dernier?.fin && breach.date ? (breach.date.getTime() - dernier.fin.getTime()) / 60000 : Infinity
-    if (dernier && ecart <= bornes) {
-      dernier.count += 1
-      dernier.fin = breach.date || dernier.fin
-      if (Number(breach.speed) > Number(dernier.maxSpeed)) {
-        dernier.maxSpeed = Number(breach.speed)
-        dernier.peak = breach
-        if (breach.place) dernier.place = breach.place
-      }
-      continue
-    }
-    episodes.push({
-      debut: breach.date,
-      fin: breach.date,
-      count: 1,
-      maxSpeed: Number(breach.speed) || 0,
-      peak: breach,
-      place: breach.place || '',
-    })
-  }
-  return episodes.map((episode) => ({
-    from: episode.debut ? clockOf(episode.debut.toISOString()) : (episode.peak?.time || ''),
-    to: episode.fin ? clockOf(episode.fin.toISOString()) : '',
-    count: episode.count,
-    maxSpeed: Math.round(episode.maxSpeed),
-    place: episode.place || '',
-    lat: episode.peak?.lat ?? null,
-    lng: episode.peak?.lng ?? null,
-  }))
-}
 
 export function buildBusReport({
   plate = '5273WWCI01',
@@ -294,10 +228,8 @@ export function buildBusReport({
     lines.push(`- Excès de vitesse : ${libelleEpisodes} (${breaches.length} relevé${breaches.length > 1 ? 's' : ''}), pointe ${telemetry.maxSpeed ?? '—'} km/h`)
     for (const episode of episodes.slice(0, 3)) {
       // L'endroit n'est indiqué que pour un dépassement au-delà du seuil.
-      const lieu = episode.maxSpeed > Number(speedLimitKmh) && episode.place ? ` — ${episode.place}` : ''
-      const detail = episode.count > 1 ? `${episode.count} relevés, pointe ${episode.maxSpeed} km/h` : `pointe ${episode.maxSpeed} km/h`
-      const plage = episode.from && episode.to && episode.to !== episode.from ? `de ${episode.from} à ${episode.to}` : `${episode.from}`
-      lines.push(`   ${plage} : ${detail}${lieu}`)
+      const affichage = episode.maxSpeed > Number(speedLimitKmh) ? episode : { ...episode, place: '' }
+      lines.push(`   ${formatSpeedEpisode(affichage)}`)
     }
   } else if (speedAlerts.length) {
     // Signalements du suivi GPS (règle de vitesse du fournisseur), sous le seuil interne.

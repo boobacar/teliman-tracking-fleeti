@@ -24,6 +24,7 @@ export function buildReportPdfInput(sections = {}, { dateLabel = '', title = 'Ra
     },
     actives: Array.isArray(sections?.actives) ? sections.actives : [],
     inactives: Array.isArray(sections?.inactives) ? sections.inactives : [],
+    speedEpisodes: Array.isArray(sections?.speedEpisodes) ? sections.speedEpisodes : [],
     quantities: Array.isArray(sections?.quantities) ? sections.quantities : [],
   }
 }

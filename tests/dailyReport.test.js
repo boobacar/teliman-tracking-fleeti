@@ -285,3 +285,46 @@ test('nombres français : lecture et écriture', () => {
   assert.equal(formatQuantity(1000), '1 000')
   assert.equal(formatQuantity(null), '—')
 })
+
+
+test('excès de vitesse : épisode localisé, uniquement au-delà de 90 km/h', () => {
+  const alerts = [
+    {
+      trackerId: 3487539,
+      truckLabel: '39151WWCI01',
+      event: 'speedup',
+      message: '39151WWCI01: Excès de vitesse (par vitesse matériel) - 96 km/h',
+      address: 'Autoroute Yamoussoukro-Bouaké, Kpoti Tatikro, Gbêkê, Vallée du Bandama',
+      createdAt: `${DAY}T12:28:00.000Z`,
+    },
+    {
+      trackerId: 3487539,
+      truckLabel: '39151WWCI01',
+      event: 'speedup',
+      message: '39151WWCI01: Excès de vitesse (par vitesse matériel) - 104 km/h',
+      address: 'Autoroute Yamoussoukro-Bouaké, Kpoti Tatikro, Gbêkê, Vallée du Bandama',
+      createdAt: `${DAY}T12:31:00.000Z`,
+    },
+    {
+      trackerId: 3487539,
+      truckLabel: '39151WWCI01',
+      event: 'speedup',
+      message: '39151WWCI01: Excès de vitesse (par vitesse matériel) - 85 km/h',
+      address: 'Korhogo, Savanes',
+      createdAt: `${DAY}T16:00:00.000Z`,
+    },
+  ]
+  const { text, sections } = build({ alerts })
+  assert.ok(text.includes('EXCÈS DE VITESSE (plus de 90 km/h)'), text)
+  assert.ok(text.includes('AB246JJ : de 12h28 à 12h31 : 2 relevés, pointe 104 km/h — Autoroute Yamoussoukro-Bouaké, Kpoti Tatikro'), text)
+  assert.ok(!text.includes('85 km/h — '), 'un excès à 85 km/h ne doit pas afficher de lieu ni de ligne')
+  const episodes = sections.speedEpisodes || []
+  assert.equal(episodes.length, 1, 'seul l’excès au-delà de 90 km/h est retenu')
+  assert.equal(episodes[0].maxSpeed, 104)
+  assert.ok(episodes[0].place.startsWith('Autoroute Yamoussoukro-Bouaké'))
+})
+
+test('aucun excès au-delà du seuil : pas de section dédiée', () => {
+  const { text } = build({ alerts: [{ trackerId: 3487539, truckLabel: '39151WWCI01', event: 'speedup', message: 'Excès de vitesse - 82 km/h', createdAt: `${DAY}T09:00:00.000Z` }] })
+  assert.ok(!text.includes('EXCÈS DE VITESSE'), 'rien à signaler : la section est omise')
+})

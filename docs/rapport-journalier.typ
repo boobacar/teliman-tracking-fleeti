@@ -184,8 +184,29 @@
   ]
 ]
 
-// ─── 4. Quantités par client ────────────────────────────────────────────────────
-#sect("4. Quantités livrées ou chargées par client")[
+// ─── 4. Excès de vitesse ────────────────────────────────────────────────────────
+#sect("4. Excès de vitesse (plus de 90 km/h)")[
+  #let exces = data.at("speedEpisodes", default: ())
+  #if exces.len() == 0 [
+    Aucun excès de vitesse au-delà de 90 km/h sur la journée.
+  ] else [
+    #table(
+      columns: (auto, auto, 1fr, auto),
+      inset: 5pt,
+      stroke: (x, y) => (bottom: 0.3pt + trait, rest: none),
+      table.header([*Immatriculation*], [*Période*], [*Endroit*], [*Pointe*]),
+      ..exces.map(e => (
+        [*#e.at("plate", default: "")*],
+        [#if e.at("to", default: "") != "" and e.at("to") != e.at("from", default: "") [de #e.at("from") à #e.at("to")] else [#e.at("from", default: "")]],
+        [#text(size: 8.5pt)[#e.at("place", default: "lieu non identifié")]],
+        [#text(size: 8.5pt, weight: "bold")[#str(e.at("maxSpeed", default: 0)) km/h]],
+      )).flatten(),
+    )
+  ]
+]
+
+// ─── 5. Quantités par client ────────────────────────────────────────────────────
+#sect("5. Quantités livrées ou chargées par client")[
   #let quantites = data.at("quantities", default: ())
   #if quantites.len() == 0 [
     Aucune mission enregistrée sur la période.

@@ -9,6 +9,7 @@
 // Aucune valeur estimée : une donnée absente de la plateforme n'est pas inventée, elle
 // est soit omise, soit annoncée « indisponible » quand la direction l'attend.
 import { OFFICIAL_TRUCKS, driverFor, isReportExcluded, plateFor } from './truckRegistry.js'
+import { detectSpeedBreaches, extractSpeedFromMessage, formatSpeedEpisode, groupSpeedBreaches, shortenPlace } from './speedEpisodes.js'
 
 export const REPORTED_ZONES = [
   { label: 'Zone Korhogo', patterns: ['korhogo'] },
@@ -154,6 +155,7 @@ function bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry 
         enters: [],
         exits: [],
         incidents: [],
+        alertDetails: [],
         vouchers: [],
         distanceKm: null,
         drivingSeconds: null,
@@ -184,13 +186,25 @@ function bucketise({ orders, events, fleetRows, vouchers, alerts, day, registry 
   }
 
   for (const alert of alerts) {
-    if (!inDay(alert?.createdAt ?? alert?.timestamp ?? alert?.time, day)) continue
+    if (day && !inDay(alert?.createdAt ?? alert?.timestamp ?? alert?.time, day)) continue
     const type = String(alert?.event || alert?.type || '')
     if (type === 'geofence_enter' || type === 'geofence_exit') continue
     // Sans identifiant ni étiquette, l'alerte est regroupée à part (comptée, jamais
     // attribuée à un camion).
     const bucket = ensure(truckKeyOf(alert) || 'orphan', alert)
-    if (bucket) bucket.incidents.push(type)
+    if (bucket) {
+      bucket.incidents.push(type)
+      const vitesse = Number(alert?.speed ?? alert?.speed_kmh ?? alert?.vitesse)
+      bucket.alertDetails.push({
+        type,
+        // La vitesse figure dans le message de l'alerte quand le champ dédié est vide.
+        speed: Number.isFinite(vitesse) && vitesse > 0 ? vitesse : (extractSpeedFromMessage(alert?.message) ?? null),
+        at: alert?.createdAt ?? alert?.timestamp ?? alert?.time ?? '',
+        lat: Number(alert?.lat ?? alert?.location?.lat),
+        lng: Number(alert?.lng ?? alert?.lon ?? alert?.location?.lng),
+        place: shortenPlace(alert?.place || alert?.address || alert?.location?.address || ''),
+      })
+    }
   }
 
   for (const voucher of vouchers) {
@@ -366,6 +380,18 @@ export function buildDailyReport({
   const inactive = identifiable.filter((bucket) => !bucket.active)
   const { counters, other } = zoneSummary(events, day)
   const quantities = clientQuantities(orders, day)
+
+  // Excès de vitesse au-delà du seuil, regroupés en épisodes par camion (endroit inclus).
+  const speedEpisodes = []
+  for (const bucket of buckets) {
+    const breaches = (bucket.alertDetails || [])
+      .filter((detail) => Number(detail.speed) > 90)
+      .map((detail) => ({ speed: detail.speed, at: detail.at, lat: detail.lat, lng: detail.lng, place: detail.place }))
+    for (const episode of groupSpeedBreaches(breaches).slice(0, 2)) {
+      speedEpisodes.push({ plate: bucket.plate, ...episode })
+    }
+  }
+  speedEpisodes.sort((a, b) => b.maxSpeed - a.maxSpeed)
   const positionByKey = new Map()
   for (const position of positions) {
     const key = truckKeyOf(position)
@@ -428,6 +454,13 @@ export function buildDailyReport({
   if (inactive.length) lines.push(...inactive.map(renderInactive))
   else lines.push('- Aucun : tous les camions ont eu de l’activité')
 
+  if (speedEpisodes.length) {
+    lines.push('', 'EXCÈS DE VITESSE (plus de 90 km/h)')
+    for (const episode of speedEpisodes.slice(0, 5)) {
+      lines.push(`- ${episode.plate} : ${formatSpeedEpisode(episode)}`)
+    }
+  }
+
   lines.push('', 'QUANTITÉS LIVRÉES OU CHARGÉES PAR CLIENT')
   if (quantities.length) {
     for (const row of quantities) {
@@ -444,7 +477,7 @@ export function buildDailyReport({
   const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return {
     text,
-    sections: buildSections({ header, buckets, active, inactive, positions: positionByKey, counts: { counters, other }, quantities, day }),
+    sections: buildSections({ header, buckets, active, inactive, positions: positionByKey, counts: { counters, other }, quantities, day, fleetEpisodes: speedEpisodes }),
     stats: {
       activeTrucks: active.length,
       inactiveTrucks: inactive.length,
@@ -504,7 +537,8 @@ export function buildWeeklyReport({
     }
   }
 
-  const buckets = bucketise({ orders, events: [], fleetRows, vouchers, alerts, day: '', registry })
+  const alertsSemaine = alerts.filter((alert) => days.includes(formatDayKey(alert?.createdAt ?? alert?.timestamp ?? alert?.time)))
+  const buckets = bucketise({ orders, events: [], fleetRows, vouchers, alerts: alertsSemaine, day: '', registry })
   const lines = [`TELIMAN LOGISTIQUE - Bilan hebdomadaire ${dateLabel}`, '']
   const totalMissions = orders.filter((order) => days.includes(dayKeyOfOrder(order))).length
   lines.push(`Missions de la semaine : ${totalMissions} · Camions suivis : ${buckets.length}`)
@@ -526,6 +560,23 @@ export function buildWeeklyReport({
     lines.push(`- ${bucket.plate}${bucket.driver ? ` - ${bucket.driver}` : ''} : ${parts.join(' · ')}`)
   }
 
+  const episodesSemaine = []
+  for (const bucket of buckets) {
+    const breaches = (bucket.alertDetails || [])
+      .filter((detail) => Number(detail.speed) > 90)
+      .map((detail) => ({ speed: detail.speed, at: detail.at, lat: detail.lat, lng: detail.lng, place: detail.place }))
+    for (const episode of groupSpeedBreaches(breaches).slice(0, 2)) {
+      episodesSemaine.push({ plate: bucket.plate, ...episode })
+    }
+  }
+  episodesSemaine.sort((a, b) => b.maxSpeed - a.maxSpeed)
+  if (episodesSemaine.length) {
+    lines.push('', 'EXCÈS DE VITESSE (plus de 90 km/h)')
+    for (const episode of episodesSemaine.slice(0, 5)) {
+      lines.push(`- ${episode.plate} : ${formatSpeedEpisode(episode)}`)
+    }
+  }
+
   lines.push('', 'QUANTITÉS PAR CLIENT (semaine)')
   if (rows.length) {
     for (const row of rows) {
@@ -541,7 +592,7 @@ export function buildWeeklyReport({
 
 // Version structurée du rapport (utilisée par le PDF officiel) : mêmes données, mises
 // en forme pour un document tabulaire.
-function buildSections({ header, buckets, active, inactive, positions, counts, quantities, day }) {
+function buildSections({ header, buckets, active, inactive, positions, counts, quantities, day, fleetEpisodes = [] }) {
   const truckBlock = (bucket) => {
     const missions = []
     const seen = new Map()
@@ -613,6 +664,7 @@ function buildSections({ header, buckets, active, inactive, positions, counts, q
       ],
     },
     actives: active.map(truckBlock),
+    speedEpisodes: (fleetEpisodes || []).slice(0, 5),
     inactives: inactive.map((bucket) => ({
       plate: bucket.plate,
       oldPlate: bucket.rawLabel && bucket.rawLabel !== bucket.plate ? bucket.rawLabel : '',
