@@ -7,6 +7,7 @@ import {
   DEFAULT_BUS_MAINTENANCE,
   buildBusItinerary,
   buildBusReport,
+  groupSpeedBreaches,
   maintenanceStatus,
   summariseBusTelemetry,
 } from '../src/backend/busReport.js'
@@ -130,8 +131,8 @@ test('excès de vitesse détectés sur la télémétrie au-delà du seuil', () =
     { lat: 8.43, lng: -6.6, speed: 70, time: `${DAY}T05:30:00Z` },
   ]
   const { text, stats } = build({ points: rapide, events: [], alerts: [] })
-  assert.ok(text.includes('Excès de vitesse : 2 au-dessus de 90 km/h (pointe 112 km/h)'), text)
-  assert.ok(text.includes('à 5h20 : 112 km/h'), text)
+  assert.ok(text.includes('Excès de vitesse : 1 épisode (2 relevés), pointe 112 km/h'), text)
+  assert.ok(text.includes('de 5h10 à 5h20 : 2 relevés, pointe 112 km/h'), text)
   assert.equal(stats.speedAlerts, 2)
 })
 
@@ -148,4 +149,61 @@ test('un accident signalé est remonté au rapport', () => {
   const { text, stats } = build({ alerts: [...ALERTS, { event: 'crash_alarm', createdAt: `${DAY}T12:00:00Z` }] })
   assert.ok(text.includes('Accident : 1 signalé(s) — vérifier l’état du véhicule'), text)
   assert.equal(stats.crashAlerts, 1)
+})
+
+
+test('épisodes d’excès : les relevés consécutifs forment un seul épisode', () => {
+  const breaches = [
+    { at: `${DAY}T17:58:22Z`, speed: 98, place: 'Séguéla - Boundiali, Frototou' },
+    { at: `${DAY}T17:59:08Z`, speed: 101, place: 'Séguéla - Boundiali, Frototou' },
+    { at: `${DAY}T18:00:07Z`, speed: 105, place: 'Séguéla - Boundiali, Frototou' },
+  ]
+  const episodes = groupSpeedBreaches(breaches)
+  assert.equal(episodes.length, 1)
+  assert.equal(episodes[0].count, 3)
+  assert.equal(episodes[0].maxSpeed, 105, 'la pointe de l’épisode')
+  assert.equal(episodes[0].from, '17h58')
+  assert.equal(episodes[0].to, '18h00')
+  assert.equal(episodes[0].place, 'Séguéla - Boundiali, Frototou')
+})
+
+test('épisodes : un point répété par le flux n’est compté qu’une fois', () => {
+  const point = { at: `${DAY}T18:00:07Z`, speed: 105, place: 'Kani' }
+  const episodes = groupSpeedBreaches([point, { ...point }])
+  assert.equal(episodes.length, 1)
+  assert.equal(episodes[0].count, 1)
+})
+
+test('épisodes : deux séquences séparées restent distinctes', () => {
+  const episodes = groupSpeedBreaches([
+    { at: `${DAY}T05:34:03Z`, speed: 94, place: 'Kani' },
+    { at: `${DAY}T18:00:07Z`, speed: 105, place: 'Bouaké' },
+  ])
+  assert.equal(episodes.length, 2)
+  assert.deepEqual(episodes.map((episode) => episode.place), ['Kani', 'Bouaké'])
+})
+
+test('rapport : épisodes lisibles avec leur endroit', () => {
+  const { text, stats } = build({
+    fuel: undefined,
+    speedBreaches: [
+      { at: `${DAY}T05:34:03Z`, speed: 94, place: 'Kani' },
+      { at: `${DAY}T17:58:22Z`, speed: 98, place: 'Séguéla - Boundiali, Frototou' },
+      { at: `${DAY}T17:59:08Z`, speed: 101, place: 'Séguéla - Boundiali, Frototou' },
+      { at: `${DAY}T18:00:07Z`, speed: 105, place: 'Séguéla - Boundiali, Frototou' },
+    ],
+  })
+  assert.ok(text.includes('2 épisodes (4 relevés), pointe 85 km/h'), text)
+  assert.ok(text.includes('de 17h58 à 18h00 : 3 relevés, pointe 105 km/h — Séguéla - Boundiali, Frototou'), text)
+  assert.ok(text.includes('5h34 : pointe 94 km/h — Kani'), text)
+  assert.equal(stats.speedEpisodes.length, 2)
+})
+
+test('rapport : aucun endroit pour un excès sous le seuil', () => {
+  const { text } = build({
+    speedBreaches: [{ at: `${DAY}T12:00:00Z`, speed: 88, place: 'Kani' }],
+    speedLimitKmh: 90,
+  })
+  assert.ok(text.includes('12h00 : pointe 88 km/h'), text)
+  assert.ok(!text.includes('88 km/h — '), 'aucun lieu ne doit être affiché sous le seuil')
 })

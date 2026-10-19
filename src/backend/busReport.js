@@ -168,8 +168,61 @@ export function detectSpeedBreaches(points = [], limitKmh = BUS_SPEED_WATCH_KMH)
       speed: Math.round(Number(point.speed)),
       at: point.time || point.timestamp || '',
       time: clockOf(point.time || point.timestamp),
+      lat: Number(point?.lat),
+      lng: Number(point?.lng),
     }))
     .sort((a, b) => b.speed - a.speed)
+}
+
+// Un excès de vitesse n'est pas un point isolé mais un épisode : on regroupe les relevés
+// consécutifs (même trajet, moins de 5 minutes d'écart) pour n'afficher qu'une ligne.
+export function groupSpeedBreaches(breaches = [], { gapMinutes = 10 } = {}) {
+  const bornes = Number(gapMinutes) > 0 ? Number(gapMinutes) : 10
+  const propres = []
+  const vus = new Set()
+  for (const breach of Array.isArray(breaches) ? breaches : []) {
+    const at = breach?.at || breach?.time || ''
+    const cle = `${at}|${breach?.speed}|${breach?.lat}|${breach?.lng}`
+    if (vus.has(cle)) continue // le flux peut répéter le même point
+    vus.add(cle)
+    const date = at ? new Date(at) : null
+    if (date && !Number.isNaN(date.getTime())) propres.push({ ...breach, date })
+    else propres.push({ ...breach, date: null })
+  }
+  propres.sort((a, b) => (a.date?.getTime() || 0) - (b.date?.getTime() || 0))
+
+  const episodes = []
+  for (const breach of propres) {
+    const dernier = episodes[episodes.length - 1]
+    const ecart = dernier?.fin && breach.date ? (breach.date.getTime() - dernier.fin.getTime()) / 60000 : Infinity
+    if (dernier && ecart <= bornes) {
+      dernier.count += 1
+      dernier.fin = breach.date || dernier.fin
+      if (Number(breach.speed) > Number(dernier.maxSpeed)) {
+        dernier.maxSpeed = Number(breach.speed)
+        dernier.peak = breach
+        if (breach.place) dernier.place = breach.place
+      }
+      continue
+    }
+    episodes.push({
+      debut: breach.date,
+      fin: breach.date,
+      count: 1,
+      maxSpeed: Number(breach.speed) || 0,
+      peak: breach,
+      place: breach.place || '',
+    })
+  }
+  return episodes.map((episode) => ({
+    from: episode.debut ? clockOf(episode.debut.toISOString()) : (episode.peak?.time || ''),
+    to: episode.fin ? clockOf(episode.fin.toISOString()) : '',
+    count: episode.count,
+    maxSpeed: Math.round(episode.maxSpeed),
+    place: episode.place || '',
+    lat: episode.peak?.lat ?? null,
+    lng: episode.peak?.lng ?? null,
+  }))
 }
 
 export function buildBusReport({
@@ -186,10 +239,15 @@ export function buildBusReport({
   maintenance = DEFAULT_BUS_MAINTENANCE,
   usualRoute = BUS_USUAL_ROUTE,
   speedLimitKmh = BUS_SPEED_WATCH_KMH,
+  speedBreaches = null,
 }) {
   const telemetry = summariseBusTelemetry(points)
   const itinerary = buildBusItinerary(events)
-  const breaches = detectSpeedBreaches(points, speedLimitKmh)
+  // Dépassements : ceux fournis (déjà situés) priment sur la détection brute.
+  const breaches = Array.isArray(speedBreaches) && speedBreaches.length
+    ? speedBreaches
+    : detectSpeedBreaches(points, speedLimitKmh)
+  const episodes = groupSpeedBreaches(breaches)
 
   const speedAlerts = alerts.filter((alert) => String(alert?.event || alert?.type || '') === 'speedup')
   const crashAlerts = alerts.filter((alert) => String(alert?.event || alert?.type || '') === 'crash_alarm')
@@ -231,8 +289,16 @@ export function buildBusReport({
   const breachCount = Math.max(speedAlerts.length, breaches.length)
   if (breaches.length) {
     // Constat direct sur la télémétrie : le seuil est vérifié par la plateforme.
-    lines.push(`- Excès de vitesse : ${breaches.length} au-dessus de ${speedLimitKmh} km/h (pointe ${telemetry.maxSpeed ?? '—'} km/h)`)
-    for (const breach of breaches.slice(0, 3)) lines.push(`   à ${breach.time} : ${breach.speed} km/h`)
+    const nbEpisodes = episodes.length
+    const libelleEpisodes = `${nbEpisodes} épisode${nbEpisodes > 1 ? 's' : ''}`
+    lines.push(`- Excès de vitesse : ${libelleEpisodes} (${breaches.length} relevé${breaches.length > 1 ? 's' : ''}), pointe ${telemetry.maxSpeed ?? '—'} km/h`)
+    for (const episode of episodes.slice(0, 3)) {
+      // L'endroit n'est indiqué que pour un dépassement au-delà du seuil.
+      const lieu = episode.maxSpeed > Number(speedLimitKmh) && episode.place ? ` — ${episode.place}` : ''
+      const detail = episode.count > 1 ? `${episode.count} relevés, pointe ${episode.maxSpeed} km/h` : `pointe ${episode.maxSpeed} km/h`
+      const plage = episode.from && episode.to && episode.to !== episode.from ? `de ${episode.from} à ${episode.to}` : `${episode.from}`
+      lines.push(`   ${plage} : ${detail}${lieu}`)
+    }
   } else if (speedAlerts.length) {
     // Signalements du suivi GPS (règle de vitesse du fournisseur), sous le seuil interne.
     lines.push(`- Excès de vitesse : ${speedAlerts.length} signalé(s) par le suivi (pointe ${telemetry.maxSpeed ?? '—'} km/h)`)
@@ -262,6 +328,7 @@ export function buildBusReport({
       endTime: telemetry.endTime,
       speedAlerts: breachCount,
       speedBreaches: breaches,
+      speedEpisodes: episodes,
       crashAlerts: crashAlerts.length,
       maintenance: maintenanceInfo.level,
       itinerary,
@@ -281,6 +348,7 @@ export function buildBusReport({
       usualRoute,
       speedAlerts,
       speedBreaches: breaches,
+      speedEpisodes: episodes,
       speedLimitKmh,
       crashAlerts,
       maintenance: maintenanceInfo,

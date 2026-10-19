@@ -118,7 +118,7 @@
 // ─── 3. Alertes ─────────────────────────────────────────────────────────────────
 #sect("3. Alertes")[
   #let alertes = data.at("alerts", default: (:))
-  #let exces = alertes.at("speedBreaches", default: ())
+  #let exces = alertes.at("speedEpisodes", default: ())
   #let signales = alertes.at("speedAlerts", default: ())
   #let accidents = alertes.at("crashAlerts", default: ())
   #grid(
@@ -128,10 +128,16 @@
       #text(weight: "bold")[Excès de vitesse]
       #linebreak()
       #if exces.len() > 0 [
-        #text(size: 9pt)[#str(exces.len()) relevé(s) au-dessus de #str(alertes.at("speedLimitKmh", default: 90)) km/h]
-        #for breach in exces.slice(0, calc.min(5, exces.len())) [
+        #text(size: 9pt)[#str(exces.len()) épisode(s) au-dessus de #str(alertes.at("speedLimitKmh", default: 90)) km/h]
+        #for episode in exces.slice(0, calc.min(5, exces.len())) [
           #linebreak()
-          #text(size: 8.5pt, fill: gris)[— #breach.at("time", default: "") : #str(breach.at("speed", default: 0)) km/h]
+          #let lieu = episode.at("place", default: "")
+          #let plage = if episode.at("to", default: "") != "" and episode.at("to") != episode.at("from", default: "") {
+            "de " + episode.at("from", default: "") + " à " + episode.at("to")
+          } else {
+            episode.at("from", default: "")
+          }
+          #text(size: 8.5pt, fill: gris)[— #plage : #str(episode.at("count", default: 1)) relevé(s), pointe #str(episode.at("maxSpeed", default: 0)) km/h#if lieu != "" [ · #lieu]]
         ]
       ] else if signales.len() > 0 [
         #text(size: 9pt)[#str(signales.len()) signalé(s) par le suivi]

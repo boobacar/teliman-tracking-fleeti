@@ -66,6 +66,7 @@ export function buildBusReportPdfInput(sections = {}, { dateLabel = '' } = {}) {
     usualRoute: (Array.isArray(sections?.usualRoute) ? sections.usualRoute : []).map((leg) => leg.path.join(' → ')).join(' · '),
     alerts: {
       speedLimitKmh: Number(sections?.speedLimitKmh || 90),
+      speedEpisodes: Array.isArray(sections?.speedEpisodes) ? sections.speedEpisodes : [],
       speedBreaches: Array.isArray(sections?.speedBreaches) ? sections.speedBreaches : [],
       speedAlerts: Array.isArray(sections?.speedAlerts) ? sections.speedAlerts : [],
       crashAlerts: Array.isArray(sections?.crashAlerts) ? sections.crashAlerts : [],
