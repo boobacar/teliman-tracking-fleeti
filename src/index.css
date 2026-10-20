@@ -7,7 +7,9 @@ body,
 #root {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  /* `clip` coupe le débordement horizontal sans créer de conteneur de défilement :
+     avec `hidden`, la barre latérale `sticky` défilait avec la page. */
+  overflow-x: clip;
 }
 
 #root {

@@ -47,7 +47,7 @@ body {
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 24%),
     radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 22%),
     #020617;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 button,
@@ -4066,7 +4066,9 @@ body {
 .sidebar.premium-sidebar {
   position: sticky;
   top: 0;
+  align-self: start;
   height: 100vh;
+  height: 100dvh;
   padding: 22px 18px 18px;
   display: grid;
   gap: 16px;
